@@ -451,7 +451,8 @@ class FuncWriter
           postCall ~= (param.kind != TypeKind.Wrap ? (", " ~ param.fullOwnerFlag ~ ".Take") : "") ~ ");\n";
         }
         else // InOut
-          assert(0, "InOut arguments of type '" ~ param.kind.to!string ~ "' not supported"); // FIXME - Does this even exist?
+          // GtkSource has few of these. Example: Buffer.backward_iter_to_source_mark
+          assert(0, "InOut arguments of type '" ~ param.kind.to!string ~ "' not supported (" ~ func.fullName.to!string ~ ")");
         break;
       case Interface:
         auto objectGSym = param.repo.defs.resolveSymbol("GObject.ObjectG");
@@ -471,7 +472,7 @@ class FuncWriter
             ~ param.dName ~ ", " ~ param.fullOwnerFlag ~ ".Take);\n";
         }
         else // InOut
-          assert(0, "InOut arguments of type '" ~ param.kind.to!string ~ "' not supported"); // FIXME - Does this even exist?
+          assert(0, "InOut arguments of type '" ~ param.kind.to!string ~ "' not supported (" ~ func.fullName.to!string ~ ")"); // FIXME - Does this even exist?
         break;
       case Unknown, Container, Namespace:
         assert(0, "Unsupported parameter type '" ~ param.dType.to!string ~ "' (" ~ param.kind.to!string ~ ") for "
