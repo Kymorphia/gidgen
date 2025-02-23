@@ -237,8 +237,10 @@ final class Param : TypeNode
           ~ cType.to!string ~ "'");
     }
 
-    if (kind == TypeKind.String && direction == ParamDirection.InOut)
-      throw new Exception("Unsupported string InOut parameter");
+    with (TypeKind) if (direction == ParamDirection.InOut
+        && kind.among(String, Opaque, Wrap, Boxed, Reffed, Object, Interface))
+      throw new Exception("Unsupported InOut parameter of type '" ~ dType.to!string ~ "' (kind = "
+        ~ kind.to!string ~ ")");
 
     if (kind == TypeKind.Boxed && direction == ParamDirection.Out && cType.countStars != 2)
     {

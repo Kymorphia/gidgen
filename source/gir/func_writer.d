@@ -24,6 +24,14 @@ class FuncWriter
   {
     codeTrap("func.write", func.fullDName);
 
+    if (!func.isStatic) // Check for conflicting method in ancestor if not a static method
+    {
+      conflictMethod = func.findMatchingAncestor(null, conflictConforms);
+
+      if (conflictMethod && !conflictConforms)
+        (cast(Structure)conflictMethod.parent).dType; // Resolve D type to add it to the active ImportManager
+    }
+
     if (func.isStatic)
       decl ~= "static "; // Function is "static" if it is not a method, constructor, or global function
 
@@ -779,18 +787,13 @@ class FuncWriter
 
     if (parentNode && parentNode.kind == TypeKind.Interface && !isStatic) // All interface methods are override
       overrideStr = "override ";
-    else if (!isStatic)
+    else if (!isStatic && conflictMethod)
     {
-      bool outConforms;
-
-      if (auto matchedFunc = func.findMatchingAncestor(null, outConforms))
-      {
-        if (outConforms) // Conforming methods use override
-          overrideStr = "override ";
-        else // Not-identical methods get aliased
-          writer ~= ["alias "d ~ func.dName ~ " = " ~ (cast(Structure)matchedFunc.parent).dType ~ "."
-            ~ func.dName ~ ";", ""];
-      }
+      if (!conflictConforms) // Not-identical methods get aliased
+        writer ~= ["alias "d ~ func.dName ~ " = " ~ (cast(Structure)conflictMethod.parent).dType ~ "."
+          ~ func.dName ~ ";", ""];
+      else
+        overrideStr = "override "; // Conforming methods use override
     }
 
     func.writeDocs(writer);
@@ -822,6 +825,8 @@ class FuncWriter
   }
 
   Func func; /// The function object being written
+  Func conflictMethod; /// Set to a method that conflicts with func in parent ancestry or null
+  bool conflictConforms; /// Set to true if the conflicting method conforms to func (override vs alias)
   dstring decl; /// Function declaration
   dstring preCall; /// Pre-call code for call return variable, call output parameter variables, and input variable processing
   dstring call; /// The C function call
