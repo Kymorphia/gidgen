@@ -161,7 +161,8 @@ final class Structure : TypeNode
 
   override void fixup()
   {
-    moduleName = repo.defs.symbolName(origDType.toSnakeCase);
+    import std.string : chomp;
+    moduleName = repo.defs.symbolName(origDType.toSnakeCase.chomp("_t")); // FIXME - Kind of a hack, to remove _t from type names (Harfbuzz)
 
     if (auto field = cast(Field)parent) // Structure as a field of another structure?
     { // dType and cType are the field name (not an actual type)
