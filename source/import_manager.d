@@ -214,7 +214,9 @@ final class ImportManager
 
     foreach (typeNode, aliasName; symbolAliases)
     {
-      auto moduleName = typeNode.repo.namespace ~ "." ~ (typeNode.inModule ? typeNode._dType : "Types");
+      auto moduleName = typeNode.repo.packageNamespace;
+      auto st = cast(Structure)typeNode;
+      moduleName ~= (st && typeNode.inModule) ? ("." ~ st.moduleName) : ".types";
 
       if (aliasName.empty && typeNode.inGlobal)
       { // Check if there are any other conflicting global symbols from other repos and add an explicit alias if so
@@ -233,23 +235,23 @@ final class ImportManager
         importHash[moduleName ~ " : " ~ aliasName ~ " = " ~ typeNode._dType] = true;
 
         if (typeNode.kind == TypeKind.Interface)
-          importHash[moduleName ~ "T : " ~ aliasName ~ "T = " ~ typeNode._dType ~ "T"] = true;
+          importHash[moduleName ~ "_mixin : " ~ aliasName ~ "T = " ~ typeNode._dType ~ "T"] = true;
       }
       else
       {
         importHash[moduleName] = true;
 
         if (typeNode.kind == TypeKind.Interface)
-          importHash[moduleName ~ "T"] = true;
+          importHash[moduleName ~ "_mixin"] = true;
       }
     }
 
     foreach (mod, syms; stringImports)
     {
       if (!syms.empty)
-        importHash[mod ~ " : "d ~ syms.keys.join(", ")] = true;
+        importHash[mod.toLower ~ " : "d ~ syms.keys.join(", ")] = true;
       else
-        importHash[mod] = true;
+        importHash[mod.toLower] = true;
     }
 
     if (klassModule)

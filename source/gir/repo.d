@@ -250,6 +250,8 @@ final class Repo : Base
       dubInfo["name"] = [dubPackageName];
     }
 
+    packageNamespace = namespace.toLower;
+
     if ("version" !in dubInfo && "version" in defs.dubInfo)
       dubInfo["version"] = defs.dubInfo["version"];
 
@@ -432,7 +434,7 @@ final class Repo : Base
   {
     auto pkgName = (mergeRepo ? mergeRepo : this).dubPackageName.to!string; // Use the package of the merge namespace if merge specified
     auto packagePath = buildPath(basePath, pkgName);
-    auto sourcePath = buildPath(packagePath, namespace.to!string);
+    auto sourcePath = buildPath(packagePath, packageNamespace.to!string);
     auto cSourcePath = buildPath(sourcePath, "c");
 
     codeTrap("repo.write", namespace);
@@ -441,10 +443,10 @@ final class Repo : Base
     writeCFuncs(buildPath(cSourcePath, "functions.d"));
 
     if (typesStruct)
-      writeTypesModule(buildPath(sourcePath, "Types.d"));
+      writeTypesModule(buildPath(sourcePath, "types.d"));
 
     if (globalStruct)
-      writeGlobalModule(buildPath(sourcePath, "Global.d"));
+      writeGlobalModule(buildPath(sourcePath, "global.d"));
 
     foreach (st; structs)
     {
@@ -487,11 +489,12 @@ final class Repo : Base
   private void writeIfaceProxy(string path, Structure st)
   {
     auto className = st.dType ~ "IfaceProxy";
-    auto writer = new CodeWriter(buildPath(path, className.to!string ~ ".d"));
-    writer ~= ["module " ~ namespace ~ "." ~ className ~ ";", "",
-      "import GObject.ObjectG;",
-      "import " ~ st.fullName ~ ";",
-      "import " ~ st.fullName ~ "T;", "",
+    auto modName = st.moduleName ~ "_iface_proxy";
+    auto writer = new CodeWriter(buildPath(path, modName.to!string ~ ".d"));
+    writer ~= ["module " ~ packageNamespace ~ "." ~ modName ~ ";", "",
+      "import gobject.object;",
+      "import " ~ st.fullModuleName ~ ";",
+      "import " ~ st.fullModuleName ~ "_mixin;", "",
       "/// Proxy object for " ~ st.fullName ~ " interface when a GObject has no applicable D binding",
       "class " ~ className ~ " : IfaceProxy, " ~ st.dType, "{",
       "this(void* ptr, Flag!\"Take\" take = No.Take)", "{", "super(cast(void*)ptr, take);", "}", "",
@@ -527,8 +530,9 @@ final class Repo : Base
     output ~= `  "importPaths": [".", ".."],` ~ "\n";
 
     // Include merged repos in sourcePaths list
-    auto namespaces = [namespace] ~ defs.repos.filter!(x => x.mergeRepoName == namespace).map!(x => x.namespace).array;
-    output ~= `  "sourcePaths": [` ~ namespaces.map!(ns => '"' ~ ns.to!string ~ '"').join(", ") ~ `]`;
+    output ~= `  "sourcePaths": [` ~ (['"' ~ packageNamespace.to!string ~ '"'] ~ defs.repos
+      .filter!(x => x.mergeRepoName == namespace).map!(x => '"' ~ x.packageNamespace.to!string ~ '"').array)
+      .join(", ") ~ `]`;
 
     if (!includes.empty)
     { // Use merge repo names as needed
@@ -563,9 +567,9 @@ final class Repo : Base
   {
     auto writer = new CodeWriter(path);
 
-    writer ~= ["module " ~ namespace ~ ".c.types;", ""];
-    writer ~= "public import Gid.basictypes;"; // Imported for glong/gulong types which change size depending on Windows or not
-    writer ~= includes.map!(x => "public import " ~ x.name ~ ".c.types;\n").array;
+    writer ~= ["module " ~ packageNamespace ~ ".c.types;", ""];
+    writer ~= "public import gid.basictypes;"; // Imported for glong/gulong types which change size depending on Windows or not
+    writer ~= includes.map!(x => "public import " ~ x.name.toLower ~ ".c.types;\n").array;
     writer ~= "";
 
     foreach (a; aliases)
@@ -641,15 +645,15 @@ final class Repo : Base
   {
     auto writer = new CodeWriter(path);
 
-    writer ~= ["module " ~ namespace ~ ".c.functions;", ""];
-    writer ~= ["public import Gid.basictypes;", "import Gid.loader;", "import " ~ namespace ~ ".c.types;"]; // Import Gid.basictypes for glong/gulong types which change size depending on Windows or not
+    writer ~= ["module " ~ packageNamespace ~ ".c.functions;", ""];
+    writer ~= ["public import gid.basictypes;", "import gid.loader;", "import " ~ packageNamespace ~ ".c.types;"]; // Import gid.basictypes for glong/gulong types which change size depending on Windows or not
 
     auto importNames = includes.map!(x => x.name).array;
 
     if (namespace == "GLib") // HACK - Add GObject to includes for GLib for GType
       importNames ~= "GObject";
 
-    writer ~= importNames.sort.map!(x => "public import " ~ x ~ ".c.types;\n").array;
+    writer ~= importNames.sort.map!(x => "public import " ~ x.toLower ~ ".c.types;\n").array;
     writer ~= "";
 
     writeSharedLibs(writer);
@@ -765,7 +769,7 @@ final class Repo : Base
   private void writeTypesModule(string path)
   {
     auto writer = new CodeWriter(path);
-    writer ~= ["module " ~ namespace ~ ".Types;", ""];
+    writer ~= ["module " ~ packageNamespace ~ ".types;", ""];
     defs.beginImports(typesStruct);
     scope(exit) defs.endImports;
 
@@ -786,7 +790,7 @@ final class Repo : Base
       if (al.kind == TypeKind.Callback) // Callback aliases should alias to D callback delegates, not C functions
         aliasDecls ~= ["alias " ~ al.name ~ " = " ~ al.dType ~ ";"];
       else if (al.name == al.cName)
-        aliasDecls ~= ["alias " ~ al.name ~ " = " ~ namespace ~ ".c.types." ~ al.cName ~ ";"];
+        aliasDecls ~= ["alias " ~ al.name ~ " = " ~ packageNamespace ~ ".c.types." ~ al.cName ~ ";"];
       else
       {
         auto aliasType = al.typeRepo.typeObjectHash.get(al._dType, null);
@@ -850,7 +854,7 @@ final class Repo : Base
   {
     auto writer = new CodeWriter(path);
 
-    writer ~= ["module " ~ namespace ~ ".Global;", ""];
+    writer ~= ["module " ~ namespace ~ ".global;", ""];
 
     // Create the function writers first to construct the imports
     defs.beginImports(globalStruct);
@@ -903,6 +907,7 @@ final class Repo : Base
   dstring symbolPrefixes; /// C symbol prefix
 
   dstring dubPackageName; /// Dub package name
+  dstring packageNamespace; /// Namespace directory to use for dub package (usually just namespace.toLower)
 
   Alias[] aliases; /// Aliases
   Constant[] constants; /// Constants

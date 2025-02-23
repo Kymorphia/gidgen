@@ -815,8 +815,8 @@ class Defs
   void beginImports(Structure klassModule)
   {
     importManager = new ImportManager(klassModule);
-    importManager.add("Gid.gid");
-    importManager.add("Types");
+    importManager.add("gid.gid");
+    importManager.add("types");
     importManager.add(klassModule.repo.namespace ~ ".c.functions");
     importManager.add(klassModule.repo.namespace ~ ".c.types");
   }
@@ -838,13 +838,15 @@ class Defs
    */
   dstring resolveSymbol(dstring typeName)
   {
+    auto typeNode = findTypeObject(typeName);
+
+    if (!typeNode)
+      throw new Exception("Failed to resolve symbol '" ~ typeName.to!string ~ "'");
+
     if (importManager)
-      importManager.add(typeName);
+      return importManager.resolveDType(typeNode);
 
-    auto t = typeName.split('.');
-    assert(t.length == 2);
-
-    return t[1];
+    return typeNode.dType;
   }
 
   bool[dstring] reservedWords; /// Reserved words (_ appended)

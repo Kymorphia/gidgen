@@ -32,6 +32,12 @@ final class Structure : TypeNode
     return dType;
   }
 
+  /// Get full module name of class
+  dstring fullModuleName()
+  {
+    return repo.packageNamespace ~ "." ~ moduleName;
+  }
+
   override @property bool inModule()
   {
     with (TypeKind) return kind.among(Opaque, Wrap, Boxed, Reffed, Object, Interface, Namespace) != 0;
@@ -155,6 +161,8 @@ final class Structure : TypeNode
 
   override void fixup()
   {
+    moduleName = repo.defs.symbolName(origDType.toSnakeCase);
+
     if (auto field = cast(Field)parent) // Structure as a field of another structure?
     { // dType and cType are the field name (not an actual type)
       dType = field.dName;
@@ -318,8 +326,8 @@ final class Structure : TypeNode
     codeTrap("struct.write", fullName);
 
     auto isIfaceTemplate = kind == TypeKind.Interface && moduleType == ModuleType.IfaceTemplate;
-    auto writer = new CodeWriter(buildPath(path, dType.to!string ~ (isIfaceTemplate ? "T" : "") ~ ".d")); // Append T to type name for interface mixin template module
-    writer ~= ["module " ~ fullName ~ (isIfaceTemplate ? "T;"d : ";"d), ""];
+    auto writer = new CodeWriter(buildPath(path, moduleName.to!string ~ (isIfaceTemplate ? "_mixin" : "") ~ ".d")); // Append T to type name for interface mixin template module
+    writer ~= ["module " ~ fullModuleName ~ (isIfaceTemplate ? "_mixin;"d : ";"d), ""];
 
     repo.defs.beginImports(this);
     scope(exit) repo.defs.endImports;
@@ -356,14 +364,14 @@ final class Structure : TypeNode
 
     if (!errorQuarks.empty)
     {
-      repo.defs.importManager.add("GLib.Types");
-      repo.defs.importManager.add("GLib.ErrorG");
+      repo.defs.importManager.add("glib.types");
+      repo.defs.importManager.add("glib.error");
     }
 
     if (!(defCode.inhibitFlags & DefInhibitFlags.Imports))
     {
       if (kind == TypeKind.Interface)
-        writer ~= "public import " ~ fullName ~ "IfaceProxy;";
+        writer ~= "public import " ~ fullModuleName ~ "_iface_proxy;";
 
       if (repo.defs.importManager.write(writer, isIfaceTemplate ? "public " : "")) // Interface templates use public imports so they are conveyed to the object they are mixed into
         writer ~= "";
@@ -513,7 +521,7 @@ final class Structure : TypeNode
       writer ~= ["", "void* cPtr()", "{", "return cast(void*)&cInstance;", "}"];
 
     if (kind.among(TypeKind.Boxed, TypeKind.Object) || (kind == TypeKind.Interface && moduleType == ModuleType.Iface))
-      writer ~= ["", "static GType getType()", "{", "import Gid.loader : gidSymbolNotFound;",
+      writer ~= ["", "static GType getType()", "{", "import gid.loader : gidSymbolNotFound;",
         "return cast(void function())" ~ glibGetType
         ~ " != &gidSymbolNotFound ? " ~ glibGetType ~ "() : cast(GType)0;", "}"]; // Return 0 if get_type() function was not resolved
 
@@ -706,6 +714,7 @@ final class Structure : TypeNode
   Property[] properties; /// Properties
 
   DefCode defCode; /// Code from definitions file
+  dstring moduleName; /// Package module file name (without the .d extension, usually just snake_case of origDType)
   Func ctorFunc; /// Primary instance constructor function in functions (not a Gir field)
   Func[] errorQuarks; /// List of GError quark functions for exceptions
   Func[dstring] funcNameHash; /// Hash of functions by name

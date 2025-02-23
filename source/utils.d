@@ -105,6 +105,31 @@ unittest
 }
 
 /**
+ * Convert camelCase or TitleCase to snake_case
+ * Returns: The name converted to snake_case
+ */
+dstring toSnakeCase(dstring name)
+{
+  import std.array : appender;
+  import std.uni : isUpper, toLower;
+  auto ap = appender!dstring;
+  bool lastIsUp;
+
+  foreach (i, c; name)
+  {
+    bool isUp = c.isUpper;
+
+    if (i > 0 && !lastIsUp && isUp)
+      ap ~= "_";
+
+    ap ~= c.toLower;
+    lastIsUp = isUp;
+  }
+
+  return ap[];
+}
+
+/**
  * Tokenize a type string into words and '*' pointers
  * Params:
  *   type = The type string
