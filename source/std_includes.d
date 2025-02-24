@@ -12,7 +12,7 @@ public import std.path : baseName, buildPath, dirName, stripExtension;
 public import std.range : chain, drop, dropOne, empty, enumerate, front, iota, join, repeat, retro, tee, walkLength;
 public import std.regex : Captures, ctRegex, matchAll, matchFirst, replaceAll;
 public import std.stdio : stderr, writeln;
-public import std.string : capitalize, splitLines, toLower, toUpper, strip, stripLeft, stripRight;
+public import std.string : capitalize, chomp, splitLines, toLower, toUpper, strip, stripLeft, stripRight;
 public import std.traits : EnumMembers;
 public import std.typecons : BitFlags, tuple, Yes;
 public import std.uni : isWhite;

@@ -238,6 +238,7 @@ Commands:
 add <XmlSelect> <AttributeValue | Xml> - Add an XML attribute or node (Block)
 class <Class> - Select the current structure/class (Repo)
 del <XmlSelect> - Delete an XML attribute or node
+gir <GirName> - GIR file to load
 import <Import> - Add a D import (Class)
 info <name> <value> - Set JSON dub info for repo or master package (name, description, copyright, authors, license), multiple authors values can be given
 inhibit [nothing imports init funcs] - Inhibit generation of certain module code (space separated flags) (Class)
@@ -245,7 +246,6 @@ kind <TypeName> <TypeKind> - Override a type kind (Repo)
 merge <Namespace> - Merge current repo into the package identified by Namespace (Repo)
 namespace <Namespace> - Create a repository from a namespace instead of a Gir file
 rename <XmlSelect> <AttributeName | XmlNodeId> - Rename an XML attribute or node ID
-repo <RepoName> - Specify the Gir repository name to load
 reserved <Word> - Identify a reserved word, an underscore will be appended to it
 set <XmlSelect> <AttributeValue | Xml> - Set an XML attribute or node (Block)
 subtype <FromTypeName> <ToTypeName> - Substitute a type name (D and C types)
@@ -282,6 +282,7 @@ The following XML attributes can be specified on API items and are set to a valu
 
 * Provides a way of selecting one or more nodes or attributes
 * Node IDs are separated by periods: `repository.namespace`
+* Node selectors default to using `repository.namespace` as the root, to cut down on redundancy
 * "name" attributes can be matched in square brackets: `function[my_function]`
 * Other attribute values can be matched with ATTR=VAL syntax: `function[c:identifier=g_boxed_copy]`
 * Multiple attributes can be matched (logic AND) by seperating them with commas: `function[my_function,version=1.22]`
@@ -311,18 +312,18 @@ Additional details on the XML patching commands are below:
 ### Binding Scope Commands
 
 Some commands are used for defining the current scope of other commands.
-These include: `repo`, `namespace`, and `class`.
+These include: `gir`, `namespace`, and `class`.
 
-The `repo` command is used for processing a GIR XML file to create bindings from.
+The `gir` command is used for processing a GIR XML file to create bindings from.
 It is usually the first command in a library definition file and instructs gidgen to process a GIR file and create bindings for it.
 It takes a single argument which is the GIR filename without the **.gir** extension.
-For example: `//!repo Gtk-4.0`
+For example: `//!gir Gtk-4.0`
 
-The `namespace` command is used instead of the `repo` command to define a new namespace.
+The `namespace` command is used instead of the `gir` command to define a new namespace.
 This can be used for defining a custom library/namespace which is not represented by a GIR file.
 One example is the Gid namespace which is used for binding support code and is declared like: `//!namespace Gid`.
 
-The `class` command can be used following either a `repo` or `namespace` command and selects the current class or structure which other commands act upon.
+The `class` command can be used following either a `gir` or `namespace` command and selects the current class or structure which other commands act upon.
 
 ### Binding Behavior Commands
 

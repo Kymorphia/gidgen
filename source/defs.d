@@ -285,6 +285,13 @@ class Defs
           else
             warning("Duplicate class command found for '", curStructName, "' ", posInfo);
           break;
+        case "gir":
+          curRepo = new Repo(this, cmdTokens[1].to!string);
+          curRepo.defsFilename = filename;
+          curRepo.namespace = repoName.to!dstring;
+          repos ~= curRepo;
+          curStructName = null;
+          break;
         case "import":
           curRepo.structDefCode[curStructName].imports.add(cmdTokens[1]);
           break;
@@ -326,13 +333,6 @@ class Defs
           curRepo = new Repo(this, null);
           curRepo.defsFilename = filename;
           curRepo.namespace = cmdTokens[1];
-          repos ~= curRepo;
-          curStructName = null;
-          break;
-        case "repo":
-          curRepo = new Repo(this, cmdTokens[1].to!string);
-          curRepo.defsFilename = filename;
-          curRepo.namespace = repoName.to!dstring;
           repos ~= curRepo;
           curStructName = null;
           break;
@@ -933,6 +933,7 @@ immutable DefCmd[] defCommandInfo = [
   },
   {"class", 1, DefCmdFlags.ReqRepo, "class <Class> - Select the current structure/class"},
   {"del", 1, DefCmdFlags.None, "del <XmlSelect> - Delete an XML attribute or node"},
+  {"gir", 1, DefCmdFlags.None, "gir <GirName> - GIR file to load"},
   {"import", 1, DefCmdFlags.ReqClass, "import <Import> - Add a D import"},
   {"info", 2, DefCmdFlags.None, "info <name> <value> - Set JSON dub info for repo or master package"
     ~ " (name, description, copyright, authors, license), multiple authors values can be given"},
@@ -944,7 +945,6 @@ immutable DefCmd[] defCommandInfo = [
   {
     "rename", 2, DefCmdFlags.None, "rename <XmlSelect> <AttributeName | XmlNodeId> - Rename an XML attribute or node ID"
   },
-  {"repo", 1, DefCmdFlags.None, "repo <RepoName> - Specify the Gir repository name to load"},
   {
     "reserved", 1, DefCmdFlags.None, "reserved <Word> - Identify a reserved word, an underscore will be appended to it"
   },

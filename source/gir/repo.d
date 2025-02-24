@@ -245,8 +245,8 @@ final class Repo : Base
     if (auto dubName = dubInfo.get("name", null))
       dubPackageName = dubName[0];
     else
-    {
-      dubPackageName = namespace.toLower ~ "-"d ~ nsVersion.replace(".", "-");
+    { // Strip .0 from versions
+      dubPackageName = namespace.toLower ~ nsVersion.chomp(".0").replace(".", "-");
       dubInfo["name"] = [dubPackageName];
     }
 
