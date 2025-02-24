@@ -422,11 +422,19 @@ class TypeNode : Base
 
       if (lengthParamIndex == ArrayLengthUnset && fixedSize == ArrayNotFixed && !zeroTerminated)
       {
-        if (Repo.suggestDefCmds)
-          repo.suggestions["Set arrays to be zero-terminated=1"] ~= "set " ~ xmlSelector.to!string ~ (cast(Func)this
-            ? ".return-value.array[][zero-terminated] 1" : ".array[][zero-terminated] 1");
+        if (elemTypes[0].kind == TypeKind.String)
+        {
+          info("Setting string array to null terminated for '" ~ fullName.to!string ~ "'");
+          zeroTerminated = true;
+        }
+        else
+        {
+          if (Repo.suggestDefCmds)
+            repo.suggestions["Set arrays to be zero-terminated=1"] ~= "set " ~ xmlSelector.to!string ~ (cast(Func)this
+              ? ".return-value.array[][zero-terminated] 1" : ".array[][zero-terminated] 1");
 
-        throw new Exception("Array of type '" ~ elemTypes[0]._dType.to!string ~ "' has indeterminate length");
+          throw new Exception("Array of type '" ~ elemTypes[0]._dType.to!string ~ "' has indeterminate length");
+        }
       }
 
       if (elemTypes[0].cType.empty) // Missing array element C type?

@@ -237,10 +237,18 @@ final class Param : TypeNode
           ~ cType.to!string ~ "'");
     }
 
-    with (TypeKind) if (direction == ParamDirection.InOut
-        && kind.among(String, Opaque, Wrap, Boxed, Reffed, Object, Interface))
-      throw new Exception("Unsupported InOut parameter of type '" ~ dType.to!string ~ "' (kind = "
-        ~ kind.to!string ~ ")");
+    if (direction == ParamDirection.InOut)
+    {
+      if (ownership != Ownership.None)
+      {
+        info("Changing InOut parameter '" ~ fullName.to!string ~ "' with ownership '" ~ ownership.to!string
+          ~ "' to None");
+        ownership = Ownership.None;
+      }
+
+      if (kind == TypeKind.String)
+        throw new Exception("Unsupported string InOut parameter");
+    }
 
     if (kind == TypeKind.Boxed && direction == ParamDirection.Out && cType.countStars != 2)
     {

@@ -34,8 +34,8 @@ final class ReturnValue : TypeNode
     // Return pointers to basic types which aren't arrays should be treated as pointers
     with(TypeKind) if (containerType == ContainerType.None && cType.countStars > 0
       && kind.among(Basic, BasicAlias, Enum, Flags))
-    {
-      warning("Changing " ~ fullName.to!string ~ " with C type " ~ cType.to!string ~ " from " ~ kind.to!string ~ " to pointer");
+    { // FIXME - There is a more generic way to turn a basic type pointer to a Pointer kind
+      info("Changing " ~ fullName.to!string ~ " with C type " ~ cType.to!string ~ " from " ~ kind.to!string ~ " to pointer");
       kind = TypeKind.Pointer;
 
       if (cType.startsWith("const"))

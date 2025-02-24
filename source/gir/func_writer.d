@@ -443,7 +443,7 @@ class FuncWriter
         }
         break;
       case Opaque, Wrap, Boxed, Reffed, Object:
-        if (param.direction == ParamDirection.In)
+        if (param.direction == ParamDirection.In || param.direction == ParamDirection.InOut)
         {
           addDeclParam(param.dType ~ " " ~ param.dName);
           addCallParam(param.dName ~ " ? cast(" ~ param.cTypeRemPtr.stripConst ~ "*)" ~ param.dName ~ ".cPtr"
@@ -458,14 +458,11 @@ class FuncWriter
           postCall ~= "(cast(void*)" ~ (param.cTypeRemPtr.endsWith('*') ? "_"d : "&_"d) ~ param.dName;
           postCall ~= (param.kind != TypeKind.Wrap ? (", " ~ param.fullOwnerFlag ~ ".Take") : "") ~ ");\n";
         }
-        else // InOut
-          // GtkSource has few of these. Example: Buffer.backward_iter_to_source_mark
-          assert(0, "InOut arguments of type '" ~ param.kind.to!string ~ "' not supported (" ~ func.fullName.to!string ~ ")");
         break;
       case Interface:
         auto objectGSym = param.repo.defs.resolveSymbol("GObject.ObjectG");
 
-        if (param.direction == ParamDirection.In)
+        if (param.direction == ParamDirection.In || param.direction == ParamDirection.InOut)
         {
           addDeclParam(param.dType ~ " " ~ param.dName);
           addCallParam(param.dName ~ " ? cast(" ~ param.cTypeRemPtr.stripConst ~ "*)(cast(" ~ objectGSym ~ ")"
@@ -479,8 +476,6 @@ class FuncWriter
           postCall ~= param.dName ~ " = " ~ objectGSym ~ ".getDObject!" ~ param.dType ~ "(_"
             ~ param.dName ~ ", " ~ param.fullOwnerFlag ~ ".Take);\n";
         }
-        else // InOut
-          assert(0, "InOut arguments of type '" ~ param.kind.to!string ~ "' not supported (" ~ func.fullName.to!string ~ ")"); // FIXME - Does this even exist?
         break;
       case Unknown, Container, Namespace:
         assert(0, "Unsupported parameter type '" ~ param.dType.to!string ~ "' (" ~ param.kind.to!string ~ ") for "
