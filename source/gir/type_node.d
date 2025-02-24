@@ -464,6 +464,11 @@ class TypeNode : Base
       if (elemTypes.length > reqElemTypes)
         warnWithLoc(__FILE__, __LINE__, xmlLocation, "Container '" ~ fullDType.to!string ~ "' has excess types");
 
+      foreach (elem; elemTypes) // Check if element types are active
+        if (elem.typeObject && elem.typeObject.active != Active.Enabled)
+          throw new Exception("Container type '" ~ containerType.to!string ~ "' element type '" ~ elem.dType.to!string
+            ~ "' is " ~ elem.typeObject.active.to!string);
+
       if (containerType == ContainerType.HashTable)
       {
         with (TypeKind) if (!elemTypes[0].kind.among(String, Pointer))
