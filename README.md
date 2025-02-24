@@ -6,7 +6,8 @@ The intention of this project is to create high quality D language bindings for 
 The **gidgen** utility takes XML GObject Introspection Repository (GIR) files and generates D binding packages which can be used with [dub](https://dub.pm/).
 
 The [giD Package Repository](https://github.com/Kymorphia/gid/) hosts the current archive of generated D bindings.
-It currently includes bindings for Gtk4 and its dependencies; Vte terminal library, GtkSource code viewer widget, Apache Arrow, and more.
+It currently includes bindings for Gtk4, Vte terminal library, GtkSource code viewer widget, Apache Arrow, and more.
+
 Please consult the documentation there for more information on developing D applications with giD library bindings.
 
 The remainder of this document describes how to use **gidgen** for creating and improving D bindings.
