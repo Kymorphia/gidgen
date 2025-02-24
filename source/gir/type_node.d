@@ -406,7 +406,7 @@ class TypeNode : Base
   void verify()
   {
     if (unresolvedFlags)
-      throw new Exception("Unresolved type '" ~ fullName.to!string ~ "' (flags = " ~ unresolvedFlags.to!string ~ ")");
+      throw new Exception("Unresolved type '" ~ dType.to!string ~ "' (unresolvedFlags: " ~ unresolvedFlags.to!string ~ ")");
 
     if (typeObject && typeObject.active != Active.Enabled)
       throw new Exception("Resolved type '" ~ typeObject.fullName.to!string ~ "' is not active");

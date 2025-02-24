@@ -232,6 +232,7 @@ final class Func : TypeNode
 
           returnVal.dType = parentSt.dType;
           returnVal.typeObject = parentSt;
+          returnVal.typeRepo = parentSt.typeRepo;
         }
       }
     }
