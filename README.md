@@ -5,9 +5,9 @@ The intention of this project is to create high quality D language bindings for 
 
 The **gidgen** utility takes XML GObject Introspection Repository (GIR) files and generates D binding packages which can be used with [dub](https://dub.pm/).
 
-The [giD Package Repository](https://github.com/Kymorphia/gid/) hosts the current archive of generated D bindings,
-and is focused primarily on Gtk4 and its dependencies. In the future it will be expanded to include additional libraries according to interest.
-Please consult the documentation there for more information on developing D applications with giD and Gtk4.
+The [giD Package Repository](https://github.com/Kymorphia/gid/) hosts the current archive of generated D bindings.
+It currently includes bindings for Gtk4 and its dependencies; Vte terminal library, GtkSource code viewer widget, Apache Arrow, and more.
+Please consult the documentation there for more information on developing D applications with giD library bindings.
 
 The remainder of this document describes how to use **gidgen** for creating and improving D bindings.
 
@@ -31,7 +31,7 @@ Some of the features of **gidgen** include:
   * Native C library functions can be called directly if desired and are loaded dynamically at runtime.
 * GObject:
   * Wrapping of C GObject and Interface instances.
-  * Uses interface proxy objects when the GObject type is unknown to D.
+  * Uses interface proxy objects for interfaces when the GObject type is unknown to D.
   * Each GObject signal has delegate and function callback type aliases and a `connectSignalName()` template.
   * Support for signal "detail" parameters like property names used with the GObject "notify" property.
   * Method aliases are automatically generated for class or interface methods which conflict with ancestor classes.
@@ -63,6 +63,8 @@ GObject Introspection Dlang binding generator
 -s    --subpkg-path Subpackage path to write individual library packages to (required)
          --def-help Display binding definition file command help
         --log-level Log level (all, trace, info, warning, error, critical, fatal, off)
+     --log-gir-locs Log GIR file locations in warnings
+    --log-code-locs Log code locations in warnings
            --report Output binding coverage statistics (defaults to --report-options AllUnsupported)
       --report-file File to output report to (defaults to stdout if not specified)
    --report-options Customize report output (logically OR'd flags with '|' character, 'help' for flag list)
@@ -107,6 +109,7 @@ Report options help (values can be logically OR'd with '|'):
 Summary        Generate a binding coverage summary table
 Enabled        Show Enabled item names
 Disabled       Show Disabled item names
+Ignored        Show Ignored item names
 Unsupported    Show Unsupported item names
 Structs        Show Structure/Class names
 Funcs          Show Function/Method names
@@ -115,15 +118,17 @@ Fields         Show Field names
 All            Generate a full report
 AllEnabled     Generate a report of all Enabled items
 AllDisabled    Generate a report of all Disabled items
+AllIgnored     Generate a report of all Ignored items
 AllUnsupported Generate a report of all Unsupported items (default)
 ```
 
 The **Summary** flag outputs a table of coverage statistics, described in more detail below.
 
-There are three flags which determine the active state of items whose names will be output:
+There are four flags which determine the active state of items whose names will be output:
 
 * **Enabled** Displays names of items which are enabled and present in the generated binding.
 * **Disabled** Displays names of items which are intentionally disabled, not due to gidgen limitations or GIR issues.
+* **Ignored** Displays names of items which are intentionally ignored and not considered to be relevant to D bindings.
 * **Unsupported** Displays names of items which are inactive because of a limitation in gidgen or an issue with the GIR specification.
 
 Four of the flags determine the types of items whose names will be output:
@@ -137,10 +142,10 @@ The remaining flags are for convenience and are combinations of the previous fla
 
 * **All** All of the above flags, which creates a full report.
 * **AllEnabled** All four of the item type flags and the Enabled flag, which outputs the names of all enabled items which are output in the binding.
-* **AllDisabled** All four of the item type flags and the Disabled flag, which outputs the names of al of the explicitly disabled items.
+* **AllDisabled** All four of the item type flags and the Disabled flag, which outputs the names of all of the explicitly disabled items.
+* **AllIgnored** All four of the item type flags and the Ignored flag, which outputs the names of all of the ignored items.
 * **AllUnsupported** All four of the item type flags and the Unsupported flag, which outputs the names of all of the unsupported API items which are not covered.
   These count against the total coverage scores.
-
 
 #### Summary
 
@@ -169,14 +174,14 @@ freetype2  |    5    0    0   100 |    0    0    0   100 |    0    0    0   100 
 The **Package** column contains the package name. Additional columns are shown for the enabled item types (Structs, Funcs, Signals, Fields).
 Each of the additional columns contains sub columns for the number of Active (Act), Disabled (Dis), and Unsupported (Uns) items.
 The final sub-column contains the percentage coverage, which is the count of Active items from the total Active and Unsupported items.
-The intentionally Disabled items are not considered in the coverage percentage calculation as they are not considered to be a part of the API binding.
-
+Disabled and Ignored items are not included in the coverage percentage calculation as they are not considered to be a part of the API binding.
 
 ### Binding Debugging Commands
 
 The following commands are useful for improving and troubleshooting bindings.
 
 * **--def-help** Display giD binding definition file help.
+* **--log-gir-locs** Log GIR file locations in warnings. This is useful for locating API definitions in GIR files which have issues.
 * **--suggest** Outputs automated suggestions of XML patch commands which might be applicable. They should be reviewed for correctness.
 * **--dump-selectors** Dumps `set` command XML selectors for GIR warnings as a convenient start point for defining XML patches.
 * **--dump-ctypes** Display all C types from all packages.
@@ -189,6 +194,7 @@ The following commands are useful for improving and troubleshooting bindings.
 
 These commands are useful for debugging the gidgen CLI program itself and pausing execution in GDB at specific points of binding processing.
 
+* **--log-code-locs** Log code locations in warnings. Useful for locating the source code which resulted in a particular warning (can be sorted to group similar issues).
 * **--dump-traps** Dump all binding generation traps, which GDB breakpoints can be set on.
 * **--trap REGEX** Add a binding generation trap matching REGEX, which will cause a GDB debugger breakpoint.
 
@@ -224,8 +230,8 @@ giD binding definition command help
 Commands are prefixed with '//!'.
 giD comments are prefixed with '//#' and aren't output to binding code.
 Strings can be single or double quoted.
-Some commands support multi-line values using opening and close braces within giD comment lines ('block' flag).
-Commands indicating 'repo' in parenthesis require a repo to have been specified, 'class' requires a class (or struct).
+Some commands support multi-line values using opening and close braces within giD comment lines ('Block' flag).
+Commands indicating 'Repo' in parenthesis require a repo to have been specified, 'Class' requires a class (or struct).
 Commands:
 
 add <XmlSelect> <AttributeValue | Xml> - Add an XML attribute or node (Block)
@@ -255,9 +261,21 @@ Sometimes these commands are also used for customizing behavior of the resulting
 
 These commands use an XML selector to find a single XML element/attribute or match multiple ones using wildcards.
 
-**NOTE:** In addition to the standard GIR XML attributes,
-  definition files also use the XML attribute `disable` for disabling the binding of a type.
-  This is not defined by the GIR XML specification and is used internally in gidgen only.
+#### Gidgen GIR Extensions
+
+Gidgen supports a number of extensions which are used for additional configuration of the resulting bindings.
+
+The following XML attributes can be specified on API items and are set to a value of 1 to enable them:
+* **disable** - Disable an API item, which should be addressed through gidgen improvements or custom binding code.
+* **ignore** - Also disables an API item, but is used for marking APIs as not useful for D bindings.
+* **unsupported** - API item as unsupported. These are identified candidates for future gidgen improvements.
+  Not normally specified directly, but detected by gidgen.
+
+**Additional features:**
+
+* A method or function return value can be an output array parameter length, by specifying `length="-1"` in the XML attributes for the array.
+* Input array parameters can be used as the length of an output array parameter or return value,
+  by setting the `length` XML attribute of the array to the relevant parameter index (subtract 1 if there is a instance parameter).
 
 #### XML selector reference
 

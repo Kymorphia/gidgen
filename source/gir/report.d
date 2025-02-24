@@ -163,8 +163,8 @@ string[] reportFlagDescriptions = [
   "Generate a binding coverage summary table", // Summary
   "Show Enabled item names", // Enabled
   "Show Disabled item names", // Disabled
-  "Show Unsupported item names", // Unsupported
   "Show Ignored item names", // Ignored
+  "Show Unsupported item names", // Unsupported
   "Show Structure/Class names", // Structs
   "Show Function/Method names", // Funcs
   "Show Signal names", // Signals
