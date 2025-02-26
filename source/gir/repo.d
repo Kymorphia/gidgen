@@ -1,5 +1,6 @@
 module gir.repo;
 
+import code_writer;
 import defs;
 import gir.alias_;
 import gir.base;
@@ -14,7 +15,7 @@ import gir.property;
 import gir.return_value;
 import gir.structure;
 import gir.type_node;
-import code_writer;
+import import_manager;
 import std_includes;
 import utils;
 import xml_patch;
@@ -153,7 +154,7 @@ final class Repo : Base
               cl.implements ~= name;
           break;
         case "include": // Package include
-          includes ~= Include(node["name"], node["version"]);
+          includes ~= NamespaceVersion(node["name"], node["version"]);
           break;
         case "member": // Enumeration or bitfield member
           if (auto en = node.baseParentFromXmlNodeWarn!Enumeration)
@@ -258,6 +259,19 @@ final class Repo : Base
     if ("description" !in dubInfo)
       dubInfo["description"] ~= namespace ~ " library D binding";
 
+    void recurseDeps(Repo r)
+    {
+      includeRepoHash[r.namespace] = r;
+
+      foreach (m; r.mergedRepos) // Add merged repos to includes
+        includeRepoHash[m.namespace] = m;
+
+      foreach (d; r.includeRepos)
+        recurseDeps(d);
+    }
+
+    (includeRepos ~ [this]).each!recurseDeps; // Resolve GIR includes and self recursively and add to includeRepoHash
+
     foreach (al; aliases) // Fixup aliases
     {
       al.fixup;
@@ -350,14 +364,6 @@ final class Repo : Base
   {
     if (namespace.empty)
       throw new Exception("Repo '" ~ filename ~ "' has empty namespace");
-
-    if (mergeRepoName)
-    {
-      if (mergeRepoName !in defs.repoHash)
-        throw new Exception("Repo '" ~ mergeRepoName.to!string ~ "' not found to merge '" ~ namespace.to!string ~ "' into");
-
-      mergeRepo = defs.repoHash[mergeRepoName];
-    }
 
     foreach (al; aliases) // Verify aliases
     {
@@ -530,28 +536,15 @@ final class Repo : Base
     output ~= `  "importPaths": [".", ".."],` ~ "\n";
 
     // Include merged repos in sourcePaths list
-    output ~= `  "sourcePaths": [` ~ (['"' ~ packageNamespace.to!string ~ '"'] ~ defs.repos
-      .filter!(x => x.mergeRepoName == namespace).map!(x => '"' ~ x.packageNamespace.to!string ~ '"').array)
+    output ~= `  "sourcePaths": [` ~ ([this] ~ mergedRepos).map!(x => '"' ~ x.packageNamespace.to!string ~ '"').array
       .join(", ") ~ `]`;
 
-    if (!includes.empty)
-    { // Use merge repo names as needed
-      string depFunc(Include inc)
-      {
-        if (auto incRepo = defs.repoHash.get(inc.name, null))
-        {
-          auto repo = incRepo.mergeRepo ? incRepo.mergeRepo : incRepo;
-          auto versionStr = repo.dubInfo.get("version", null) ? ("==" ~ dubInfo["version"][0]) : "*";
-          return `    "gid:` ~ repo.dubPackageName.to!string ~ `": "` ~ versionStr.to!string ~ `"`;
-        }
-
-        return `    "gid:` ~ inc.name.to!string.toLower ~ `": "*"`;
-      }
-
-      // Get dependencies, remove duplicates, and sort
-      auto deps = includes.map!depFunc.assocArray(true.repeat).keys.array.sort;
-
-      output ~= ",\n  \"dependencies\": {\n" ~ deps.join(",\n") ~ "\n  }";
+    if (!includeRepos.empty)
+    {
+      auto deps = includeRepos.map!(x => x.mergeRepo ? x.mergeRepo : x).assocArray(true.repeat).keys; // Consider merge repos and deduplicate
+      output ~= ",\n  \"dependencies\": {\n" ~ deps.map!(repo => `    "gid:` // Construct package dependencies with any specified versions from `info` definition commands
+        ~ repo.dubPackageName.to!string ~ `": "` ~ repo.dubInfo.get("version", ["*"])[0].to!string
+        ~ `"`).array.sort.join(",\n") ~ "\n  }";
     }
 
     output ~= "\n}\n";
@@ -770,8 +763,8 @@ final class Repo : Base
   {
     auto writer = new CodeWriter(path);
     writer ~= ["module " ~ packageNamespace ~ ".types;", ""];
-    defs.beginImports(typesStruct);
-    scope(exit) defs.endImports;
+    beginImports(typesStruct);
+    scope(exit) endImports;
 
     dstring[] callbackDecls;
 
@@ -802,10 +795,8 @@ final class Repo : Base
       }
     }
 
-    if (defs.importManager.write(writer))
+    if (importManager.write(writer))
       writer ~= "";
-
-    defs.endImports;
 
     if (!aliasDecls.empty)
       writer ~= [""d, "// Aliases"];
@@ -857,8 +848,8 @@ final class Repo : Base
     writer ~= ["module " ~ packageNamespace ~ ".global;", ""];
 
     // Create the function writers first to construct the imports
-    defs.beginImports(globalStruct);
-    scope(exit) defs.endImports;
+    beginImports(globalStruct);
+    scope(exit) endImports;
 
     FuncWriter[] funcWriters;
 
@@ -870,10 +861,8 @@ final class Repo : Base
       funcWriters ~= new FuncWriter(fn);
     }
 
-    if (defs.importManager.write(writer))
+    if (importManager.write(writer))
       writer ~= "";
-
-    defs.endImports;
 
     if (globalStruct.defCode.preClass.length > 0)
       writer ~= globalStruct.defCode.preClass;
@@ -891,6 +880,316 @@ final class Repo : Base
       writer ~= globalStruct.defCode.postClass;
 
     writer.write();
+  }
+
+  /**
+   * Get the kind classification of a type string
+   * Params:
+   *   type = The D type string (should not include a namespace)
+   * Returns: The type classification, falls back to TypeKind.Basic if no other type applies
+   */
+  TypeKind typeKind(dstring type)
+  {
+    foreach (i; 0 .. 4) // Resolve up to 4 alias dereferences
+    {
+      if (type.among("char*"d, "const char*"d, "string"d, "utf8"d))
+        return TypeKind.String;
+
+      if (type.isBasicType)
+        return i > 0 ? TypeKind.BasicAlias : TypeKind.Basic;
+
+      if (auto obj = typeObjectHash.get(type, null))
+      {
+        if (auto al = cast(Alias)obj)
+        {
+          type = al.dType;
+          continue;
+        }
+
+        if (cast(Func)obj)
+          return TypeKind.Callback;
+        else if (auto node = cast(TypeNode)obj)
+          return node.kind;
+        else if (cast(Constant)obj)
+          return TypeKind.Basic;
+        else if (auto en = cast(Enumeration)obj)
+          return en.bitfield ? TypeKind.Flags : TypeKind.Enum;
+        else
+          return TypeKind.Unknown;
+      }
+    }
+
+    return TypeKind.Unknown; // Too many alias dereferences
+  }
+
+  /**
+   * Find type object by D type name which may include the namespace separated by a period.
+   * Params:
+   *   typeName = Type name string
+   * Returns: The matching type object or null if not found (possible basic type), throws an exception if typeName has a namespace that wasn't resolved
+   */
+  TypeNode findTypeObject(dstring typeName)
+  {
+    repo = this;
+
+    auto t = typeName.split('.');
+    if (t.length > 1)
+    {
+      repo = includeRepoHash.get(t[0], null);
+
+      if (!repo)
+        throw new Exception("Failed to resolve namespace '" ~ t[0].to!string ~ "' for type '"
+          ~ typeName.to!string ~ "'");
+
+      typeName = t[1];
+    }
+
+    return repo.typeObjectHash.get(repo.subTypeStr(typeName), null);
+  }
+
+  /**
+   * Find type object by Gir doc reference (as found in Gir documentation).
+   * In the form [kind@Namespace.TypeName(.|::|:)SubTypeName] where SubTypeName is optional.
+   * Params:
+   *   refStr = Type name string
+   * Returns: The matching type object or null if not found (possible basic type)
+   */
+  TypeNode findTypeObjectByGDocRef(dstring refStr)
+  {
+    auto refRe = ctRegex!(`^(?P<kind>[a-z]+)@(?P<Namespace>[A-Za-z]+)\.(?P<TypeName>[A-Za-z0-9_]+)`d
+      ~ `(?:\.|::|:)?(?P<SubTypeName>[A-Za-z0-9_]*)`d);
+    auto c = refStr.matchFirst(refRe);
+
+    dstring kind, nameSpace, typeName, subTypeName;
+
+    if (c.empty) // No match to kind@Namespace.TypeName.SubTypeName? - Process it as a dot separated type name
+    {
+      auto t = refStr.split('.');
+
+      if (t.length > 1)
+      {
+        nameSpace = t[0];
+        typeName = t[1];
+
+        if (t.length > 2)
+          subTypeName = t[2];
+      }
+      else
+        typeName = t[0];
+
+      kind = "func"; // FIXME - This seems a little hackish, just assume it is a function/method rather than a property or signal
+    }
+    else
+    {
+      kind = c["kind"];
+      nameSpace = c["Namespace"];
+      typeName = c["TypeName"];
+      subTypeName = c["SubTypeName"];
+    }
+
+    auto repo = this;
+
+    if (!nameSpace.empty)
+    {
+      if (auto r = includeRepoHash.get(nameSpace, null))
+        repo = r;
+      else // Namespace did not match, assume it is TypeName.SubTypeName without Namespace
+      {
+        subTypeName = typeName;
+        typeName = nameSpace;
+      }
+    }
+
+    typeName = subTypeStr(typeName);
+    auto tn = repo.typeObjectHash.get(typeName, null);
+
+    if (subTypeName.empty || !tn)
+      return tn;
+
+    if (auto st = cast(Structure)tn)
+    {
+      switch (kind)
+      {
+        case "func", "method", "ctor":
+          return st.funcNameHash.get(subTypeName, null);
+        case "property":
+          return st.properties.find!(x => x.name == subTypeName).frontIfNotEmpty(cast(Property)null);
+        case "signal":
+          return st.signals.find!(x => x.name == subTypeName).frontIfNotEmpty(cast(Func)null);
+        default: // Includes "vfunc"
+          return null;
+      }
+    }
+    else if (auto en = cast(Enumeration)tn)
+      return en.members.find!(x => x.name == subTypeName).frontIfNotEmpty(cast(Member)null);
+
+    return null;
+  }
+
+  /**
+  * Format a GTK doc string to be a DDoc string.
+  * Newlines are formatted with a prefix to match the indendation for the comment block.
+  * References in the form [kind@Namespace.TypeName(.|::|:)SubTypeName] are replaced with DDoc references.
+  * Function references func() are changed to the D function/method name and set to bold.
+  *
+  * Params:
+  *   s = The GTK doc string
+  *   prefix = The newline wrap prefix
+  * Returns: The DDoc formatted string
+  */
+  dstring gdocToDDoc(dstring s, dstring prefix)
+  {
+    import std.regex : Captures, ctRegex, replaceAll;
+    auto escapeRe = ctRegex!(r"[$=]"d);
+    auto nlSpaceRe = ctRegex!(r"\n\s*"d);
+    auto refRe = ctRegex!(r"\[`?([a-z]+@[^\]]+)`?\]"d);
+    auto funcRe = ctRegex!(r"([a-z0-9_]+)\(\)"d);
+
+    s = s.replaceAll(escapeRe, "\\$&"); // Escape special characters
+
+    // Format newlines for comment block
+    prefix = "\n" ~ prefix;
+    s = s.replaceAll(nlSpaceRe, prefix);
+
+    dstring refReplace(Captures!(dstring) m)
+    {
+      auto tn = findTypeObjectByGDocRef(m[1]);
+
+      if (auto fn = cast(Func)tn)
+        return "[" ~ fn.fullDName ~ "]";
+      else if (tn)
+        return "[" ~ tn.fullName ~ "]";
+      else
+        return m[1];
+    }
+
+    s = replaceAll!(refReplace)(s, refRe); // Replace [kind@name] with DDoc reference
+
+    dstring funcReplace(Captures!(dstring) m)
+    {
+      if (auto tn = defs.cSymbolHash.get(m[1], null))
+      {
+        if (auto fn = cast(Func)tn)
+          return "[" ~ fn.fullDName ~ "]";
+        else
+          return "[" ~ tn.fullName ~ "]";
+      }
+
+      return m[0];
+    }
+
+    s = replaceAll!(funcReplace)(s, funcRe); // Replace func() references
+
+    return s.escapeNonRefLinkParens;
+  }
+
+  /**
+   * Resolve a D type symbol name. Uses the D type name or an alias if it conflicts with
+   * another symbol imported into the current module which was defined by a call to beginImports().
+   * Params:
+   *   typeNode = The type node object to get the D type name of
+   * Returns: The D type name or an alias
+   */
+  dstring resolveSymbol(dstring typeName)
+  {
+    auto typeNode = findTypeObject(typeName);
+
+    if (!typeNode)
+      throw new Exception("Failed to resolve symbol '" ~ typeName.to!string ~ "'");
+
+    if (importManager)
+      return importManager.resolveDType(typeNode);
+
+    return typeNode.dType;
+  }
+
+  /**
+   * Substitute type.
+   * Params:
+   *   type = Type string
+   *   cType = No.CType for D type substitution, Yes.CType for C type (defaults to No)
+   * Returns: Type string with any relevant substitutions
+   */
+  dstring subTypeStr(dstring type, Flag!"CType" cType = No.CType)
+  {
+    auto subs = (cType == No.CType) ? defs.dTypeSubs : defs.cTypeSubs;
+    auto localSubs = (cType == No.CType) ? dTypeSubs : cTypeSubs;
+
+    enum State
+    {
+      Start, // Start of type string
+      Space, // After a space character
+      Star, // After a * pointer
+      Char, // After a type character
+    }
+
+    State state; // Current state of state machine
+    bool isConst; // Set to true if there are any "const" strings
+    dstring subType; // Substitute type string being built
+    int starCount; // Number of stars
+
+    if (auto s = subs.get(type, null)) // See if the type exactly matches a substitution (handles multi word substitutions too)
+      return s;
+
+    // Loop over the type string consuming it head first
+    for (; !type.empty; type = type[1 .. $])
+    {
+      dstring skip; // A token to skip (const or volatile)
+
+      if (state != State.Char) // Last state was not a type character?
+      {
+        if (type.startsWith("const"))
+          skip = "const";
+        else if (type.startsWith("volatile"))
+          skip = "volatile";
+
+        if (!skip.empty) // Skip first ask questions later
+        {
+          type = type[skip.length .. $];
+
+          if (type.empty) // No more chars after skipped token? - Done, but probably an invalid type
+            break;
+        }
+      }
+
+      if (type[0] == ' ' || type[0] == '*') // Space or star?
+      {
+        if (skip == "const")
+          isConst = true;
+
+        if (type[0] == '*')
+        {
+          starCount++;
+          state = State.Star;
+        }
+        else
+          state = State.Space; // Spaces only get added if it is followed by a regular character
+      }
+      else // Type name character
+      {
+        if (state == State.Space && !subType.empty) // Add a space if the last character was a space, since this is a regular character
+          subType ~= ' ';
+
+        if (!skip.empty) // Possible skip token was followed by a regular type character? - Don't skip it then (append it to the subType)
+          subType ~= skip;
+
+        subType ~= type[0]; // Append the character to the substituted type
+        state = State.Char;
+      }
+    }
+
+    if (subType in localSubs)
+      subType = localSubs[subType]; // Try localSubs first
+    else
+      subType = subs.get(subType, subType); // Then subs with fallback to itself
+
+    if (starCount == 0) // Not a pointer type?
+      return subType;
+
+    if (isConst) // Constant pointer type?
+      return "const(" ~ subType ~ "*"d.repeat(starCount - 1).join ~ ")*"d;
+
+    return subType ~ "*"d.repeat(starCount).join; // Just a pointer type
   }
 
   Defs defs; /// Defs loaded from def files
@@ -916,7 +1215,9 @@ final class Repo : Base
   Structure[] structs; /// Structures
   Structure globalStruct; /// Global namespace structure
   Structure typesStruct; /// Global Types module structure
-  Include[] includes; /// Package includes
+  NamespaceVersion[] includes; /// Package includes
+  Repo[] includeRepos; /// Resolved included repos
+  Repo[dstring] includeRepoHash; /// Included repository dependencies keyed by namespace
   dstring[] cIncludes; /// C header includes
   DocSection[] docSections; /// Documentation sections
 
@@ -925,8 +1226,9 @@ final class Repo : Base
   dstring[dstring] dTypeSubs; /// D type substitutions defined in the definitions file
   TypeKind[dstring] kindSubs; /// Type kind substitutions defined in the definitions file
   DefCode[dstring] structDefCode; /// Code defined in definition file for structures
-  dstring mergeRepoName; /// Package to merge this repo into identified by its namespace
+  NamespaceVersion mergeNsVer; /// Package namespace/version to merge this repo into
   Repo mergeRepo; /// Repo object to merge this repo into
+  Repo[] mergedRepos; /// Repos which have been merged into this one
   dstring[][string] dubInfo; /// Dub JSON file info ("name", "description", "copyright", "authors", "license"), only "authors" uses multiple values
 
   TypeNode[dstring] typeObjectHash; /// Hash of type objects by name (Alias, Func (callback), Constant, Enumeration, or Structure)
@@ -952,7 +1254,7 @@ void warnWithLoc(string file, size_t line, string xmlLoc, string message)
 }
 
 /// Package include
-struct Include
+struct NamespaceVersion
 {
   dstring name;
   dstring version_;

@@ -121,7 +121,7 @@ abstract class Base
       return;
 
     writer ~= "/**";
-    writer ~= "* " ~ repo.defs.gdocToDDoc(docContent, "* ", repo);
+    writer ~= "* " ~ repo.gdocToDDoc(docContent, "* ");
 
     if (!docVersion.empty || !docDeprecated.empty)
     {
@@ -131,7 +131,7 @@ abstract class Base
         writer ~= "* Version: " ~ docVersion;
 
       if (!docDeprecated.empty)
-        writer ~= "* Deprecated: " ~ repo.defs.gdocToDDoc(docDeprecated, "*   ", repo);
+        writer ~= "* Deprecated: " ~ repo.gdocToDDoc(docDeprecated, "*   ");
     }
 
     writer ~= "*/";

@@ -9,6 +9,34 @@ import gir.func;
 import gir.structure;
 import gir.type_node;
 
+// Global import manager instance for use with beginImports/endImports
+ImportManager importManager;
+
+/**
+  * Designate the start of output processing for module imports. Enables tracking of symbol names and
+  * creation of aliases for conflicts for used symbols.
+  * Params:
+  *   klassModule = The klass or module being processed
+  */
+void beginImports(Structure klassModule)
+{
+  assert(!importManager);
+  importManager = new ImportManager(klassModule);
+  importManager.add("gid.gid");
+  importManager.add("types");
+  importManager.add(klassModule.repo.namespace ~ ".c.functions");
+  importManager.add(klassModule.repo.namespace ~ ".c.types");
+}
+
+/**
+  * Indicates the end of processing for the current output module imports which was activated with beginImports().
+  */
+void endImports()
+{
+  assert(importManager);
+  importManager = null;
+}
+
 final class ImportManager
 {
   this(Structure klassModule)

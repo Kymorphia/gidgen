@@ -20,7 +20,7 @@ class SignalWriter
     assert(owningClass && owningClass != signal.repo.globalStruct,
       "Signal '" ~ signal.fullName.to!string ~ "' does not have a valid class");
 
-    signal.repo.defs.resolveSymbol("GObject.DClosure");
+    signal.repo.resolveSymbol("GObject.DClosure");
 
     process();
   }
@@ -211,7 +211,7 @@ class SignalWriter
             ~ (param.kind != Wrap ? (", " ~ param.fullOwnerFlag ~ ".Take") : "") ~ ");\n";
           break;
         case Object, Interface:
-          auto objectGSym = param.repo.defs.resolveSymbol("GObject.ObjectG");
+          auto objectGSym = param.repo.resolveSymbol("GObject.ObjectG");
           inpProcess ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n_" ~ param.dName ~ " ~= " ~ objectGSym ~ ".getDObject!"
             ~ elemType.dType ~ "(" ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);\n";
           break;

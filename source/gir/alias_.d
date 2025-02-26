@@ -30,7 +30,7 @@ final class Alias : TypeNode
     super.fromXml(node);
 
     origName = node.get("name");
-    _name = repo.defs.subTypeStr(origName, repo.defs.dTypeSubs, repo.dTypeSubs);
+    _name = repo.subTypeStr(origName);
 
     if (_name == origName)
       _name = _name.normalizeDTypeName();
