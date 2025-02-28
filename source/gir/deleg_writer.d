@@ -406,7 +406,7 @@ class DelegWriter
         templateParams = param.elemTypes[0].fullDType  ~ ", " ~ "GidOwnership." ~ param.ownership.to!dstring;
         break;
       case HashTable:
-        templateParams = param.elemTypes[0].fullDType ~ ", " ~ param.elemTypes[1].fullDType ~ ", "
+        templateParams = param.elemTypes[0].dType ~ ", " ~ param.elemTypes[1].dType ~ ", "
           ~ "GidOwnership." ~ param.ownership.to!dstring;
         break;
       default:
