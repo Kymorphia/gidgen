@@ -854,7 +854,7 @@ final class Repo : Base
   {
     auto writer = new CodeWriter(path);
 
-    writer ~= ["module " ~ namespace ~ ".global;", ""];
+    writer ~= ["module " ~ namespace.toLower ~ ".global; // DEJAN C", ""];
 
     // Create the function writers first to construct the imports
     defs.beginImports(globalStruct);
