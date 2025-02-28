@@ -749,7 +749,7 @@ class FuncWriter
         templateParams = param.elemTypes[0].dType  ~ ", " ~ "GidOwnership." ~ param.ownership.to!dstring;
         break;
       case HashTable:
-        templateParams = "!(" ~ param.elemTypes[0].dType ~ ", " ~ param.elemTypes[1].dType ~ ", "
+        templateParams = param.elemTypes[0].dType ~ ", " ~ param.elemTypes[1].dType ~ ", "
           ~ "GidOwnership." ~ param.ownership.to!dstring;
         break;
       case Array, None:
