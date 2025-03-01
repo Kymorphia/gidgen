@@ -10,6 +10,7 @@ import gir.property;
 import gir.repo;
 import gir.signal_writer;
 import gir.type_node;
+import import_manager;
 import utils;
 
 /// Structure class which is used for class, interface, and records in Gir files
@@ -30,6 +31,15 @@ final class Structure : TypeNode
   override @property dstring name()
   {
     return dType;
+  }
+
+  /// D type name
+  override @property dstring dName()
+  {
+    if (kind != TypeKind.Namespace)
+      return moduleName ~ "." ~ _dType;
+    else
+      return moduleName;
   }
 
   /// Get full module name of class
@@ -232,7 +242,7 @@ final class Structure : TypeNode
 
     if (!parentType.empty)
     {
-      parentStruct = cast(Structure)repo.defs.findTypeObject(parentType, repo);
+      parentStruct = cast(Structure)repo.findTypeObject(parentType);
       updateUnresolvedFlags(UnresolvedFlags.ParentStruct, parentStruct is null);
     }
 
@@ -242,7 +252,7 @@ final class Structure : TypeNode
 
     foreach (ifaceName; implements)
     {
-      if (auto ifaceStruct = cast(Structure)repo.defs.findTypeObject(ifaceName, repo))
+      if (auto ifaceStruct = cast(Structure)repo.findTypeObject(ifaceName))
         implementStructs ~= ifaceStruct;
       else
         updateUnresolvedFlags(UnresolvedFlags.Implements, true);
@@ -260,7 +270,7 @@ final class Structure : TypeNode
       throw new Exception("Failed to resolve parent type '" ~ parentType.to!string ~ "'");
  
     foreach (ifaceName; implements)
-      if (!cast(Structure)repo.defs.findTypeObject(ifaceName, repo))
+      if (!cast(Structure)repo.findTypeObject(ifaceName))
       {
         warnWithLoc(__FILE__, __LINE__, xmlLocation, "Unable to resolve structure " ~ fullName.to!string ~ " interface " ~ ifaceName.to!string);
         TypeNode.dumpSelectorOnWarning(this);
@@ -330,8 +340,8 @@ final class Structure : TypeNode
     auto writer = new CodeWriter(buildPath(path, moduleName.to!string ~ (isIfaceTemplate ? "_mixin" : "") ~ ".d")); // Append T to type name for interface mixin template module
     writer ~= ["module " ~ fullModuleName ~ (isIfaceTemplate ? "_mixin;"d : ";"d), ""];
 
-    repo.defs.beginImports(this);
-    scope(exit) repo.defs.endImports;
+    beginImports(this);
+    scope(exit) endImports;
 
     dstring[] propMethods;
     FuncWriter[] funcWriters;
@@ -358,15 +368,15 @@ final class Structure : TypeNode
     }
 
     if (parentStruct)
-      parentStruct.dType; // Add parent to imports (accessing the parent dType adds it to the active import manager)
+      importManager.resolveDType(parentStruct); // Add parent to imports (accessing the parent dType adds it to the active import manager)
 
     foreach (st; implementStructs) // Add implemented interfaces to imports
-      repo.defs.importManager.resolveDType(st);
+      importManager.resolveDType(st);
 
     if (!errorQuarks.empty)
     {
-      repo.defs.importManager.add("glib.types");
-      repo.defs.importManager.add("glib.error");
+      importManager.add("glib.types");
+      importManager.add("glib.error");
     }
 
     if (!(defCode.inhibitFlags & DefInhibitFlags.Imports))
@@ -374,7 +384,7 @@ final class Structure : TypeNode
       if (kind == TypeKind.Interface)
         writer ~= "public import " ~ fullModuleName ~ "_iface_proxy;";
 
-      if (repo.defs.importManager.write(writer, isIfaceTemplate ? "public " : "")) // Interface templates use public imports so they are conveyed to the object they are mixed into
+      if (importManager.write(writer, isIfaceTemplate ? "public " : "")) // Interface templates use public imports so they are conveyed to the object they are mixed into
         writer ~= "";
     }
 
@@ -589,7 +599,7 @@ final class Structure : TypeNode
             lines ~= "return new " ~ f.dType ~ "(cast(" ~ f.cType.stripConst ~ ")" ~ cPtr ~ "." ~ f.dName ~ ");";
           break;
         case Object:
-          auto objectGSym = repo.defs.resolveSymbol("GObject.ObjectG");
+          auto objectGSym = repo.resolveSymbol("GObject.ObjectG");
           lines ~= "return " ~ objectGSym ~ ".getDObject!" ~ f.dType ~ "(" ~ cPtr ~ "." ~ f.dName ~ ", No.Take);";
           break;
         case Unknown, Interface, Container, Namespace:

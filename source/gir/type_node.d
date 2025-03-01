@@ -44,8 +44,8 @@ class TypeNode : Base
   /// Get the D type string. Subject to subtype type substitutions and aliases if defs.openModule() has been called and there is a conflict.
   @property dstring dType()
   {
-    if (repo.defs.importManager)
-      return repo.defs.importManager.resolveDType(this);
+    if (importManager)
+      return importManager.resolveDType(this);
 
     return _dType;
   }
@@ -54,6 +54,12 @@ class TypeNode : Base
   @property void dType(dstring val)
   {
     _dType = val;
+  }
+
+  /// D type name
+  override @property dstring dName()
+  {
+    return _dType;
   }
 
   /**
@@ -247,7 +253,7 @@ class TypeNode : Base
       auto t = type.split('.');
       if (t.length > 1)
       {
-        outRepo = repo.defs.repoHash.get(t[0], null);
+        outRepo = repo.includeRepoHash.get(t[0], null);
         if (outRepo)
           return t[1];
 
@@ -266,12 +272,12 @@ class TypeNode : Base
       origDType = elemTypes[0].origDType;
 
     origDType = parseRepoType(origDType, typeRepo);
-    _dType = repo.defs.subTypeStr(origDType, repo.defs.dTypeSubs, typeRepo.dTypeSubs);
+    _dType = typeRepo.subTypeStr(origDType);
 
     if (_dType.canFind('.')) // If substituted type contains a repo name, resolve it
       _dType = parseRepoType(_dType, typeRepo);
 
-    cType = repo.defs.subTypeStr(origCType, repo.defs.cTypeSubs, typeRepo.cTypeSubs);
+    cType = typeRepo.subTypeStr(origCType, Yes.CType);
 
     foreach (typ; elemTypes) // Fixup container element types
       typ.fixup;
@@ -332,8 +338,7 @@ class TypeNode : Base
 
     if (elemTypes[0].origCType)
     {
-      elemTypes[0].cType = repo.defs.subTypeStr(elemTypes[0].origCType, repo.defs.cTypeSubs,
-        elemTypes[0].typeRepo.cTypeSubs);
+      elemTypes[0].cType = elemTypes[0].typeRepo.subTypeStr(elemTypes[0].origCType, Yes.CType);
 
       info("Using member C type '" ~ elemTypes[0].cType.to!string ~ "' for D type '"
         ~ elemTypes[0]._dType.to!string ~ "' for an array with C type '" ~ cType.to!string ~ "' in "
@@ -352,7 +357,7 @@ class TypeNode : Base
         typeObject = typeRepo.typeObjectHash.get(_dType, null);
 
       if (kind == TypeKind.Unknown)
-        kind = repo.defs.typeKind(_dType, typeRepo);
+        kind = typeRepo.typeKind(_dType);
 
       if (cType.empty)
       {
@@ -517,7 +522,7 @@ class TypeNode : Base
       writeln("//!set " ~ node.xmlSelector);
   }
 
-  Repo typeRepo; /// Repo containing the dType (can be this.repo)
+  Repo typeRepo; /// Repo containing the dType (can be this.repo, will always be valid after fixup() is called)
   dstring _dType; /// D type (container type for containers, Gir "name"), is accessed directly by ImportManager
   dstring cType; /// C type (container type for containers)
   dstring origDType; /// Original D type (before substitution)

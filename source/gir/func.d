@@ -40,25 +40,17 @@ final class Func : TypeNode
    * Params:
    *   firstUpper = true to make first character uppercase also (defaults to false)
    */
-  dstring dName(bool firstUpper = false)
+  override dstring dName()
   {
-    return repo.defs.symbolName(_name.camelCase(firstUpper));
+    return repo.defs.symbolName(_name.camelCase);
   }
 
   /**
-   * Get the function full name formatted in D camelCase, with the namespace separated by a period
-   * Params:
-   *   firstUpper = true to make first character uppercase also (defaults to false)
+   * Get the function name formatted in TitleCase
    */
-  dstring fullDName(bool firstUpper = false)
+  dstring titleName()
   {
-    dstring full = dName;
-
-    for (auto b = this.parent; b; b = b.parent)
-      if (auto s = b.name)
-        full = full.length > 0 ? s ~ "." ~ full : s;
-
-    return full;
+    return repo.defs.symbolName(_name.camelCase(true));
   }
 
   /// Returns true if function has an instance parameter
@@ -122,7 +114,7 @@ final class Func : TypeNode
       return;
 
     writer ~= "/**";
-    writer ~= "* " ~ gdocToDDoc(docContent, "* ");
+    writer ~= "* " ~ gdocToDDocFunc(docContent, "* ");
 
     bool preambleShown;
     foreach (pa; params)
@@ -136,14 +128,14 @@ final class Func : TypeNode
         writer ~= funcType == FuncType.Signal ? "* Params"d : "* Params:"d; // FIXME - Work around lack of support for Ddoc delegate alias parameter support
       }
 
-      writer ~= "*   " ~ pa.dName ~ " = " ~ gdocToDDoc(pa.docContent, "*     ");
+      writer ~= "*   " ~ pa.dName ~ " = " ~ gdocToDDocFunc(pa.docContent, "*     ");
     }
 
     if (funcType == FuncType.Signal) // Add documentation for the signal callback instance parameter
       writer ~= "*   " ~ signalDelegInstanceParam ~ " = the instance the signal is connected to";
 
     if (returnVal && returnVal.origDType != "none" && returnVal.lengthArrayParams.length == 0)
-      writer ~= "* Returns: " ~ gdocToDDoc(returnVal.docContent, "*   ");
+      writer ~= "* Returns: " ~ gdocToDDocFunc(returnVal.docContent, "*   ");
 
     if (!docVersion.empty || !docDeprecated.empty)
     {
@@ -153,7 +145,7 @@ final class Func : TypeNode
         writer ~= "* Version: " ~ docVersion;
 
       if (!docDeprecated.empty)
-        writer ~= "* Deprecated: " ~ gdocToDDoc(docDeprecated, "*   ");
+        writer ~= "* Deprecated: " ~ gdocToDDocFunc(docDeprecated, "*   ");
     }
 
     writer ~= "*/";
@@ -170,11 +162,11 @@ final class Func : TypeNode
   *   prefix = The newline wrap prefix
   * Returns: The DDoc formatted string
   */
-  dstring gdocToDDoc(dstring gdoc, dstring prefix = "*   ")
+  dstring gdocToDDocFunc(dstring gdoc, dstring prefix = "*   ")
   {
     auto paramRe = ctRegex!(r"@(\w)"d);
 
-    gdoc = repo.defs.gdocToDDoc(gdoc, prefix, repo);
+    gdoc = repo.gdocToDDoc(gdoc, prefix);
 
     dstring paramReplaceFunc(Captures!(dstring) m)
     {
@@ -192,7 +184,7 @@ final class Func : TypeNode
   {
     if (!cast(Field)parent)
     {
-      _name = repo.defs.subTypeStr(origName, repo.defs.dTypeSubs, repo.dTypeSubs);
+      _name = repo.subTypeStr(origName);
 
       if (funcType == FuncType.Callback && _name == origName)
         _name = _name.normalizeDTypeName();

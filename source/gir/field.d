@@ -32,7 +32,7 @@ final class Field : TypeNode
   }
 
   /// Get the field name formatted in D camelCase
-  dstring dName()
+  override dstring dName()
   {
     return repo.defs.symbolName(_name.camelCase);
   }

@@ -14,5 +14,5 @@ public import std.regex : Captures, ctRegex, matchAll, matchFirst, replaceAll;
 public import std.stdio : stderr, writeln;
 public import std.string : capitalize, chomp, splitLines, toLower, toUpper, strip, stripLeft, stripRight;
 public import std.traits : EnumMembers;
-public import std.typecons : BitFlags, tuple, Yes;
+public import std.typecons : BitFlags, Flag, No, tuple, Yes;
 public import std.uni : isWhite;

@@ -27,7 +27,7 @@ final class Param : TypeNode
   }
 
   /// Get the parameter name formatted in D camelCase
-  dstring dName()
+  override dstring dName()
   {
     return repo.defs.symbolName(name.camelCase);
   }

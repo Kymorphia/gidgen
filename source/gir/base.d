@@ -31,7 +31,13 @@ abstract class Base
   {
   }
 
-  /// Full name of object with ancestors separated by periods
+  /// D type name
+  @property dstring dName()
+  {
+    return "";
+  }
+
+  /// Full name of object with ancestors separated by periods (GIR namespace)
   dstring fullName()
   {
     dstring full;
@@ -39,6 +45,18 @@ abstract class Base
     for (auto b = this; b; b = b.parent)
       if (auto s = b.name)
         full = full.length > 0 ? s ~ "." ~ full : s;
+
+    return full;
+  }
+
+  /// Full type name of object with ancestors separated by periods (D package directory, module, class, and D type)
+  dstring fullDName()
+  {
+    dstring full;
+
+    for (auto b = this; b; b = b.parent)
+      if (auto s = b.dName)
+        full = full.length > 0 ? (s ~ "." ~ full) : s;
 
     return full;
   }
@@ -121,7 +139,7 @@ abstract class Base
       return;
 
     writer ~= "/**";
-    writer ~= "* " ~ repo.defs.gdocToDDoc(docContent, "* ", repo);
+    writer ~= "* " ~ repo.gdocToDDoc(docContent, "* ");
 
     if (!docVersion.empty || !docDeprecated.empty)
     {
@@ -131,7 +149,7 @@ abstract class Base
         writer ~= "* Version: " ~ docVersion;
 
       if (!docDeprecated.empty)
-        writer ~= "* Deprecated: " ~ repo.defs.gdocToDDoc(docDeprecated, "*   ", repo);
+        writer ~= "* Deprecated: " ~ repo.gdocToDDoc(docDeprecated, "*   ");
     }
 
     writer ~= "*/";

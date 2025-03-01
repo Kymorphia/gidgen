@@ -20,7 +20,7 @@ class SignalWriter
     assert(owningClass && owningClass != signal.repo.globalStruct,
       "Signal '" ~ signal.fullName.to!string ~ "' does not have a valid class");
 
-    signal.repo.defs.resolveSymbol("GObject.DClosure");
+    signal.repo.resolveSymbol("GObject.DClosure");
 
     process();
   }
@@ -28,8 +28,8 @@ class SignalWriter
   // Process the signal
   private void process()
   {
-    auto baseName = signal.dName(true) ~ "Callback";
-    connectDecl = "ulong connect" ~ signal.dName(true) ~ "(T)(" ~ (signal.detailed ? "string detail = null, "d : "")
+    auto baseName = signal.titleName ~ "Callback";
+    connectDecl = "ulong connect" ~ signal.titleName ~ "(T)(" ~ (signal.detailed ? "string detail = null, "d : "")
       ~ "T callback, " ~  "Flag!\"After\" after = No.After)\nif (is(T : " ~ baseName ~ "Dlg) || is(T : " ~ baseName
       ~ "Func))";
 
@@ -211,7 +211,7 @@ class SignalWriter
             ~ (param.kind != Wrap ? (", " ~ param.fullOwnerFlag ~ ".Take") : "") ~ ");\n";
           break;
         case Object, Interface:
-          auto objectGSym = param.repo.defs.resolveSymbol("GObject.ObjectG");
+          auto objectGSym = param.repo.resolveSymbol("GObject.ObjectG");
           inpProcess ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n_" ~ param.dName ~ " ~= " ~ objectGSym ~ ".getDObject!"
             ~ elemType.dType ~ "(" ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);\n";
           break;
@@ -232,13 +232,13 @@ class SignalWriter
   {
     signal.writeDocs(writer);
 
-    auto baseName = signal.dName(true) ~ "Callback";
+    auto baseName = signal.titleName ~ "Callback";
 
     // Define a delegate and function alias
     writer ~= ["alias " ~ baseName ~ "Dlg = " ~ aliasDecl, "alias " ~ baseName ~ "Func = "
       ~ aliasDecl.replaceFirst("delegate", "function"), ""];
 
-    writer ~= ["/**", "* Connect to " ~ signal.dName(true) ~ " signal.", "* Params:"];
+    writer ~= ["/**", "* Connect to " ~ signal.titleName ~ " signal.", "* Params:"];
 
     if (signal.detailed)
       writer ~= "*   detail = Signal detail or null (default)";

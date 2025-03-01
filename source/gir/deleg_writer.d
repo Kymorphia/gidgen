@@ -119,7 +119,7 @@ class DelegWriter
           ~ retVal.fullOwnerFlag ~ ".Dup);\n";
         break;
       case Interface:
-        auto objectGSym = retVal.repo.defs.resolveSymbol("GObject.ObjectG");
+        auto objectGSym = retVal.repo.resolveSymbol("GObject.ObjectG");
         preCall ~= retVal.dType ~ " _dretval;\n";
         call ~= "_dretval = ";
         postCall ~= retVal.cType ~ " _retval = cast(" ~ retVal.cTypeRemPtr ~ "*)(cast(" ~ objectGSym ~ ")_dretval).cPtr("
@@ -281,7 +281,7 @@ class DelegWriter
         {
           if (param.kind == TypeKind.Object || param.kind == TypeKind.Interface)
           {
-            auto objectGSym = param.repo.defs.resolveSymbol("GObject.ObjectG");
+            auto objectGSym = param.repo.resolveSymbol("GObject.ObjectG");
             addCallParam(objectGSym ~ ".getDObject!" ~ param.dType ~ "(cast(void*)" ~ param.dName ~ ", "
               ~ param.fullOwnerFlag ~ ".Take)");
           }
@@ -355,7 +355,7 @@ class DelegWriter
             ~ (param.kind != Wrap ? (", " ~ param.fullOwnerFlag ~ ".Take") : "") ~ ");\n";
           break;
         case Object, Interface:
-          auto objectGSym = param.repo.defs.resolveSymbol("GObject.ObjectG");
+          auto objectGSym = param.repo.resolveSymbol("GObject.ObjectG");
           preCall ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n_" ~ param.dName ~ "[i] = "
             ~ objectGSym ~ ".getDObject(" ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);\n";
           break;

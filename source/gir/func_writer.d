@@ -38,7 +38,7 @@ class FuncWriter
     if (func.throws)
     { // postCall for exceptions is order sensitive and must be handled before output and return processing
       postCall ~= "if (_err)\nthrow new " ~ func.errorDomain ~ "(_err);\n";
-      func.repo.defs.resolveSymbol("GLib.ErrorG");
+      func.repo.resolveSymbol("GLib.ErrorG");
     }
 
     // Write out any C callback embedded functions
@@ -192,7 +192,7 @@ class FuncWriter
         {
           if (retVal.kind == TypeKind.Object || retVal.kind == TypeKind.Interface)
           {
-            auto objectGSym = retVal.repo.defs.resolveSymbol("GObject.ObjectG");
+            auto objectGSym = retVal.repo.resolveSymbol("GObject.ObjectG");
             postCall ~= "auto _retval = " ~ objectGSym ~ ".getDObject!"
               ~ retVal.dType ~ "(cast(" ~ retVal.cType.stripConst ~ ")_cretval"
               ~ (retVal.kind != TypeKind.Wrap ? (", " ~ retVal.fullOwnerFlag ~ ".Take") : "") ~ ");\n";
@@ -267,7 +267,7 @@ class FuncWriter
             ~ "_cretval[i], " ~ retVal.fullOwnerFlag ~ ".Take);\n";
           break;
         case Object, Interface:
-          auto objectGSym = retVal.repo.defs.resolveSymbol("GObject.ObjectG");
+          auto objectGSym = retVal.repo.resolveSymbol("GObject.ObjectG");
           postCall ~= "_retval[i] = " ~ objectGSym ~ ".getDObject!" ~ elemType.dType ~ "(_cretval[i], "
             ~ retVal.fullOwnerFlag ~ ".Take);\n";
           break;
@@ -460,7 +460,7 @@ class FuncWriter
         }
         break;
       case Interface:
-        auto objectGSym = param.repo.defs.resolveSymbol("GObject.ObjectG");
+        auto objectGSym = param.repo.resolveSymbol("GObject.ObjectG");
 
         if (param.direction == ParamDirection.In || param.direction == ParamDirection.InOut)
         {
@@ -557,7 +557,7 @@ class FuncWriter
           ~ param.dName ~ ".ptr" ~ ";\n\n";
         break;
       case Interface:
-        auto objectGSym = func.repo.defs.resolveSymbol("GObject.ObjectG");
+        auto objectGSym = func.repo.resolveSymbol("GObject.ObjectG");
         preCall ~= elemType.cType ~ "[] _tmp" ~ param.dName ~ ";\n";
 
         preCall ~= "foreach (obj; " ~ param.dName ~ ")\n" ~ "_tmp" ~ param.dName
@@ -675,7 +675,7 @@ class FuncWriter
           addCallParam("&_" ~ param.dName);
           postCall ~= param.dName ~ ".length = " ~ lengthStr ~ ";\n";
 
-          auto objectGSym = func.repo.defs.resolveSymbol("GObject.ObjectG");
+          auto objectGSym = func.repo.resolveSymbol("GObject.ObjectG");
           postCall ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n" ~ param.dName ~ "[i] = " ~ objectGSym ~ ".getDObject!"
             ~ elemType.dType ~ "(_" ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);\n";
 
@@ -689,7 +689,7 @@ class FuncWriter
           addCallParam("_" ~ param.dName ~ ".ptr");
           postCall ~= param.dName ~ ".length = " ~ lengthStr ~ ";\n";
 
-          auto objectGSym = func.repo.defs.resolveSymbol("GObject.ObjectG");
+          auto objectGSym = func.repo.resolveSymbol("GObject.ObjectG");
           postCall ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n" ~ param.dName ~ "[i] = " ~ objectGSym ~ ".getDObject!"
             ~ elemType.dType ~ "(cast(void*)&_" ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);\n";
         }
