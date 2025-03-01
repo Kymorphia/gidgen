@@ -56,6 +56,12 @@ class TypeNode : Base
     _dType = val;
   }
 
+  /// D type name
+  override @property dstring dName()
+  {
+    return _dType;
+  }
+
   /**
    * Get the fundamental root type object. De-references type aliases until the root type is found.
    * Returns: The fundamental root de-aliased type

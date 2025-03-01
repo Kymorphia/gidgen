@@ -40,25 +40,17 @@ final class Func : TypeNode
    * Params:
    *   firstUpper = true to make first character uppercase also (defaults to false)
    */
-  dstring dName(bool firstUpper = false)
+  override dstring dName()
   {
-    return repo.defs.symbolName(_name.camelCase(firstUpper));
+    return repo.defs.symbolName(_name.camelCase);
   }
 
   /**
-   * Get the function full name formatted in D camelCase, with the namespace separated by a period
-   * Params:
-   *   firstUpper = true to make first character uppercase also (defaults to false)
+   * Get the function name formatted in TitleCase
    */
-  dstring fullDName(bool firstUpper = false)
+  dstring titleName()
   {
-    dstring full = dName;
-
-    for (auto b = this.parent; b; b = b.parent)
-      if (auto s = b.name)
-        full = full.length > 0 ? s ~ "." ~ full : s;
-
-    return full;
+    return repo.defs.symbolName(_name.camelCase(true));
   }
 
   /// Returns true if function has an instance parameter

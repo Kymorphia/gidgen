@@ -54,6 +54,11 @@ final class Repo : Base
     return namespace;
   }
 
+  override @property dstring dName()
+  {
+    return packageNamespace;
+  }
+
   /// Convert an XML object tree to a Gir object tree
   void fromXmlTree(XmlTree tree)
   {
@@ -324,15 +329,17 @@ final class Repo : Base
         typeObjectHash[st.origDType] = st;
     }
 
-    foreach (stKey, stValue; structDefCode) // Loop on structure definitions and assign to structs
+    foreach (modName, defCode; modDefCode) // Loop on structure definitions and assign to structs
     {
-      auto st = cast(Structure)typeObjectHash.get(stKey, null);
+      auto className = !defCode.className.empty ? defCode.className : modName;
+      auto st = cast(Structure)typeObjectHash.get(className, null);
 
       if (!st) // Create new class structures if non-existant, fixup base type, and hash
       {
         st = new Structure(this);
-        st.dType = st.origDType = stKey;
+        st.dType = st.origDType = className;
         st.structType = StructType.Class;
+        st.moduleName = modName;
         structs ~= st;
         st.fixup;
         st.resolve;
@@ -340,22 +347,22 @@ final class Repo : Base
         defs.cSymbolHash[st.origCType] = st;
       }
 
-      st.defCode = stValue;
+      st.defCode = defCode;
     }
 
     structs.sort!((x, y) => x.name < y.name); // Sort structures by name
 
-    foreach (sub; kindSubs.byKeyValue) // Substitute type kinds
+    foreach (key, value; kindSubs) // Substitute type kinds
     {
-      if (auto obj = typeObjectHash.get(sub.key, null))
+      if (auto obj = typeObjectHash.get(key, null))
       {
         if (auto node = cast(TypeNode)obj)
-          node.kind = sub.value;
+          node.kind = value;
         else
-          warning("Type '" ~ name ~ "." ~ sub.key ~ "' kind cannot be substituted");
+          warning("Type '" ~ name ~ "." ~ key ~ "' kind cannot be substituted");
       }
       else
-        warning("Type kind substitution '" ~ name ~ "." ~ sub.key ~ "' not found");
+        warning("Type kind substitution '" ~ name ~ "." ~ key ~ "' not found");
     }
   }
 
@@ -1053,12 +1060,8 @@ final class Repo : Base
 
     dstring refReplace(Captures!(dstring) m)
     {
-      auto tn = findTypeObjectByGDocRef(m[1]);
-
-      if (auto fn = cast(Func)tn)
-        return "[" ~ fn.fullDName ~ "]";
-      else if (tn)
-        return "[" ~ tn.fullName ~ "]";
+      if (auto tn = findTypeObjectByGDocRef(m[1]))
+        return "[" ~ tn.fullDName ~ "]";
       else
         return m[1];
     }
@@ -1068,14 +1071,9 @@ final class Repo : Base
     dstring funcReplace(Captures!(dstring) m)
     {
       if (auto tn = defs.cSymbolHash.get(m[1], null))
-      {
-        if (auto fn = cast(Func)tn)
-          return "[" ~ fn.fullDName ~ "]";
-        else
-          return "[" ~ tn.fullName ~ "]";
-      }
-
-      return m[0];
+        return "[" ~ tn.fullDName ~ "]";
+      else
+        return m[0];
     }
 
     s = replaceAll!(funcReplace)(s, funcRe); // Replace func() references
@@ -1225,7 +1223,7 @@ final class Repo : Base
   dstring[dstring] cTypeSubs; /// C type substitutions defined in the definitions file
   dstring[dstring] dTypeSubs; /// D type substitutions defined in the definitions file
   TypeKind[dstring] kindSubs; /// Type kind substitutions defined in the definitions file
-  DefCode[dstring] structDefCode; /// Code defined in definition file for structures
+  DefCode[dstring] modDefCode; /// Code defined in definition file for classes (keyed by module name)
   NamespaceVersion mergeNsVer; /// Package namespace/version to merge this repo into
   Repo mergeRepo; /// Repo object to merge this repo into
   Repo[] mergedRepos; /// Repos which have been merged into this one

@@ -28,8 +28,8 @@ class SignalWriter
   // Process the signal
   private void process()
   {
-    auto baseName = signal.dName(true) ~ "Callback";
-    connectDecl = "ulong connect" ~ signal.dName(true) ~ "(T)(" ~ (signal.detailed ? "string detail = null, "d : "")
+    auto baseName = signal.titleName ~ "Callback";
+    connectDecl = "ulong connect" ~ signal.titleName ~ "(T)(" ~ (signal.detailed ? "string detail = null, "d : "")
       ~ "T callback, " ~  "Flag!\"After\" after = No.After)\nif (is(T : " ~ baseName ~ "Dlg) || is(T : " ~ baseName
       ~ "Func))";
 
@@ -232,13 +232,13 @@ class SignalWriter
   {
     signal.writeDocs(writer);
 
-    auto baseName = signal.dName(true) ~ "Callback";
+    auto baseName = signal.titleName ~ "Callback";
 
     // Define a delegate and function alias
     writer ~= ["alias " ~ baseName ~ "Dlg = " ~ aliasDecl, "alias " ~ baseName ~ "Func = "
       ~ aliasDecl.replaceFirst("delegate", "function"), ""];
 
-    writer ~= ["/**", "* Connect to " ~ signal.dName(true) ~ " signal.", "* Params:"];
+    writer ~= ["/**", "* Connect to " ~ signal.titleName ~ " signal.", "* Params:"];
 
     if (signal.detailed)
       writer ~= "*   detail = Signal detail or null (default)";

@@ -33,6 +33,15 @@ final class Structure : TypeNode
     return dType;
   }
 
+  /// D type name
+  override @property dstring dName()
+  {
+    if (kind != TypeKind.Namespace)
+      return moduleName ~ "." ~ _dType;
+    else
+      return moduleName;
+  }
+
   /// Get full module name of class
   dstring fullModuleName()
   {

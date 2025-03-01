@@ -103,7 +103,7 @@ class Defs
     uint lineCount; // Current line count
     BlockState block; // Multi-line block processing state
     Repo curRepo; // Current repo or null
-    dstring curStructName; // Current structure name or null
+    dstring curModName; // Current module name or null
     ClassState classState; // Current definition code class state
 
     string posInfo()
@@ -114,7 +114,7 @@ class Defs
     // Process raw code lines in definition files (not definition commands)
     void processDefCode(dstring line, dstring lineRaw)
     {
-      auto defCode = curRepo.structDefCode[curStructName];
+      auto defCode = curRepo.modDefCode[curModName];
 
       if (classState == ClassState.Pre) // Not inside class?
       { // Is this a class declaration?
@@ -143,26 +143,20 @@ class Defs
     }
 
     auto classSplitName = filename.baseName.stripExtension.split('-');
-    auto repoName = classSplitName[0];
+    auto pkgName = classSplitName[0];
 
-    if (classSplitName.length > 1) // Is this a repo class file? Will have a dash separator between the namespace and class names.
+    if (classSplitName.length > 1) // Is this a module definition file? Will have a dash separator between the package name and module name.
     {
-      auto findRepo = repos.find!(x => x.namespace.to!string == repoName);
+      auto findRepo = repos.find!(x => x.dubPackageName.to!string == pkgName);
+      if (findRepo.empty) // No match to package name?
+        throw new Exception("Module definition file '" ~ filename ~ "' has no matching package '"
+          ~ classSplitName[0] ~ "'");
 
-      if (findRepo.length > 0) // Is there a repo with the matching namespace from the filename?
-      { // Set current repo and struct name from filename
-        curRepo = findRepo[0];
-        curStructName = classSplitName[1].to!dstring;
+      curRepo = findRepo.front; // Assign current package repository
+      curModName = classSplitName[1].to!dstring;
 
-        if (curStructName !in curRepo.structDefCode) // If structure definition code wasn't already created, create it
-          curRepo.structDefCode[curStructName] = new DefCode();
-      }
-      else
-      {
-        warning("Ignoring class definition file '", filename, "' with no matching repository '",
-            classSplitName[0], "'");
-        return;
-      }
+      if (curModName !in curRepo.modDefCode) // If structure definition code wasn't already created, create it
+        curRepo.modDefCode[curModName] = new DefCode;
     }
 
     foreach (line; fileData.splitLines) // Loop on definition file lines
@@ -180,7 +174,7 @@ class Defs
 
       if (!cmdLine)
       { // All lines which aren't definition commands get processed as potential code
-        if (!curStructName.empty)
+        if (!curModName.empty)
           processDefCode(lineStrip, line);
 
         continue;
@@ -194,8 +188,8 @@ class Defs
           continue;
         }
 
-        warning("'", cmdTokens[0], "' command requires ", cmdTokens.length, " arguments ", posInfo);
-        block = BlockState.None; // Just ignore previous command and continue to process the line
+        throw new Exception("'" ~ cmdTokens[0].to!string ~ "' command requires " ~ cmdTokens.length.to!string
+          ~ " arguments " ~ posInfo);
       }
 
       if (block == BlockState.None)
@@ -218,11 +212,9 @@ class Defs
 
       auto cmd = cmdTokens[0];
       auto findCmdInfo = defCommandInfo.find!(x => x.name == cmd);
+
       if (findCmdInfo.empty)
-      {
-        warning("Unknown command '", cmd, "'");
-        continue;
-      }
+        throw new Exception("Unknown command '" ~ cmd.to!string ~ "' " ~ posInfo);
 
       auto cmdInfo = findCmdInfo[0];
 
@@ -236,30 +228,18 @@ class Defs
       if (cmdInfo.flags & DefCmdFlags.VarArgs)
       {
         if (cmdTokens.length < cmdInfo.argCount + 1)
-        {
-          warning("'", cmd, "' command requires at least ", cmdInfo.argCount, " ", cmdInfo.argCount == 1
-            ? "argument " : "arguments ", posInfo);
-          break;
-        }
+          throw new Exception("'" ~ cmd.to!string ~ "' command requires at least " ~ cmdInfo.argCount.to!string
+            ~ (cmdInfo.argCount == 1 ? " argument " : " arguments ") ~ posInfo);
       }
       else if (cmdTokens.length != cmdInfo.argCount + 1)
-      {
-        warning("'", cmd, "' command requires ", cmdInfo.argCount, " ", cmdInfo.argCount == 1
-            ? "argument " : "arguments ", posInfo);
-        break;
-      }
+        throw new Exception("'" ~ cmd.to!string ~ "' command requires " ~ cmdInfo.argCount.to!string
+          ~ (cmdInfo.argCount == 1 ? " argument " : " arguments ") ~ posInfo);
 
       if (cmdInfo.flags & DefCmdFlags.ReqRepo && !curRepo)
-      {
-        warning("'", cmd, "' command requires 'repo' to be specified ", posInfo);
-        continue;
-      }
+        throw new Exception("'" ~ cmd.to!string ~ "' command requires 'repo' to be specified " ~ posInfo);
 
-      if (cmdInfo.flags & DefCmdFlags.ReqClass && !curStructName)
-      {
-        warning("'", cmd, "' command requires 'struct' to be specified ", posInfo);
-        continue;
-      }
+      if (cmdInfo.flags & DefCmdFlags.ReqClass && !curModName)
+        throw new Exception("'" ~ cmd.to!string ~ "' command requires module to be specified " ~ posInfo);
 
       switch (cmd)
       {
@@ -285,10 +265,7 @@ class Defs
             }
           }
           catch (XmlPatchError e)
-          {
-            warning("XML patch error: ", e.msg, " ", posInfo);
-            break;
-          }
+            throw new Exception("XML patch error: " ~ e.msg ~ " " ~ posInfo);
 
           if (curRepo)
             curRepo.patches ~= patch;
@@ -296,20 +273,34 @@ class Defs
             patches ~= patch;
           break;
         case "class":
-          curStructName = cmdTokens[1];
-          classState = ClassState.In; // FIXME - How to specify other sections of modules?
+          if (cmdTokens.length > 3)
+            throw new Exception("Too many arguments to 'class' command " ~ posInfo);
 
-          if (curStructName !in curRepo.structDefCode)
-            curRepo.structDefCode[curStructName] = new DefCode();
+          if (classSplitName.length == 1) // Only update current module name if this is not a module definition file
+            curModName = cmdTokens[1].toSnakeCase;
+
+          if (cmdTokens.length > 2)
+          {
+            try
+              classState = cmdTokens[2].capitalize.to!ClassState;
+            catch (ConvException e)
+              throw new Exception("Class command code location must be one of: "
+                ~ [EnumMembers!ClassState].map!(x => x.to!string).join(", ") ~ " " ~ posInfo);
+          }
           else
-            warning("Duplicate class command found for '", curStructName, "' ", posInfo);
+            classState = ClassState.In;
+
+          if (curModName !in curRepo.modDefCode)
+            curRepo.modDefCode[curModName] = new DefCode;
+
+          curRepo.modDefCode[curModName].className = cmdTokens[1];
           break;
         case "gir":
           curRepo = new Repo(this, cmdTokens[1].to!string);
           curRepo.defsFilename = filename;
-          curRepo.namespace = repoName.to!dstring;
+          curRepo.dubPackageName = pkgName.to!dstring; // From definition filename
           repos ~= curRepo;
-          curStructName = null;
+          curModName = null;
           break;
         case "info":
           if (curRepo)
@@ -319,13 +310,10 @@ class Defs
           break;
         case "inhibit":
           try
-            curRepo.structDefCode[curStructName].inhibitFlags = cmdTokens[1 .. $].map!(x => x.capitalize.to!DefInhibitFlags)
+            curRepo.modDefCode[curModName].inhibitFlags = cmdTokens[1 .. $].map!(x => x.capitalize.to!DefInhibitFlags)
               .fold!((a, b) => a | b);
           catch (ConvException e)
-          {
-            warning("Invalid inhibit flags '" ~ cmdTokens[1 .. $].join(" ") ~ "'");
-            break;
-          }
+            throw new Exception("Invalid inhibit flags '" ~ cmdTokens[1 .. $].join(" ").to!string ~ "'");
 
           break;
         case "kind":
@@ -334,11 +322,8 @@ class Defs
           try
             kind = cmdTokens[2].to!TypeKind;
           catch (Exception e)
-          {
-            warning("Unknown type kind '" ~ cmdTokens[2].to!string ~ "' should be one of: " ~
-              [EnumMembers!TypeKind].map!(x => x.to!string).join(", "), " ", posInfo);
-            break;
-          }
+            throw new Exception("Unknown type kind '" ~ cmdTokens[2].to!string ~ "' should be one of: " ~
+              [EnumMembers!TypeKind].map!(x => x.to!string).join(", ") ~ " " ~ posInfo);
 
           curRepo.kindSubs[cmdTokens[1]] = kind;
           break;
@@ -349,8 +334,9 @@ class Defs
           curRepo = new Repo(this, null);
           curRepo.defsFilename = filename;
           curRepo.namespace = cmdTokens[1];
+          curRepo.dubPackageName = pkgName.to!dstring; // From definition filename
           repos ~= curRepo;
-          curStructName = null;
+          curModName = null;
           break;
         case "reserved":
           reservedWords[cmdTokens[1]] = true;
@@ -369,7 +355,7 @@ class Defs
             if (cmdTokens[1] !in (*subMap))
               (*subMap)[cmdTokens[1]] = cmdTokens[2];
             else
-              warning(cmd, " '", cmdTokens[1], "' already exists ", posInfo);
+              throw new Exception(cmd.to!string ~ " '" ~ cmdTokens[1].to!string ~ "' already exists " ~ posInfo);
           }
           break;
         default:
@@ -568,6 +554,7 @@ class Defs
 class DefCode
 {
   DefInhibitFlags inhibitFlags; /// Module code generation inhibit flags
+  dstring className; /// The class name
   dstring[] preClass; /// Pre class declaration code, line separated
   dstring classDecl; /// Class declaration
   dstring[] inClass; /// Code inside of the class, line separated
@@ -628,7 +615,8 @@ immutable DefCmd[] defCommandInfo = [
   {
     "add", 2, DefCmdFlags.AllowBlock, "add <XmlSelect> <AttributeValue | Xml> - Add an XML attribute or node"
   },
-  {"class", 1, DefCmdFlags.ReqRepo, "class <Class> - Select the current structure/class"},
+  {"class", 1, DefCmdFlags.ReqRepo | DefCmdFlags.VarArgs, "class <Class> [Pre|In|Post] - Current class/module and"
+    ~ " location (defaults to In)"},
   {"del", 1, DefCmdFlags.None, "del <XmlSelect> - Delete an XML attribute or node"},
   {"gir", 1, DefCmdFlags.None, "gir <GirName> - GIR file to load"},
   {"info", 2, DefCmdFlags.None, "info <name> <value> - Set JSON dub info for repo or master package"

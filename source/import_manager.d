@@ -22,7 +22,7 @@ void beginImports(Structure klassModule)
 {
   assert(!importManager);
   importManager = new ImportManager(klassModule);
-  importManager.add("gid.gid");
+  importManager.add("gid.global");
   importManager.add("types");
   importManager.add(klassModule.repo.namespace ~ ".c.functions");
   importManager.add(klassModule.repo.namespace ~ ".c.types");
