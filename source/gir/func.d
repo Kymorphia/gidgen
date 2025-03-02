@@ -307,6 +307,21 @@ final class Func : TypeNode
         return;
       }
     }
+    else if (funcType == FuncType.Callback)
+    {
+      if (returnVal)
+      {
+        if (returnVal.containerType != ContainerType.None)
+        {
+          if (returnVal.ownership != Ownership.Full)
+          {
+            disableFunc(__FILE__, __LINE__, "callback container type '" ~ returnVal.containerType.to!string
+              ~ "' ownership '" ~ returnVal.ownership.to!string ~ "' is not supported");
+            return;
+          }
+        }
+      }
+    }
 
     if (returnVal)
     {
