@@ -813,7 +813,8 @@ final class Repo : Base
     foreach (i, en; enums.filter!(x => x.active == Active.Enabled).enumerate) // Write out enums
       writer ~= (i == 0 ? [""d, "// Enums"] : []) ~ ["alias " ~ en.dType ~ " = " ~ en.cType ~ ";"];
 
-    auto simpleStructs = structs.filter!(x => x.active == Active.Enabled && !x.inModule).enumerate;
+    // Filter out structures that aren't enabled, have their own module, or whose D types match the C type name (no prefix)
+    auto simpleStructs = structs.filter!(x => x.active == Active.Enabled && !x.inModule && x.name != x.cType).enumerate;
 
     foreach (i, st; simpleStructs) // Write out simple struct aliases (not classes)
     {
