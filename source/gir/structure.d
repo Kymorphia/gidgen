@@ -661,10 +661,9 @@ final class Structure : TypeNode
     void recurseStruct(Structure st)
     {
       st.writeDocs(writer);
+      auto typeName = st is this ? st.cType : (st.name ? (st.name.camelCase(true) ~ "Type") : null); // Handles anonymous or named embedded struct/unions
 
-      auto typeName = st == this ? st.cType : st.name.camelCase(true) ~ "Type";
-
-      writer ~= [(st.structType == StructType.Union ? "union "d : "struct "d) ~ typeName, "{"];
+      writer ~= [(st.structType == StructType.Union ? "union"d : "struct"d) ~ (typeName ? (" " ~ typeName) : ""), "{"];
 
       foreach (fi, f; st.fields)
       {
@@ -704,7 +703,7 @@ final class Structure : TypeNode
 
       writer ~= ["}", ""];
 
-      if (st != this)
+      if (st != this && typeName)
         writer ~= [typeName ~ " " ~ st.dType ~ ";"]; // dType is the field name
     }
 
