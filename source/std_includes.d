@@ -3,7 +3,7 @@ module std_includes;
 public import core.exception : RangeError;
 public import std.algorithm : among, canFind, count, countUntil, each, endsWith, equal, find, filter, fold,
   map, max, remove, sort, splitter, startsWith, uniq;
-public import std.array : array, assocArray, replace, replaceFirst, replicate, split;
+public import std.array : array, assocArray, byPair, replace, replaceFirst, replicate, split;
 public import std.conv : ConvException, to;
 public import std.exception : assertThrown;
 public import std.file : exists, dirEntries, isFile, mkdirRecurse, readText, SpanMode, write;

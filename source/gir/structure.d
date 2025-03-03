@@ -42,12 +42,6 @@ final class Structure : TypeNode
       return moduleName;
   }
 
-  /// Get full module name of class
-  dstring fullModuleName()
-  {
-    return repo.packageNamespace ~ "." ~ moduleName;
-  }
-
   override @property bool inModule()
   {
     with (TypeKind) return kind.among(Opaque, Wrap, Boxed, Reffed, Object, Interface, Namespace) != 0;
@@ -56,6 +50,11 @@ final class Structure : TypeNode
   override @property bool inGlobal()
   {
     with (TypeKind) return kind.among(Simple, Pointer) != 0;
+  }
+
+  @property dstring moduleName()
+  {
+    return inModule ? _moduleName : "types";
   }
 
   override void fromXml(XmlNode node)
@@ -172,7 +171,7 @@ final class Structure : TypeNode
   override void fixup()
   {
     import std.string : chomp;
-    moduleName = repo.defs.symbolName(origDType.toSnakeCase.chomp("_t")); // FIXME - Kind of a hack, to remove _t from type names (Harfbuzz)
+    _moduleName = repo.defs.symbolName(origDType.toSnakeCase.chomp("_t")); // FIXME - Kind of a hack, to remove _t from type names (Harfbuzz)
 
     if (auto field = cast(Field)parent) // Structure as a field of another structure?
     { // dType and cType are the field name (not an actual type)
@@ -368,10 +367,13 @@ final class Structure : TypeNode
     }
 
     if (parentStruct)
-      importManager.resolveDType(parentStruct); // Add parent to imports (accessing the parent dType adds it to the active import manager)
+      importManager.add(parentStruct.fullModuleName); // Add parent to imports
 
     foreach (st; implementStructs) // Add implemented interfaces to imports
-      importManager.resolveDType(st);
+    {
+      importManager.add(st.fullModuleName);
+      importManager.add(st.fullModuleName ~ "_mixin");
+    }
 
     if (!errorQuarks.empty)
     {
@@ -403,7 +405,7 @@ final class Structure : TypeNode
       { // Create range of parent type and implemented interface types, but filter out interfaces already implemented by ancestors
         objIfaces = implementStructs.filter!(x => !getIfaceAncestor(x)).array;
         auto parentAndIfaces = (parentStruct ? [parentStruct] : []) ~ objIfaces;
-        writer ~= "class " ~ dType ~ (!parentAndIfaces.empty ? " : " ~ parentAndIfaces.map!(x => x.dType)
+        writer ~= "class " ~ dType ~ (!parentAndIfaces.empty ? " : " ~ parentAndIfaces.map!(x => x.fullDType)
           .join(", ") : "");
       }
     }
@@ -432,8 +434,8 @@ final class Structure : TypeNode
 
             if (auto matchedFunc = func.findMatchingAncestor(parentStruct, outIsIdentical))
               if (!outIsIdentical)
-                writer ~= ["alias "d ~ func.dName ~ " = " ~ (cast(Structure)matchedFunc.parent).dType ~ "."
-                  ~ func.dName ~ ";", ""];
+                writer ~= ["alias "d ~ func.dName ~ " = " ~ (cast(Structure)matchedFunc.parent).fullDType ~ "."
+                  ~ func.dName ~ ";"];
           }
         }
       }
@@ -561,7 +563,7 @@ final class Structure : TypeNode
           ~ " with container type " ~ f.containerType.to!string);
 
       with (TypeKind) if (!f.kind.among(Callback, Simple))
-        lines ~= ["", "@property " ~ f.dType ~ " " ~ f.dName ~ "()", "{"];
+        lines ~= ["", "@property " ~ f.fullDType ~ " " ~ f.dName ~ "()", "{"];
       else if (!f.typeObject) // Callback function type directly defined in field?
         lines ~= [
         "", "alias " ~ f.name.camelCase(true) ~ "FuncType = extern(C) " ~ f.callback.getCPrototype ~ ";"
@@ -576,10 +578,10 @@ final class Structure : TypeNode
           lines ~= "return " ~ cPtr ~ "." ~ f.dName ~ ".fromCString(No.Free);";
           break;
         case Enum, Flags:
-          lines ~= "return cast(" ~ f.dType ~ ")" ~ cPtr ~ "." ~ f.dName ~ ";";
+          lines ~= "return cast(" ~ f.fullDType ~ ")" ~ cPtr ~ "." ~ f.dName ~ ";";
           break;
         case Simple:
-          lines ~= ["", "@property " ~ f.dType ~ " " ~ f.dName ~ "()", "{"];
+          lines ~= ["", "@property " ~ f.fullDType ~ " " ~ f.dName ~ "()", "{"];
           lines ~= "return " ~ (f.cType.countStars == 1 ? "*"d : "") ~ cPtr ~ "." ~ f.dName ~ ";"; // Copy structure (dereference if it is a pointer to a structure)
           break;
         case Callback:
@@ -594,18 +596,18 @@ final class Structure : TypeNode
           auto starCount = f.cType.retro.countUntil!(x => x != '*');
 
           if (starCount < 1) // The cast is for casting away "const"
-            lines ~= "return new " ~ f.dType ~ "(cast(" ~ f.cType.stripConst ~ "*)" ~ "&" ~ cPtr ~ "." ~ f.dName ~ ");";
+            lines ~= "return new " ~ f.fullDType ~ "(cast(" ~ f.cType.stripConst ~ "*)" ~ "&" ~ cPtr ~ "." ~ f.dName ~ ");";
           else
-            lines ~= "return new " ~ f.dType ~ "(cast(" ~ f.cType.stripConst ~ ")" ~ cPtr ~ "." ~ f.dName ~ ");";
+            lines ~= "return new " ~ f.fullDType ~ "(cast(" ~ f.cType.stripConst ~ ")" ~ cPtr ~ "." ~ f.dName ~ ");";
           break;
         case Object:
           auto objectGSym = repo.resolveSymbol("GObject.ObjectG");
-          lines ~= "return " ~ objectGSym ~ ".getDObject!" ~ f.dType ~ "(" ~ cPtr ~ "." ~ f.dName ~ ", No.Take);";
+          lines ~= "return " ~ objectGSym ~ ".getDObject!(" ~ f.fullDType ~ ")(" ~ cPtr ~ "." ~ f.dName ~ ", No.Take);";
           break;
         case Unknown, Interface, Container, Namespace:
           throw new Exception(
-              "Unhandled readable field property type '" ~ f.dType.to!string ~ "' (" ~ f.kind.to!string
-              ~ ") for struct " ~ dType.to!string);
+              "Unhandled readable field property type '" ~ f.fullDType.to!string ~ "' (" ~ f.kind.to!string
+              ~ ") for struct " ~ fullDType.to!string);
       }
 
       lines ~= "}";
@@ -614,7 +616,7 @@ final class Structure : TypeNode
         continue;
 
       if (f.kind != TypeKind.Callback && f.kind != TypeKind.Simple)
-        lines ~= ["", "@property void " ~ f.dName ~ "(" ~ f.dType ~ " propval)", "{"];
+        lines ~= ["", "@property void " ~ f.dName ~ "(" ~ f.fullDType ~ " propval)", "{"];
 
       final switch (f.kind) with (TypeKind)
       {
@@ -629,7 +631,7 @@ final class Structure : TypeNode
           lines ~= cPtr ~ "." ~ f.dName ~ " = cast(" ~ f.cType ~ ")propval;";
           break;
         case Simple:
-          lines ~= ["", "@property void " ~ f.dName ~ "(" ~ f.dType ~ " propval)", "{"];
+          lines ~= ["", "@property void " ~ f.dName ~ "(" ~ f.fullDType ~ " propval)", "{"];
           lines ~= cPtr ~ "." ~ f.dName ~ " = " ~ (f.cType.countStars == 1 ? "&"d : ""d) ~ "propval;"; // If field is a pointer, use the address of the structure
           break;
         case Callback:
@@ -641,8 +643,8 @@ final class Structure : TypeNode
           lines ~= cPtr ~ "." ~ f.dName ~ " = propval;";
           break;
         case Opaque, Boxed, Wrap, Reffed, Object, Interface, Container, Namespace, Unknown:
-          throw new Exception("Unhandled writable field property type '" ~ f.dType.to!string ~ "' (" ~ f
-              .kind.to!string ~ ") for struct " ~ dType.to!string);
+          throw new Exception("Unhandled writable field property type '" ~ f.fullDType.to!string ~ "' (" ~ f
+              .kind.to!string ~ ") for struct " ~ fullDType.to!string);
       }
 
       lines ~= "}";
@@ -661,10 +663,9 @@ final class Structure : TypeNode
     void recurseStruct(Structure st)
     {
       st.writeDocs(writer);
+      auto typeName = st is this ? st.cType : (st.name ? (st.name.camelCase(true) ~ "Type") : null); // Handles anonymous or named embedded struct/unions
 
-      auto typeName = st == this ? st.cType : st.name.camelCase(true) ~ "Type";
-
-      writer ~= [(st.structType == StructType.Union ? "union "d : "struct "d) ~ typeName, "{"];
+      writer ~= [(st.structType == StructType.Union ? "union"d : "struct"d) ~ (typeName ? (" " ~ typeName) : ""), "{"];
 
       foreach (fi, f; st.fields)
       {
@@ -704,7 +705,7 @@ final class Structure : TypeNode
 
       writer ~= ["}", ""];
 
-      if (st != this)
+      if (st != this && typeName)
         writer ~= [typeName ~ " " ~ st.dType ~ ";"]; // dType is the field name
     }
 
@@ -725,7 +726,7 @@ final class Structure : TypeNode
   Property[] properties; /// Properties
 
   DefCode defCode; /// Code from definitions file
-  dstring moduleName; /// Package module file name (without the .d extension, usually just snake_case of origDType)
+  dstring _moduleName; /// Package module file name (without the .d extension, usually just snake_case of origDType)
   Func ctorFunc; /// Primary instance constructor function in functions (not a Gir field)
   Func[] errorQuarks; /// List of GError quark functions for exceptions
   Func[dstring] funcNameHash; /// Hash of functions by name

@@ -307,6 +307,21 @@ final class Func : TypeNode
         return;
       }
     }
+    else if (funcType == FuncType.Callback)
+    {
+      if (returnVal)
+      {
+        if (returnVal.containerType != ContainerType.None)
+        {
+          if (returnVal.ownership != Ownership.Full)
+          {
+            disableFunc(__FILE__, __LINE__, "callback container type '" ~ returnVal.containerType.to!string
+              ~ "' ownership '" ~ returnVal.ownership.to!string ~ "' is not supported");
+            return;
+          }
+        }
+      }
+    }
 
     if (returnVal)
     {
@@ -379,7 +394,7 @@ final class Func : TypeNode
    */
   dstring getDelegPrototype()
   {
-    dstring proto = "alias " ~ dName ~ " = " ~ returnVal.dType ~ " delegate(";
+    dstring proto = "alias " ~ dName ~ " = " ~ returnVal.fullDType ~ " delegate(";
 
     foreach (p; params)
     {
@@ -389,7 +404,15 @@ final class Func : TypeNode
       if (proto[$ - 1] != '(')
         proto ~= ", ";
 
-      proto ~= p.directionStr ~ p.dType ~ " " ~ repo.defs.symbolName(p.dName);
+      proto ~= p.directionStr ~ p.fullDType ~ " " ~ repo.defs.symbolName(p.dName);
+    }
+
+    if (throws) // If a delegate throws GErrors, pass the GError** directly to the delegate
+    {
+      if (proto[$ - 1] != '(')
+        proto ~= ", ";
+
+      proto ~= "GError **_err";
     }
 
     return proto ~ ");";
@@ -419,7 +442,7 @@ final class Func : TypeNode
 
     output = "class " ~ exceptionName ~ "Exception : ErrorG\n{\n";
     output ~= "this(GError* err)\n{\nsuper(err);\n}\n\n";
-    output ~= "this(Code code, string msg)\n{\nsuper(" ~ st.dType ~ "." ~ dName ~ ", cast(int)code, msg);\n}\n";
+    output ~= "this(Code code, string msg)\n{\nsuper(" ~ st.fullDType ~ "." ~ dName ~ ", cast(int)code, msg);\n}\n";
     output ~= "\nalias Code = G" ~ exceptionName ~ "Error;\n}";
 
     return output;
