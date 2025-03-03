@@ -26,6 +26,8 @@ class DelegWriter
   // Process the delegate parameter
   private void process(bool staticDelegatePtr)
   {
+    codeTrap("deleg.write", delegParam.fullDName);
+
     decl ~= "extern(C) ";
 
     if (delegParam.scope_ == ParamScope.Async)
@@ -45,6 +47,12 @@ class DelegWriter
 
     foreach (param; callback.params)
       processParam(param);
+
+    if (callback.throws)
+    {
+      addDeclParam("GError **_err");
+      addCallParam("_err");
+    }
 
     decl ~= ")";
     call ~= ");";
@@ -329,7 +337,7 @@ class DelegWriter
         lengthStr = param.fixedSize.to!dstring;
       else if (param.zeroTerminated) // Array is zero terminated?
       {
-        postCall ~= "uint _len" ~ param.dName ~ ";\nif (" ~ param.dName ~ ")\nfor (; " ~ param.dName
+        preCall ~= "uint _len" ~ param.dName ~ ";\nif (" ~ param.dName ~ ")\nfor (; " ~ param.dName
           ~ "[_len" ~ param.dName ~ "] " ~ (elemType.cType.endsWith("*") ? "!is null"d : "!= 0") ~ "; _len" ~ param.dName
           ~ "++)\nbreak;\n";
         lengthStr = "_len" ~ param.dName;

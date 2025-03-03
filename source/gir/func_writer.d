@@ -144,7 +144,7 @@ class FuncWriter
         decl ~= "string ";
         preCall ~= retVal.cType ~ " _cretval;\n";
         call ~= "_cretval = ";
-        postCall ~= "string _retval = _cretval.fromCString("d ~ retVal.fullOwnerFlag ~ ".Free);\n";
+        postCall ~= "string _retval = (cast(const(char)*)_cretval).fromCString("d ~ retVal.fullOwnerFlag ~ ".Free);\n";
         break;
       case Enum, Flags:
         decl ~= retVal.dType ~ " ";
@@ -305,7 +305,7 @@ class FuncWriter
   {
     if (param.isInstanceParam) // Instance parameter?
     {
-      call ~= "cast(" ~ param.cTypeRemPtr.stripConst ~ "*)cPtr";
+      call ~= "cast(" ~ param.cType ~ ")cPtr"d; // Pointer types have the pointer as part of the type
       return;
     }
 
@@ -446,7 +446,7 @@ class FuncWriter
         if (param.direction == ParamDirection.In || param.direction == ParamDirection.InOut)
         {
           addDeclParam(param.dType ~ " " ~ param.dName);
-          addCallParam(param.dName ~ " ? cast(" ~ param.cTypeRemPtr.stripConst ~ "*)" ~ param.dName ~ ".cPtr"
+          addCallParam(param.dName ~ " ? cast(" ~ param.cType ~ ")" ~ param.dName ~ ".cPtr"
             ~ (!param.kind.among(TypeKind.Opaque, TypeKind.Wrap) ? ("(" ~ param.fullOwnerFlag ~ ".Dup)") : "") ~ " : null");
         }
         else if (param.direction == ParamDirection.Out)
@@ -648,7 +648,7 @@ class FuncWriter
           preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";\n";
           addCallParam("&_" ~ param.dName);
           postCall ~= param.dName ~ ".length = " ~ lengthStr ~ ";\n";
-          postCall ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n" ~ param.dName ~ "[i] = new " ~ elemType.dType ~ "(cast(void*)_"
+          postCall ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n" ~ param.dName ~ "[i] = new " ~ elemType.dType ~ "(cast(void*)&_"
             ~ param.dName ~ "[i]" ~ (param.kind != Wrap ? (", " ~ param.fullOwnerFlag ~ ".Take") : "") ~ ");\n";
 
           if (param.ownership != Ownership.None)
@@ -679,7 +679,7 @@ class FuncWriter
           postCall ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n" ~ param.dName ~ "[i] = " ~ objectGSym ~ ".getDObject!"
             ~ elemType.dType ~ "(_" ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);\n";
 
-          if (!param.callerAllocates && param.ownership != Ownership.None)
+          if (param.ownership != Ownership.None)
             postCall ~= "safeFree(cast(void*)_" ~ param.dName ~ ");\n";
         }
         else

@@ -407,6 +407,14 @@ final class Func : TypeNode
       proto ~= p.directionStr ~ p.dType ~ " " ~ repo.defs.symbolName(p.dName);
     }
 
+    if (throws) // If a delegate throws GErrors, pass the GError** directly to the delegate
+    {
+      if (proto[$ - 1] != '(')
+        proto ~= ", ";
+
+      proto ~= "GError **_err";
+    }
+
     return proto ~ ");";
   }
 
