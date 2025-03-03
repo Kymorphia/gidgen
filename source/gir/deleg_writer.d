@@ -39,7 +39,7 @@ class DelegWriter
 
     if (!staticDelegatePtr)
     {
-      preCall ~= "auto _dlg = cast(" ~ delegParam.dType ~ "*)" ~ callback.closureParam.dName ~ ";\n";
+      preCall ~= "auto _dlg = cast(" ~ delegParam.fullDType ~ "*)" ~ callback.closureParam.dName ~ ";\n";
       call ~= "(*_dlg)(";
     }
     else
@@ -106,35 +106,35 @@ class DelegWriter
         call ~= retVal.cType ~ " _retval = ";
         break;
       case String:
-        preCall ~= retVal.dType ~ " _dretval;\n";
+        preCall ~= retVal.fullDType ~ " _dretval;\n";
         call ~= "_dretval = ";
         postCall ~= retVal.cType ~ " _retval = _dretval.toCString("d ~ retVal.fullOwnerFlag ~ ".Alloc);\n";
         break;
       case Enum, Flags:
-        preCall ~= retVal.dType ~ " _dretval;\n";
+        preCall ~= retVal.fullDType ~ " _dretval;\n";
         call ~= "_dretval = ";
         postCall ~= "auto _retval = cast(" ~ retVal.cType ~ ")_dretval;\n";
         break;
       case Simple:
-        preCall ~= retVal.dType ~ " _dretval;\n";
+        preCall ~= retVal.fullDType ~ " _dretval;\n";
         call ~= "_dretval = ";
         postCall ~= retVal.cType ~ " _retval;\nif (_dretval)\n_retval = *_dretval;\n";
         break;
       case Opaque, Wrap, Boxed, Reffed, Object:
-        preCall ~= retVal.dType ~ " _dretval;\n";
+        preCall ~= retVal.fullDType ~ " _dretval;\n";
         call ~= "_dretval = ";
         postCall ~= retVal.cType ~ " _retval = cast(" ~ retVal.cTypeRemPtr ~ "*)_dretval.cPtr("
           ~ retVal.fullOwnerFlag ~ ".Dup);\n";
         break;
       case Interface:
         auto objectGSym = retVal.repo.resolveSymbol("GObject.ObjectG");
-        preCall ~= retVal.dType ~ " _dretval;\n";
+        preCall ~= retVal.fullDType ~ " _dretval;\n";
         call ~= "_dretval = ";
         postCall ~= retVal.cType ~ " _retval = cast(" ~ retVal.cTypeRemPtr ~ "*)(cast(" ~ objectGSym ~ ")_dretval).cPtr("
           ~ retVal.fullOwnerFlag ~ ".Dup);\n";
         break;
       case Callback, Unknown, Container, Namespace:
-        assert(0, "Unsupported delegate return value type '" ~ retVal.dType.to!string
+        assert(0, "Unsupported delegate return value type '" ~ retVal.fullDType.to!string
           ~ "' (" ~ retVal.kind.to!string ~ ") for " ~ callback.fullName.to!string);
     }
   }
@@ -150,13 +150,13 @@ class DelegWriter
     auto elemType = retVal.elemTypes[0];
 
     decl ~= retVal.cType ~ " ";
-    preCall ~= elemType.dType ~ "[] _dretval;\n";
+    preCall ~= elemType.fullDType ~ "[] _dretval;\n";
     call ~= "_dretval = ";
     postCall ~= retVal.cType ~ " _retval;\n\nif (_dretval.length > 0)\n{\n";
 
     if (retVal.fixedSize != ArrayNotFixed) // Array is a fixed size? Add an array size assertion.
       postCall ~= "assert(!_dretval || _dretval.length == " ~ retVal.fixedSize.to!dstring
-        ~ `, "Delegate '` ~ retVal.dType ~ `' should return array of size ` ~ retVal.fixedSize.to!dstring
+        ~ `, "Delegate '` ~ retVal.fullDType ~ `' should return array of size ` ~ retVal.fixedSize.to!dstring
         ~ ` not " ~ _dretval.length.to!string);\n`;
 
     if (retVal.zeroTerminated)
@@ -188,7 +188,7 @@ class DelegWriter
           postCall ~= "_retval[i] = _dretval[i].cPtr(" ~ retVal.fullOwnerFlag ~ ".Dup);\n";
           break;
         case Basic, BasicAlias, Callback, Unknown, Container, Namespace:
-          assert(0, "Unsupported delegate return value array type '" ~ elemType.dType.to!string
+          assert(0, "Unsupported delegate return value array type '" ~ elemType.fullDType.to!string
             ~ "' (" ~ elemType.kind.to!string ~ ") for " ~ callback.fullName.to!string);
       }
     }
@@ -210,13 +210,13 @@ class DelegWriter
       case ByteArray:
         break;
       case Array, PtrArray:
-        templateParams = "!(" ~ retVal.elemTypes[0].dType  ~ ", " ~ retVal.zeroTerminated.to!dstring ~ ")";
+        templateParams = "!(" ~ retVal.elemTypes[0].fullDType  ~ ", " ~ retVal.zeroTerminated.to!dstring ~ ")";
         break;
       case List, SList:
-        templateParams = "!(" ~ retVal.elemTypes[0].dType ~ ")";
+        templateParams = "!(" ~ retVal.elemTypes[0].fullDType ~ ")";
         break;
       case HashTable:
-        templateParams = "!(" ~ retVal.elemTypes[0].dType ~ ", " ~ retVal.elemTypes[1].dType ~ ")";
+        templateParams = "!(" ~ retVal.elemTypes[0].fullDType ~ ", " ~ retVal.elemTypes[1].fullDType ~ ")";
         break;
       default:
         assert(0, "Unsupported delegate return container type '" ~ retVal.containerType.to!string ~ "' for "
@@ -290,16 +290,16 @@ class DelegWriter
           if (param.kind == TypeKind.Object || param.kind == TypeKind.Interface)
           {
             auto objectGSym = param.repo.resolveSymbol("GObject.ObjectG");
-            addCallParam(objectGSym ~ ".getDObject!" ~ param.dType ~ "(cast(void*)" ~ param.dName ~ ", "
+            addCallParam(objectGSym ~ ".getDObject!(" ~ param.fullDType ~ ")(cast(void*)" ~ param.dName ~ ", "
               ~ param.fullOwnerFlag ~ ".Take)");
           }
           else
-            addCallParam(param.dName ~ " ? new " ~ param.dType ~ "(cast(void*)" ~ param.dName ~ ", "
+            addCallParam(param.dName ~ " ? new " ~ param.fullDType ~ "(cast(void*)" ~ param.dName ~ ", "
               ~ param.fullOwnerFlag ~ ".Take) : null");
         }
         else if (param.direction == ParamDirection.Out)
         { // FIXME - Not sure if this will work for all cases, also could optimize by allowing C structure to be directly used in D object
-          preCall ~= "auto _" ~ param.dName ~ " = new " ~ param.dType ~ "(" ~ param.dName ~ ", No.Take);\n";
+          preCall ~= "auto _" ~ param.dName ~ " = new " ~ param.fullDType ~ "(" ~ param.dName ~ ", No.Take);\n";
           addCallParam("_" ~ param.dName);
           postCall ~= "*" ~ param.dName ~ " = *cast(" ~ param.cType ~ ")_" ~ param.dName ~ ".cPtr;\n";
         }
@@ -307,7 +307,7 @@ class DelegWriter
           assert(0, "InOut arguments of type '" ~ param.kind.to!string ~ "' not supported"); // FIXME - Does this even exist?
         break;
       case Callback, Unknown, Container, Namespace:
-        assert(0, "Unsupported parameter type '" ~ param.dType.to!string ~ "' (" ~ param.kind.to!string ~ ") for "
+        assert(0, "Unsupported parameter type '" ~ param.fullDType.to!string ~ "' (" ~ param.kind.to!string ~ ") for "
             ~ callback.fullName.to!string);
     }
   }
@@ -323,7 +323,7 @@ class DelegWriter
     auto elemType = param.elemTypes[0];
 
     addDeclParam(param.cType ~ " " ~ param.dName);
-    preCall ~= elemType.dType ~ "[] _" ~ param.dName ~ ";\n";
+    preCall ~= elemType.fullDType ~ "[] _" ~ param.dName ~ ";\n";
     addCallParam("_" ~ param.dName);
 
     // Pre delegate call processing
@@ -359,7 +359,7 @@ class DelegWriter
           break;
         case Opaque, Boxed, Wrap, Reffed:
           preCall ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n_" ~ param.dName ~ "[i] = "
-            ~ "new " ~ elemType.dType ~ "(cast(" ~ elemType.cType.stripConst ~ "*)&" ~ param.dName ~ "[i]"
+            ~ "new " ~ elemType.fullDType ~ "(cast(" ~ elemType.cType.stripConst ~ "*)&" ~ param.dName ~ "[i]"
             ~ (param.kind != Wrap ? (", " ~ param.fullOwnerFlag ~ ".Take") : "") ~ ");\n";
           break;
         case Object, Interface:
@@ -368,7 +368,7 @@ class DelegWriter
             ~ objectGSym ~ ".getDObject(" ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);\n";
           break;
         case Unknown, Callback, Container, Namespace:
-          assert(0, "Unsupported parameter array type '" ~ elemType.dType.to!string ~ "' (" ~ elemType.kind.to!string
+          assert(0, "Unsupported parameter array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType.kind.to!string
               ~ ") for " ~ callback.fullName.to!string);
       }
     }
@@ -382,11 +382,11 @@ class DelegWriter
       final switch (elemType.kind) with (TypeKind)
       {
         case Basic, String, BasicAlias, Enum, Flags, Simple, Pointer, Opaque, Wrap, Boxed, Reffed, Object, Interface:
-          postCall ~= param.dName ~ " = arrayDtoC!(" ~ elemType.dType ~ ", Yes.Alloc, "
+          postCall ~= param.dName ~ " = arrayDtoC!(" ~ elemType.fullDType ~ ", Yes.Alloc, "
             ~ (param.zeroTerminated ? "Yes"d : "No"d) ~ ".ZeroTerm)(_" ~ param.dName ~ ");\n";
           break;
         case Unknown, Callback, Container, Namespace:
-          assert(0, "Unsupported parameter array type '" ~ elemType.dType.to!string ~ "' (" ~ elemType.kind.to!string
+          assert(0, "Unsupported parameter array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType.kind.to!string
             ~ ") for " ~ callback.fullName.to!string);
       }
     }
@@ -403,10 +403,10 @@ class DelegWriter
         templateParams = param.ownership.to!dstring;
         break;
       case Array, PtrArray, List, SList:
-        templateParams = param.elemTypes[0].dType  ~ ", " ~ "GidOwnership." ~ param.ownership.to!dstring;
+        templateParams = param.elemTypes[0].fullDType  ~ ", " ~ "GidOwnership." ~ param.ownership.to!dstring;
         break;
       case HashTable:
-        templateParams = param.elemTypes[0].dType ~ ", " ~ param.elemTypes[1].dType ~ ", "
+        templateParams = param.elemTypes[0].fullDType ~ ", " ~ param.elemTypes[1].fullDType ~ ", "
           ~ "GidOwnership." ~ param.ownership.to!dstring;
         break;
       default:

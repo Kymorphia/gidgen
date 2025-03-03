@@ -404,7 +404,7 @@ final class Func : TypeNode
       if (proto[$ - 1] != '(')
         proto ~= ", ";
 
-      proto ~= p.directionStr ~ p.dType ~ " " ~ repo.defs.symbolName(p.dName);
+      proto ~= p.directionStr ~ p.fullDType ~ " " ~ repo.defs.symbolName(p.dName);
     }
 
     if (throws) // If a delegate throws GErrors, pass the GError** directly to the delegate

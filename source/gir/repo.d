@@ -31,14 +31,14 @@ final class Repo : Base
     // Add global namespace structure
     globalStruct = new Structure(this);
     globalStruct.kind = TypeKind.Namespace;
-    globalStruct.origDType = "Global";
+    globalStruct._moduleName = globalStruct.origDType = "global";
     globalStruct.structType = StructType.Class;
     structs ~= globalStruct;
 
     // Add global Types structure
     typesStruct = new Structure(this);
     typesStruct.kind = TypeKind.Namespace;
-    typesStruct.origDType = "Types";
+    typesStruct._moduleName = typesStruct.origDType = "types";
     typesStruct.structType = StructType.Class;
     structs ~= typesStruct;
   }
@@ -67,14 +67,14 @@ final class Repo : Base
       switch (node.id)
       {
         case "alias": // Alias info
-          aliases ~= new Alias(this, node);
+          aliases ~= new Alias(typesStruct, node);
           break;
         case "array": // Array type info
           break; // Do nothing, TypeNode handles this
         case "attribute": // FIXME - Freeform attributes, but for which nodes?
           break;
         case "bitfield", "enumeration": // Flags and enumerations
-          enums ~= new Enumeration(this, node);
+          enums ~= new Enumeration(typesStruct, node);
           break;
         case "c:include": // C include header
           cIncludes ~= node["name"];
@@ -91,7 +91,7 @@ final class Repo : Base
             }
           }
           else
-            callbacks ~= new Func(this, node);
+            callbacks ~= new Func(typesStruct, node);
           break;
         case "class", "interface": // Classes and interfaces
           structs ~= new Structure(this, node);
@@ -106,7 +106,7 @@ final class Repo : Base
             structs ~= new Structure(this, node);
           break;
         case "constant": // Constants
-          constants ~= new Constant(this, node);
+          constants ~= new Constant(typesStruct, node);
           break;
         case "constructor": // Constructor method (class and record)
         case "function": // Function (class, enumeration, namespace, interface, record)
@@ -339,7 +339,7 @@ final class Repo : Base
         st = new Structure(this);
         st.dType = st.origDType = className;
         st.structType = StructType.Class;
-        st.moduleName = modName;
+        st._moduleName = modName;
         structs ~= st;
         st.fixup;
         st.resolve;
@@ -509,9 +509,9 @@ final class Repo : Base
       "import " ~ st.fullModuleName ~ ";",
       "import " ~ st.fullModuleName ~ "_mixin;", "",
       "/// Proxy object for " ~ st.fullName ~ " interface when a GObject has no applicable D binding",
-      "class " ~ className ~ " : IfaceProxy, " ~ st.dType, "{",
+      "class " ~ className ~ " : IfaceProxy, " ~ st.fullDType, "{",
       "this(void* ptr, Flag!\"Take\" take = No.Take)", "{", "super(cast(void*)ptr, take);", "}", "",
-      "override TypeInfo_Interface getIface()", "{", "return typeid(" ~ st.dType ~ ");", "}", "",
+      "override TypeInfo_Interface getIface()", "{", "return typeid(" ~ st.fullDType ~ ");", "}", "",
       "mixin " ~ st.dType ~ "T!();",
       "}",
     ];
@@ -780,7 +780,7 @@ final class Repo : Base
 
     dstring[] aliasDecls;
 
-    foreach (i, al; aliases.filter!(x => x.active == Active.Enabled).enumerate) // Write out aliases
+    foreach (i, al; aliases.filter!(x => x.active == Active.Enabled).enumerate) // Generate aliases without writing them (to populate import manager)
     {
       auto st = cast(Structure)al.typeObjectRoot;
 
@@ -788,7 +788,7 @@ final class Repo : Base
         continue;
 
       if (al.kind == TypeKind.Callback) // Callback aliases should alias to D callback delegates, not C functions
-        aliasDecls ~= ["alias " ~ al.name ~ " = " ~ al.dType ~ ";"];
+        aliasDecls ~= ["alias " ~ al.name ~ " = " ~ al.fullDType ~ ";"];
       else if (al.name == al.cName)
         aliasDecls ~= ["alias " ~ al.name ~ " = " ~ packageNamespace ~ ".c.types." ~ al.cName ~ ";"];
       else
@@ -796,7 +796,7 @@ final class Repo : Base
         auto aliasType = al.typeRepo.typeObjectHash.get(al._dType, null);
 
         if (aliasType && aliasType._dType == al._dType)
-          aliasDecls ~= ["alias " ~ al.name ~ " = " ~ aliasType.dType ~ ";"];
+          aliasDecls ~= ["alias " ~ al.name ~ " = " ~ aliasType.fullDType ~ ";"];
         else
           aliasDecls ~= ["alias " ~ al.name ~ " = " ~ al.cName ~ ";"];
       }
@@ -808,7 +808,7 @@ final class Repo : Base
     if (!aliasDecls.empty)
       writer ~= [""d, "// Aliases"];
 
-    writer ~= aliasDecls;
+    writer ~= aliasDecls; // Write the aliases
 
     foreach (i, en; enums.filter!(x => x.active == Active.Enabled).enumerate) // Write out enums
       writer ~= (i == 0 ? [""d, "// Enums"] : []) ~ ["alias " ~ en.dType ~ " = " ~ en.cType ~ ";"];
@@ -1097,7 +1097,7 @@ final class Repo : Base
       throw new Exception("Failed to resolve symbol '" ~ typeName.to!string ~ "'");
 
     if (importManager)
-      return importManager.resolveDType(typeNode);
+      importManager.add(typeNode.fullModuleName);
 
     return typeNode.dType;
   }

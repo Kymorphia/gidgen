@@ -40,7 +40,7 @@ class Report
 
     if (flags & ReportFlags.Summary)
     {
-      auto maxRepoName = max(repoReports.map!(x => x.repo.name.length).fold!max, "Package".length);
+      auto maxRepoName = max(repoReports.map!(x => x.repo.dubPackageName.length).fold!max, "Package".length);
 
       // Summary header
 
@@ -64,7 +64,7 @@ class Report
 
       foreach (report; repoReports)
       {
-        reportStr ~= format("%-*s ", maxRepoName, report.repo.name);
+        reportStr ~= format("%-*s ", maxRepoName, report.repo.dubPackageName);
 
         with (ReportFlags) // Add obj type headers for each flag specified
         {

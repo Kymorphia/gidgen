@@ -45,7 +45,18 @@ class TypeNode : Base
   @property dstring dType()
   {
     if (importManager)
-      return importManager.resolveDType(this);
+    {
+      if (containerType != ContainerType.None)
+      {
+        foreach (elem; elemTypes)
+          if (elem.typeObject)
+            importManager.add(elem.typeObject.fullModuleName);
+      }
+      else if (typeObject)
+        importManager.add(typeObject.fullModuleName);
+      else if (inModule || inGlobal)
+        importManager.add(fullModuleName);
+    }
 
     return _dType;
   }
@@ -115,19 +126,70 @@ class TypeNode : Base
     with (TypeKind) return kind.among(BasicAlias, Enum, Flags, Simple, Callback) != 0;
   }
 
+  /**
+   * Get the module structure which a type node is in.
+   * Returns: The module or null
+   */
+  @property Structure typeModule()
+  {
+    for (Base n = this; n; n = n.parent) // Find structure whose parent is the repository (top-level structure/class)
+      if (auto st = cast(Structure)n)
+        if (st.parent == repo)
+          return st;
+
+    return null;
+  }
+
+  /**
+   * Get the module name which a type node is in.
+   * Returns: The module name or null
+   */
+  @property dstring typeModuleName()
+  {
+    auto mod = typeModule;
+    return mod ? mod.moduleName : null;
+  }
+
+  /**
+   * Get full module name of a type node with the package namespace directory separated by a period
+   * Returns: The fully qualified module name
+   */
+  @property dstring fullModuleName()
+  {
+    return repo.packageNamespace ~ "." ~ typeModuleName;
+  }
+
   /// Check if type has been resolved
   @property bool resolved()
   {
     return unresolvedFlags == 0;
   }
 
-  /// Full name of the D type with the namespace followed by a period and then the D type
-  dstring fullDType()
+  /// Full name of the D type with the GIR namespace followed by a period and then the D type
+  dstring fullGirType()
   {
     if (typeRepo && !_dType.empty)
       return typeRepo.namespace ~ "." ~ _dType;
 
     return origDType.canFind('.') ? origDType : repo.namespace ~ "." ~ origDType;
+  }
+
+  /**
+   * Get full D type including package "namespace", module, and type separated by periods.
+   * Returns; Fully qualified D type string
+   */
+  dstring fullDType()
+  {
+    if (containerType == ContainerType.HashTable)
+      return elemTypes[1].fullDType ~ "[" ~ elemTypes[0].fullDType ~ "]";
+    else if (containerType != ContainerType.None)
+      return elemTypes[0].fullDType ~ "[]";
+    else if (typeObject)
+      return typeObject.fullModuleName ~ "." ~ dType;
+    else if (!inModule && !inGlobal)
+      return dType;
+    else
+      return fullModuleName ~ "." ~ dType;
   }
 
   /// cPtr with a single '*' removed (if it has any)
@@ -304,8 +366,8 @@ class TypeNode : Base
       else if (!elemTypes.empty && elemTypes[0].cType.empty) // Missing array element C type? Try and derive it from array C type
         deriveElemCTypeFromArrayType;
     }
-    else if (ContainerTypeValues.canFind(fullDType) && !cast(Structure)this) // Not an array, check if it is another container type and not a structure (the type itself)
-      containerType = cast(ContainerType)ContainerTypeValues.countUntil(fullDType);
+    else if (ContainerTypeValues.canFind(fullGirType) && !cast(Structure)this) // Not an array, check if it is another container type and not a structure (the type itself)
+      containerType = cast(ContainerType)ContainerTypeValues.countUntil(fullGirType);
 
     if (containerType != ContainerType.None)
     {
@@ -463,11 +525,11 @@ class TypeNode : Base
       auto reqElemTypes = containerTypeElemCount(containerType);
 
       if (elemTypes.length < reqElemTypes)
-        throw new Exception(fullDType.to!string ~ " requires " ~ reqElemTypes.to!string ~ " container type(s), found "
+        throw new Exception(fullGirType.to!string ~ " requires " ~ reqElemTypes.to!string ~ " container type(s), found "
             ~ elemTypes.length.to!string);
 
       if (elemTypes.length > reqElemTypes)
-        warnWithLoc(__FILE__, __LINE__, xmlLocation, "Container '" ~ fullDType.to!string ~ "' has excess types");
+        warnWithLoc(__FILE__, __LINE__, xmlLocation, "Container '" ~ fullGirType.to!string ~ "' has excess types");
 
       foreach (elem; elemTypes) // Check if element types are active
         if (elem.typeObject && elem.typeObject.active != Active.Enabled)

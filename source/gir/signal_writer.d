@@ -42,7 +42,7 @@ class SignalWriter
     processReturn();
 
     auto instanceParamName = signal.repo.defs.symbolName(owningClass.dType[0].toLower ~ owningClass.dType[1 .. $]);
-    preCall ~= "auto " ~ instanceParamName ~ " = getVal!" ~ owningClass.dType ~ "(_paramVals);\n"; // Instance parameter is the first value
+    preCall ~= "auto " ~ instanceParamName ~ " = getVal!(" ~ owningClass.fullDType ~ ")(_paramVals);\n"; // Instance parameter is the first value
     aliasDecl ~= " delegate("; // Replaced in write() for function alias
     call ~= "_dClosure.dlg(";
 
@@ -50,7 +50,7 @@ class SignalWriter
       processParam(param, i);
 
     // Add the instance parameter (last)
-    addDeclParam(owningClass.dType ~ " " ~ instanceParamName);
+    addDeclParam(owningClass.fullDType ~ " " ~ instanceParamName);
     addCallParam(instanceParamName);
 
     aliasDecl ~= ");";
@@ -92,8 +92,8 @@ class SignalWriter
     final switch (retVal.kind) with (TypeKind)
     {
       case Basic, BasicAlias:
-        aliasDecl ~= retVal.dType;
-        preCall ~= retVal.dType ~ " _retval;\n";
+        aliasDecl ~= retVal.fullDType;
+        preCall ~= retVal.fullDType ~ " _retval;\n";
         call ~= "_retval = ";
         break;
       case String:
@@ -101,24 +101,24 @@ class SignalWriter
         call ~= "auto _retval = ";
         break;
       case Enum, Flags:
-        aliasDecl ~= retVal.dType;
+        aliasDecl ~= retVal.fullDType;
         call ~= "auto _dretval = ";
         postCall ~= retVal.cType ~ " _retval = cast(" ~ retVal.cType ~ ")_dretval;\n";
         break;
       case Boxed:
-        aliasDecl ~= retVal.dType;
+        aliasDecl ~= retVal.fullDType;
         call ~= "auto _retval = ";
         break;
       case Wrap, Reffed, Object, Interface:
-        aliasDecl ~= retVal.dType;
+        aliasDecl ~= retVal.fullDType;
         call ~= "auto _retval = ";
         break;
       case Simple, Pointer, Callback, Opaque, Unknown, Container, Namespace:
-        assert(0, "Unsupported signal return value type '" ~ retVal.dType.to!string ~ "' (" ~ retVal.kind.to!string ~ ") for "
+        assert(0, "Unsupported signal return value type '" ~ retVal.fullDType.to!string ~ "' (" ~ retVal.kind.to!string ~ ") for "
             ~ signal.fullName.to!string);
     }
 
-    postCall ~= "setVal!" ~ retVal.dType ~ "(_returnValue, _retval);\n";
+    postCall ~= "setVal!" ~ retVal.fullDType ~ "(_returnValue, _retval);\n";
   }
 
   /// Process parameter
@@ -130,7 +130,7 @@ class SignalWriter
       return;
     }
 
-    preCall ~= "auto " ~ param.dName ~ " = getVal!" ~ param.dType ~ "(&_paramVals[" ~ (paramIndex + 1).to!dstring
+    preCall ~= "auto " ~ param.dName ~ " = getVal!(" ~ param.fullDType ~ ")(&_paramVals[" ~ (paramIndex + 1).to!dstring
       ~ "]);\n"; // The parameter index is +1 because the first one is the object instance
 
     assert(param.containerType == ContainerType.None, "No support for signal container parameter type '"
@@ -147,16 +147,16 @@ class SignalWriter
     final switch (param.kind) with (TypeKind)
     {
       case Basic, BasicAlias, Enum, Flags, Simple, Pointer, Opaque:
-        addDeclParam(param.directionStr ~ param.dType ~ " " ~ param.dName);
+        addDeclParam(param.directionStr ~ param.fullDType ~ " " ~ param.dName);
         break;
       case String:
         addDeclParam(param.directionStr ~ "string " ~ param.dName);
         break;
       case Wrap, Boxed, Reffed, Object, Interface:
-        addDeclParam(param.dType ~ " " ~ param.dName);
+        addDeclParam(param.fullDType ~ " " ~ param.dName);
         break;
       case Callback, Unknown, Container, Namespace:
-        assert(0, "Unsupported signal parameter type '" ~ param.dType.to!string ~ "' (" ~ param.kind.to!string ~ ") for "
+        assert(0, "Unsupported signal parameter type '" ~ param.fullDType.to!string ~ "' (" ~ param.kind.to!string ~ ") for "
             ~ signal.fullName.to!string);
     }
   }
@@ -172,8 +172,8 @@ class SignalWriter
 
     preCall ~= "auto " ~ param.dName ~ " = getVal!(" ~ elemType.cTypeRemPtr ~ "**)(&_paramVals[" ~ (paramIndex + 1).to!dstring ~ "]);\n"; // The parameter index is +1 because the first one is the object instance
 
-    addDeclParam(elemType.dType ~ "[] " ~ param.dName);
-    preCall ~= elemType.dType ~ "[] _" ~ param.dName ~ ";\n";
+    addDeclParam(elemType.fullDType ~ "[] " ~ param.dName);
+    preCall ~= elemType.fullDType ~ "[] _" ~ param.dName ~ ";\n";
     addCallParam("_" ~ param.dName);
 
     // Pre delegate call processing
@@ -198,7 +198,7 @@ class SignalWriter
       final switch (elemType.kind) with (TypeKind)
       {
         case Basic, BasicAlias, Enum, Flags, Simple, Pointer:
-          inpProcess ~= "_" ~ param.dName ~ " = cast(" ~ elemType.dType ~ "[])" ~ param.dName ~ "[0 .. " ~ lengthStr
+          inpProcess ~= "_" ~ param.dName ~ " = cast(" ~ elemType.fullDType ~ "[])" ~ param.dName ~ "[0 .. " ~ lengthStr
             ~ "];\n";
           break;
         case String:
@@ -206,17 +206,17 @@ class SignalWriter
             ~ param.fullOwnerFlag ~ ".Free);\n";
           break;
         case Opaque, Boxed, Wrap, Reffed:
-          inpProcess ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n_" ~ param.dName ~ " ~= new " ~ elemType.dType ~ "(cast("
+          inpProcess ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n_" ~ param.dName ~ " ~= new " ~ elemType.fullDType ~ "(cast("
             ~ elemType.cType.stripConst ~ "*)&" ~ param.dName ~ "[i]"
             ~ (param.kind != Wrap ? (", " ~ param.fullOwnerFlag ~ ".Take") : "") ~ ");\n";
           break;
         case Object, Interface:
           auto objectGSym = param.repo.resolveSymbol("GObject.ObjectG");
-          inpProcess ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n_" ~ param.dName ~ " ~= " ~ objectGSym ~ ".getDObject!"
-            ~ elemType.dType ~ "(" ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);\n";
+          inpProcess ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n_" ~ param.dName ~ " ~= " ~ objectGSym ~ ".getDObject!("
+            ~ elemType.fullDType ~ ")(" ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);\n";
           break;
         case Unknown, Callback, Container, Namespace:
-          assert(0, "Unsupported parameter array type '" ~ elemType.dType.to!string ~ "' (" ~ elemType.kind.to!string
+          assert(0, "Unsupported parameter array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType.kind.to!string
               ~ ") for signal " ~ signal.fullName.to!string);
       }
     }
