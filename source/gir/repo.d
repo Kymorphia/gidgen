@@ -305,6 +305,14 @@ final class Repo : Base
 
       if (en.origDType != en.dType)
         typeObjectHash[en.origDType] = en;
+
+      foreach (m; en.members) // Add enum/flag member names
+      {
+        if (m.glibName) // FIXME - Is glibName more reliable?
+          defs.cSymbolHash[m.cName] = m;
+        else if (m.cName)
+          defs.cSymbolHash[m.glibName] = m;
+      }
     }
 
     foreach (cb; callbacks) // Hash callbacks
@@ -584,25 +592,16 @@ final class Repo : Base
 
       writer ~= ["enum " ~ e.cType ~ (e.bitfield ? " : uint"d : ""), "{"];
 
-      Member[dstring] dupCheck; // Duplicate member check
-
       foreach (m; e.members)
       {
-        auto memberName = m.name.camelCase(true);
-
-        if (auto dup = memberName in dupCheck)
+        if (m.active == Active.Enabled)
         {
-          dup.xmlNode.warn("Ignoring duplicate enum member '" ~ memberName ~ "'");
-          continue;
-        }
-
-        dupCheck[memberName] = m;
-
         if (writer.lines[$ - 1] != "{")
           writer ~= "";
 
         m.writeDocs(writer);
-        writer ~= defs.symbolName(memberName) ~ " = " ~ m.value ~ ",";
+          writer ~= m.dName ~ " = " ~ m.value ~ ",";
+        }
       }
 
       writer ~= ["}", ""];

@@ -1,6 +1,7 @@
 module gir.member;
 
 import gir.type_node;
+import utils : camelCase;
 
 /// Member value for Enumeration
 final class Member : TypeNode
@@ -21,6 +22,11 @@ final class Member : TypeNode
     _name = val;
   }
 
+  override @property dstring dName()
+  {
+    return _dName;
+  }
+
   override void fromXml(XmlNode node)
   {
     super.fromXml(node);
@@ -32,7 +38,14 @@ final class Member : TypeNode
     glibNick = node.get("glib:nick");
   }
 
+  override void fixup()
+  {
+    super.fixup;
+    _dName = repo.defs.symbolName(_name.camelCase(true));
+  }
+
   private dstring _name; /// Name of the enumeration or bitfield member
+  private dstring _dName; /// D enum/flags member identifier (TitleCase)
   dstring cName; /// C name (Gir "c:identifier")
   dstring value; /// The value
   dstring glibName; /// GLib enum/flags name
