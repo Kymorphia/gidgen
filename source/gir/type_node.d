@@ -181,9 +181,9 @@ class TypeNode : Base
   dstring fullDType()
   {
     if (containerType == ContainerType.HashTable)
-      return elemTypes[1].fullDType ~ "[" ~ elemTypes[0].fullDType ~ "]";
+      return elemTypes.length == 2 ? (elemTypes[1].fullDType ~ "[" ~ elemTypes[0].fullDType ~ "]") : dType;
     else if (containerType != ContainerType.None)
-      return elemTypes[0].fullDType ~ "[]";
+      return elemTypes.length == 1 ? (elemTypes[0].fullDType ~ "[]") : dType;
     else if (typeObject)
       return typeObject.fullModuleName ~ "." ~ dType;
     else if (!inModule && !inGlobal)

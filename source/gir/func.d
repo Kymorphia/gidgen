@@ -370,6 +370,41 @@ final class Func : TypeNode
       if (pa.active != Active.Enabled)
         disableFunc(__FILE__, __LINE__, "Parameter '" ~ pa.name.to!string ~ "' of type '" ~ pa.dType.to!string ~ "' is disabled", pa);
     }
+
+    with (FuncType) if (funcType.among(Constructor, Function, Method))
+    {
+      bool optionalNotOk;
+      foreach (pa; params.retro) // Loop in reverse over params to verify optional parameters
+      {
+        if (!pa.isDParam)
+          continue;
+
+        if (pa.optional || pa.nullable) // optional or nullable set? We treat them the same.
+        { // Verify it is a supported parameter type
+          if (pa.direction == ParamDirection.Out)
+          {
+            optionalNotOk = true;
+            infoWithLoc(__FILE__, __LINE__, pa.xmlLocation, "Optional not supported for parameter '"
+              ~ pa.fullDName.to!string ~ "' with output direction");
+          }
+          else with (TypeKind) if (!pa.kind.among(String, Callback, Container, Pointer, Opaque, Wrap, Boxed, Reffed,
+            Object, Interface) && !(pa.kind == Basic && pa.dType.among("void*"d, "const(void)*"d))) // FIXME - void* shouldn't be a Basic kind
+          {
+            optionalNotOk = true;
+            infoWithLoc(__FILE__, __LINE__, pa.xmlLocation, "Optional not supported for parameter '"
+              ~ pa.fullDName.to!string ~ "' of type '" ~ pa.fullDType.to!string ~ "' kind '"
+              ~ pa.kind.to!string ~  "'");
+          }
+          else if (optionalNotOk)
+            infoWithLoc(__FILE__, __LINE__, pa.xmlLocation, "Optional not supported for parameter '"
+              ~ pa.fullDName.to!string ~ "' as other non-optional parameters follow it");
+          else
+            pa.isOptional = true;
+        }
+        else // Optional is not OK for parameters before a non-optional param
+          optionalNotOk = true;
+      }
+    }
   }
 
   /**

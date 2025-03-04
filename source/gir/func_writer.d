@@ -481,6 +481,9 @@ class FuncWriter
         assert(0, "Unsupported parameter type '" ~ param.fullDType.to!string ~ "' (" ~ param.kind.to!string ~ ") for "
             ~ param.fullName.to!string);
     }
+
+    if (param.isOptional) // If parameter is optional, set default value to null (FIXME - Can there be other non-pointer optional types?)
+      decl ~= " = null";
   }
 
   // Process an array input parameter
@@ -572,6 +575,9 @@ class FuncWriter
         assert(0, "Unsupported parameter array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType.kind.to!string
             ~ ") for " ~ param.fullName.to!string);
     }
+
+    if (param.isOptional) // If parameter is optional, set default value to null
+      decl ~= " = null";
   }
 
   // Process an array output parameter
@@ -733,6 +739,9 @@ class FuncWriter
         ~ param.ownership.to!dstring ~ ")(_" ~ param.dName ~ ");\n";
 
     addCallParam("_" ~ param.dName);
+
+    if (param.isOptional) // If parameter is optional, set default to null (works for dynamic arrays and associative arrays)
+      decl ~= " = null";
   }
 
   // Process a container "out" parameter (except array)

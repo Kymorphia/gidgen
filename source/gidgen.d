@@ -164,7 +164,7 @@ int main(string[] args)
 
   if (Repo.dumpDTypes)
     writeln(defs.repos.map!(repo => repo.typeObjectHash.values)
-      .join.map!(typeNode => typeNode.fullName ~ " " ~ typeNode.kind.to!dstring)
+      .join.map!(typeNode => typeNode.fullDType ~ " " ~ typeNode.kind.to!dstring ~ " " ~ typeNode.active.to!dstring)
       .array.sort.uniq.join("\n"));
 
   if (Repo.suggestDefCmds) // Display suggestions if enabled

@@ -66,6 +66,15 @@ final class Param : TypeNode
     return isLengthReturnArray || lengthArrayParams.length > 0;
   }
 
+  /**
+   * Check if a parameter is used by the D binding function
+   * Returns: true if the parameter is passed to the D function, false otherwise (instance parameter, array length, closure data, etc)
+   */
+  @property bool isDParam()
+  {
+    return !isInstanceParam && !isLengthReturnArray && lengthArrayParams.length == 0 && !isClosure && !isDestroy;
+  }
+
   override void fromXml(XmlNode node)
   {
     super.fromXml(node);
@@ -355,11 +364,12 @@ final class Param : TypeNode
   private dstring _name; /// Name of parameter
   bool isInstanceParam; /// true if this parameter is the instance parameter
   bool isLengthReturnArray; /// true if this is a length parameter for a return array
+  bool isOptional; /// Set to true if GIR optional is set and all D params following are also isOptional
   Param[] lengthArrayParams; /// Array parameters which use this one as a length
   ParamDirection direction; /// Parameter direction
-  bool nullable; /// Nullable pointer
+  bool nullable; /// Nullable pointer (treated as "optional"), null is always passed as is to C functions
   bool optional; /// Optional pointer
-  bool allowNone; /// Allow none (FIXME - how does this differ from nullable?)
+  bool allowNone; /// Allow none (deprecated and replaced with nullable and optional, ignored)
   bool callerAllocates; /// Caller allocates value
   bool varargs; /// Indicates a parameter is a varargs ... elipsis
   bool isClosure; /// Is this a closure user_data parameter?
