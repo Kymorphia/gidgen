@@ -1245,11 +1245,19 @@ final class Repo : Base
 }
 
 /**
- * Print warning with location information.
+ * Log warning with location information.
  */
 void warnWithLoc(string file, size_t line, string xmlLoc, string message)
 {
   warning((Repo.logCodeLoc ? (file ~ ":" ~ line.to!string ~ " ") : "") ~ (Repo.logGirLoc ? (xmlLoc ~ " ") : "") ~ message);
+}
+
+/**
+ * Log info message with location information.
+ */
+void infoWithLoc(string file, size_t line, string xmlLoc, string message)
+{
+  info((Repo.logCodeLoc ? (file ~ ":" ~ line.to!string ~ " ") : "") ~ (Repo.logGirLoc ? (xmlLoc ~ " ") : "") ~ message);
 }
 
 /// Package include
