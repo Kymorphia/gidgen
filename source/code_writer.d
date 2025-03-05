@@ -95,7 +95,7 @@ class CodeWriter
           content ~= "\n";
       }
       else
-        content ~= line ~ "\n"; // Don't mess with indentation with multi-line comments
+        content ~= (cast(dchar)' ').repeat(indent).array ~ line ~ "\n";
 
       indentStatement = false;
 
