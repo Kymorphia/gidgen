@@ -139,17 +139,17 @@ abstract class Base
       return;
 
     writer ~= "/**";
-    writer ~= "* " ~ repo.gdocToDDoc(docContent, "* ");
+    writer ~= "  " ~ repo.gdocToDDoc(docContent, "  ");
 
     if (!docVersion.empty || !docDeprecated.empty)
     {
       writer ~= "";
 
       if (!docVersion.empty)
-        writer ~= "* Version: " ~ docVersion;
+        writer ~= "  Version: " ~ docVersion;
 
       if (!docDeprecated.empty)
-        writer ~= "* Deprecated: " ~ repo.gdocToDDoc(docDeprecated, "*   ");
+        writer ~= "  Deprecated: " ~ repo.gdocToDDoc(docDeprecated, "    ");
     }
 
     writer ~= "*/";

@@ -120,7 +120,7 @@ final class Repo : Base
           break;
         case "disable": // Not an actual Gir attribute, used for disabling arbitrary nodes
           break;
-        case "doc": // Documentation file position
+        case "doc": // Documentation
           if (auto base = baseParentFromXmlNodeWarn!Base(node))
           {
             base.docContent = node.content;
@@ -596,10 +596,10 @@ final class Repo : Base
       {
         if (m.active == Active.Enabled)
         {
-        if (writer.lines[$ - 1] != "{")
-          writer ~= "";
+          if (writer.lines[$ - 1] != "{")
+            writer ~= "";
 
-        m.writeDocs(writer);
+          m.writeDocs(writer);
           writer ~= m.dName ~ " = " ~ m.value ~ ",";
         }
       }
@@ -1047,28 +1047,26 @@ final class Repo : Base
   dstring gdocToDDoc(dstring s, dstring prefix)
   {
     import std.regex : Captures, ctRegex, replaceAll;
-    auto escapeRe = ctRegex!(r"[$=]"d);
-    auto nlSpaceRe = ctRegex!(r"\n\s*"d);
+    auto escapeRe = ctRegex!(r"[$]"d);
+    auto nlRe = ctRegex!(r"\n"d);
     auto refRe = ctRegex!(r"\[`?([a-z]+@[^\]]+)`?\]"d);
     auto funcRe = ctRegex!(r"([a-z0-9_]+)\(\)"d);
+    auto constRe = ctRegex!(r"%([A-Za-z0-9_]+)"d);
 
     s = s.replaceAll(escapeRe, "\\$&"); // Escape special characters
+    s = s.replaceAll(nlRe, "\n" ~ prefix); // Format newlines for comment block
 
-    // Format newlines for comment block
-    prefix = "\n" ~ prefix;
-    s = s.replaceAll(nlSpaceRe, prefix);
-
-    dstring refReplace(Captures!(dstring) m)
+    dstring refReplace(Captures!dstring m)
     {
       if (auto tn = findTypeObjectByGDocRef(m[1]))
         return "[" ~ tn.fullDName ~ "]";
       else
-        return m[1];
+        return "`" ~ m[1] ~ "`";
     }
 
-    s = replaceAll!(refReplace)(s, refRe); // Replace [kind@name] with DDoc reference
+    s = replaceAll!refReplace(s, refRe); // Replace [kind@name] with DDoc reference
 
-    dstring funcReplace(Captures!(dstring) m)
+    dstring funcReplace(Captures!dstring m)
     {
       if (auto tn = defs.cSymbolHash.get(m[1], null))
         return "[" ~ tn.fullDName ~ "]";
@@ -1076,9 +1074,22 @@ final class Repo : Base
         return m[0];
     }
 
-    s = replaceAll!(funcReplace)(s, funcRe); // Replace func() references
+    s = replaceAll!funcReplace(s, funcRe); // Replace func() references
 
-    return s.escapeNonRefLinkParens;
+    dstring constReplace(Captures!dstring m)
+    {
+      auto lcMatch = m[1].toLower;
+
+      if (lcMatch.among("null"d, "true"d, "false"d))
+        return lcMatch;
+
+      if (auto tn = defs.cSymbolHash.get(m[1], null))
+        return "[" ~ tn.fullDName ~ "]";
+      else
+        return "`" ~ m[1] ~ "`";
+    }
+
+    return replaceAll!constReplace(s, constRe); // Replace %CONST symbol references
   }
 
   /**

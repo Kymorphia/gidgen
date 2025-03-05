@@ -114,7 +114,7 @@ final class Func : TypeNode
       return;
 
     writer ~= "/**";
-    writer ~= "* " ~ gdocToDDocFunc(docContent, "* ");
+    writer ~= "  " ~ gdocToDDocFunc(docContent, "  ");
 
     bool preambleShown;
     foreach (pa; params)
@@ -125,27 +125,27 @@ final class Func : TypeNode
       if (!preambleShown)
       {
         preambleShown = true;
-        writer ~= funcType == FuncType.Signal ? "* Params"d : "* Params:"d; // FIXME - Work around lack of support for Ddoc delegate alias parameter support
+        writer ~= funcType == FuncType.Signal ? "  Params"d : "  Params:"d; // FIXME - Work around lack of support for Ddoc delegate alias parameter support
       }
 
-      writer ~= "*   " ~ pa.dName ~ " = " ~ gdocToDDocFunc(pa.docContent, "*     ");
+      writer ~= "*   " ~ pa.dName ~ " = " ~ gdocToDDocFunc(pa.docContent, "      ");
     }
 
     if (funcType == FuncType.Signal) // Add documentation for the signal callback instance parameter
-      writer ~= "*   " ~ signalDelegInstanceParam ~ " = the instance the signal is connected to";
+      writer ~= "    " ~ signalDelegInstanceParam ~ " = the instance the signal is connected to";
 
     if (returnVal && returnVal.origDType != "none" && returnVal.lengthArrayParams.length == 0)
-      writer ~= "* Returns: " ~ gdocToDDocFunc(returnVal.docContent, "*   ");
+      writer ~= "  Returns: " ~ gdocToDDocFunc(returnVal.docContent, "    ");
 
     if (!docVersion.empty || !docDeprecated.empty)
     {
       writer ~= "";
 
       if (!docVersion.empty)
-        writer ~= "* Version: " ~ docVersion;
+        writer ~= "  Version: " ~ docVersion;
 
       if (!docDeprecated.empty)
-        writer ~= "* Deprecated: " ~ gdocToDDocFunc(docDeprecated, "*   ");
+        writer ~= "  Deprecated: " ~ gdocToDDocFunc(docDeprecated, "    ");
     }
 
     writer ~= "*/";
@@ -162,7 +162,7 @@ final class Func : TypeNode
   *   prefix = The newline wrap prefix
   * Returns: The DDoc formatted string
   */
-  dstring gdocToDDocFunc(dstring gdoc, dstring prefix = "*   ")
+  dstring gdocToDDocFunc(dstring gdoc, dstring prefix = "    ")
   {
     auto paramRe = ctRegex!(r"@(\w)"d);
 
