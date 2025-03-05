@@ -1089,7 +1089,11 @@ final class Repo : Base
         return "`" ~ m[1] ~ "`";
     }
 
-    return replaceAll!constReplace(s, constRe); // Replace %CONST symbol references
+    s = replaceAll!constReplace(s, constRe); // Replace %CONST symbol references
+
+    s = s.markdownListToDDoc; // Replace markdown lists with adrdox lists
+
+    return s.replaceAll(nlRe, "\n" ~ prefix); // Format newlines for comment block
   }
 
   /**
