@@ -1048,15 +1048,19 @@ final class Repo : Base
   dstring gdocToDDoc(dstring s, dstring prefix)
   {
     import std.regex : Captures, ctRegex, replaceAll;
-    auto escapeRe = ctRegex!(r"[$]"d);
     auto nlRe = ctRegex!(r"\n"d);
     auto refRe = ctRegex!(r"\[`?([a-z]+@[^\]]+)`?\]"d);
     auto funcRe = ctRegex!(r"([a-z0-9_]+)\(\)"d);
+    auto backtickRe = ctRegex!(r"`([A-Za-z0-9_]+)`"d);
     auto constRe = ctRegex!(r"%([A-Za-z0-9_]+)"d);
+    auto oldCodeBlockRe = ctRegex!("\\|\\[(?:<!-- +language=\"([^\"]+)\" +-->)?(.*?)\\]\\|"d, "s");
 
-    s = s.replaceAll(escapeRe, "\\$&"); // Escape special characters
+    dstring codeBlockReplace(Captures!dstring m) // Replace |[<!-- language="LANG" -->  ]| code blocks with triple backticks
+    {
+      return "```" ~ m[1].toLower ~ m[2] ~ "```";
+    }
 
-    dstring refReplace(Captures!dstring m)
+    dstring refReplace(Captures!dstring m) // Replace [kind@name] with DDoc reference
     {
       if (auto tn = findTypeObjectByGDocRef(m[1]))
         return "[" ~ tn.fullDName ~ "]";
@@ -1064,9 +1068,7 @@ final class Repo : Base
         return "`" ~ m[1] ~ "`";
     }
 
-    s = replaceAll!refReplace(s, refRe); // Replace [kind@name] with DDoc reference
-
-    dstring funcReplace(Captures!dstring m)
+    dstring funcOrBacktickReplace(Captures!dstring m) // Replace func() or `backtick` references with links, or keep it as a backtick if not resolved
     {
       if (auto tn = defs.cSymbolHash.get(m[1], null))
         return "[" ~ tn.fullDName ~ "]";
@@ -1074,9 +1076,7 @@ final class Repo : Base
         return m[0];
     }
 
-    s = replaceAll!funcReplace(s, funcRe); // Replace func() references
-
-    dstring constReplace(Captures!dstring m)
+    dstring constReplace(Captures!dstring m) // Replace %CONST symbol references
     {
       auto lcMatch = m[1].toLower;
 
@@ -1089,11 +1089,29 @@ final class Repo : Base
         return "`" ~ m[1] ~ "`";
     }
 
-    s = replaceAll!constReplace(s, constRe); // Replace %CONST symbol references
-
+    s = replaceAll!codeBlockReplace(s, oldCodeBlockRe); // replace old code blocks with triple backticks
     s = s.markdownListToDDoc; // Replace markdown lists with adrdox lists
 
-    return s.replaceAll(nlRe, "\n" ~ prefix); // Format newlines for comment block
+    auto lines = s.split("\n");
+    bool inCodeBlock;
+
+    foreach (ref line; lines) // Make sure other replacements don't occur inside of code blocks
+    {
+      if (line.stripLeft.startsWith("```"))
+        inCodeBlock = !inCodeBlock;
+
+      if (!inCodeBlock)
+      {
+        line = replaceAll!refReplace(line, refRe);
+        line = replaceAll!funcOrBacktickReplace(line, funcRe);
+        line = replaceAll!funcOrBacktickReplace(line, backtickRe);
+        line = replaceAll!constReplace(line, constRe);
+      }
+
+      line = prefix ~ line;
+    }
+
+    return lines.join("\n");
   }
 
   /**
