@@ -17,8 +17,9 @@ The remainder of this document describes how to use **gidgen** for creating and 
 Some of the features of **gidgen** include:
 
 * The goal is to automatically generate quality bindings based on GIR API definitions, with minimal custom code.
-* Handles C callbacks with data "closures" using delegates and intelligent delegate lifecycle management.
 * Types:
+  * Handles C callbacks with data "closures" using delegates and intelligent delegate lifecycle management.
+  * Supports optional function/method parameters
   * Converts basic types between C and D code.
   * Converts between C zero terminated strings and D strings.
   * Support for GBoxed types.
@@ -43,6 +44,8 @@ Some of the features of **gidgen** include:
     providing a simple yet powerful way to fix issues with API definitions and a clean separation with custom binding code.
 * Binding Packages:
   * Generates binding package dub.json files.
+  * Supports multiple versions of packages and can use the same top-level module name (gtk3 vs gtk4 for example which are both `gtk`),
+    though they cannot be used simultaneously in the same application.
   * Outputs detailed warnings for GIR API elements which have issues or are not currently supported.
   * Command line options for identifying and resolving GIR issues.
   * Support for debugging gidgen using traps in gdb, to set breakpoints when specific parts of the binding are processed.
@@ -50,6 +53,8 @@ Some of the features of **gidgen** include:
   * A differentiation is made between intentionally disabled API (Disabled) vs gidgen limitations/GIR issues (Unsupported).
     Disabled items aren't included in the coverage statistics and are either not useful for the binding or are replaced by custom code.
   * The report can be customized to output items of different types and their Active state.
+* API documentation
+  * Converts Gtk-Doc documentation to [adrdox](https://github.com/adamdruppe/adrdox)
 
 ## Command Line Argument Reference
 
@@ -206,12 +211,13 @@ These files control various aspects of binding generation and can also contain c
 
 There are 3 scopes of binding definition files, defined below:
 * **global.d** - This specially named file defines global commands which are relevant to all binding libraries.
-* **Namespace.d** - There is usually one file per library (namespace), which is used for commands and global binding code for the library.
-  For example: `GLib.d`.
-* **Namespace-Class.d** - Files for classes/structures of a library can also be defined and these take the name of the namespace and class/structure separated by a dash.
+* **packageVER.d** - There is usually one file per library with the name of the package, which is used for commands and global binding code for the library.
+  For example: `glib2.d`.
+* **packageVER-module_name.d** - Files for modules of a library can also be defined and these take the name of the package
+  and snake_case name of the class/structure separated by a dash.
   These files contain commands and custom code related to the specific class or structure. These are primarily used for organization purposes,
-  since commands and custom code for classes/structs can also be defined in the library definition file as well.
-  For example: `GObject-Value.d`
+  since commands and custom code for classes/structs can also be defined in the library definition file as well using the `class` command.
+  For example: `gobject2-value.d`
 
 ### Command Syntax
 
@@ -236,14 +242,13 @@ Commands indicating 'Repo' in parenthesis require a repo to have been specified,
 Commands:
 
 add <XmlSelect> <AttributeValue | Xml> - Add an XML attribute or node (Block)
-class <Class> - Select the current structure/class (Repo)
+class <Class> [Pre|In|Post] - Current class/module and location (defaults to In) (Repo)
 del <XmlSelect> - Delete an XML attribute or node
 gir <GirName> - GIR file to load
-import <Import> - Add a D import (Class)
 info <name> <value> - Set JSON dub info for repo or master package (name, description, copyright, authors, license), multiple authors values can be given
 inhibit [nothing imports init funcs] - Inhibit generation of certain module code (space separated flags) (Class)
 kind <TypeName> <TypeKind> - Override a type kind (Repo)
-merge <Namespace> - Merge current repo into the package identified by Namespace (Repo)
+merge <Namespace> <Version> - Merge repo into the package with Namespace and Version (Repo)
 namespace <Namespace> - Create a repository from a namespace instead of a Gir file
 rename <XmlSelect> <AttributeName | XmlNodeId> - Rename an XML attribute or node ID
 reserved <Word> - Identify a reserved word, an underscore will be appended to it
@@ -270,7 +275,7 @@ The following XML attributes can be specified on API items and are set to a valu
 * **disable** - Disable an API item, which should be addressed through gidgen improvements or custom binding code.
 * **ignore** - Also disables an API item, but is used for marking APIs as not useful for D bindings.
 * **unsupported** - API item as unsupported. These are identified candidates for future gidgen improvements.
-  Not normally specified directly, but detected by gidgen.
+  Not normally specified directly, but utilized by gidgen when an unsupported API item is detected.
 
 **Additional features:**
 
@@ -324,11 +329,13 @@ This can be used for defining a custom library/namespace which is not represente
 One example is the Gid namespace which is used for binding support code and is declared like: `//!namespace Gid`.
 
 The `class` command can be used following either a `gir` or `namespace` command and selects the current class or structure which other commands act upon.
+This can be specified multiple times in top-level package definition files to select the active class to modify.
+The second parameter is optional and can be one of Pre, In, or Post.
+This specifies the current location to insert code into, either before, inside, or after the module class and defaults to In.
 
 ### Binding Behavior Commands
 
 There are several commands which modify the behavior of binding generation. These are described in more detail below:
-* **import** - Add a D import to the list of imports for the current class/structure.
 * **info** - Used for defining values in dub.json package files. It takes a name, which is one of: name, description, copyright, authors, or license.
   The second parameter is the value to assign. The **authors** info value can be assigned multiple times, to be used when there are multiple authors.
   Example: `//!info description "GObject introspection D binding repository"`
@@ -337,9 +344,9 @@ There are several commands which modify the behavior of binding generation. Thes
 * **kind** - Override the **kind** of a type. gidgen automatically determines what kind a type is (Basic, String, Object, etc).
   This command takes a type identifier followed by the kind label, which can be obtained from executing `./gidgen --dump-kinds`.
   For example: `//!kind OptionEntry Simple`
-* **merge** - This causes the current repo to be merged with another named repo identified by it's namespace.
+* **merge** - This causes the current repo to be merged with another named repo identified by it's namespace and version.
   The giD Package Repository distribution use this for merging GLib, GObject, and Gid into a single library to resolve mutual dependency issues.
-  For example: `//!merge GLib`
+  For example: `//!merge GLib 2.0`
 * **reserved** - Identify a reserved word, which will cause any instances of it in binding symbols to have an underscore appended to it.
   This is primarily used for identifying all D language reserved words. For example: `//!reserved version`.
 * **subtype** - Used for renaming (substituting) a type name. This command applies for both D and C types.
