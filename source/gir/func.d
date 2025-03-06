@@ -108,47 +108,47 @@ final class Func : TypeNode
     when = cast(SignalWhen)SignalWhenValues.countUntil(node.get("when"));
   }
 
-  override void writeDocs(CodeWriter writer)
+  override dstring genDocs()
   {
     if (docContent.length == 0)
-      return;
+      return "/** */"; // Add blank docs if none, so that it is still included in generated DDocs
 
-    writer ~= "/**";
-    writer ~= "  " ~ gdocToDDocFunc(docContent, "  ");
+    auto isAlias = funcType ==  FuncType.Signal || funcType == FuncType.Callback;
 
-    bool preambleShown;
-    foreach (pa; params)
+    auto s = "/**\n  "d ~ gdocToDDocFunc(docContent, "  ") ~ "\n";
+    auto preName = isAlias ? "    * $(B "d : "    ";
+    auto postName = isAlias ? ") "d : " = ";
+
+    auto paramDescrs = params.filter!(pa => !(pa.isInstanceParam || pa.isArrayLength || pa.isClosure || pa.isDestroy))
+      .map!(pa => preName ~ pa.dName ~ postName ~ gdocToDDocFunc(pa.docContent, "      ")).array;
+
+    if (funcType == FuncType.Signal)
+      paramDescrs ~= preName ~ signalDelegInstanceParam ~ postName ~ "the instance the signal is connected to";
+
+    if (!paramDescrs.empty)
     {
-      if (pa.isInstanceParam || pa.isArrayLength || pa.isClosure || pa.isDestroy)
-        continue;
+      s ~= isAlias ? "\n  ## Parameters\n  $(LIST\n"d : "  Params:\n"d; // FIXME - Work around lack of support for DDoc delegate alias parameter support
+      s ~= paramDescrs.join("\n") ~ "\n";
 
-      if (!preambleShown)
-      {
-        preambleShown = true;
-        writer ~= funcType == FuncType.Signal ? "  Params"d : "  Params:"d; // FIXME - Work around lack of support for Ddoc delegate alias parameter support
-      }
-
-      writer ~= "*   " ~ pa.dName ~ " = " ~ gdocToDDocFunc(pa.docContent, "      ");
+      if (isAlias)
+        s ~= "  )\n";
     }
 
-    if (funcType == FuncType.Signal) // Add documentation for the signal callback instance parameter
-      writer ~= "    " ~ signalDelegInstanceParam ~ " = the instance the signal is connected to";
-
     if (returnVal && returnVal.origDType != "none" && returnVal.lengthArrayParams.length == 0)
-      writer ~= "  Returns: " ~ gdocToDDocFunc(returnVal.docContent, "    ");
+      s ~= "  Returns: " ~ gdocToDDocFunc(returnVal.docContent, "    ") ~ "\n";
 
     if (!docVersion.empty || !docDeprecated.empty)
     {
-      writer ~= "";
+      s ~= "\n";
 
       if (!docVersion.empty)
-        writer ~= "  Version: " ~ docVersion;
+        s ~= "  Version: " ~ docVersion ~ "\n";
 
       if (!docDeprecated.empty)
-        writer ~= "  Deprecated: " ~ gdocToDDocFunc(docDeprecated, "    ");
+        s ~= "  Deprecated: " ~ gdocToDDocFunc(docDeprecated, "    ") ~ "\n";
     }
 
-    writer ~= "*/";
+    return s ~ "*/";
   }
 
   /**

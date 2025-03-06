@@ -800,7 +800,7 @@ class FuncWriter
         overrideStr = "override "; // Conforming methods use override
     }
 
-    func.writeDocs(writer);
+    writer ~= func.genDocs;
 
     if (moduleType == ModuleType.Iface && !isStatic) // Interface module and not a static method? (Static methods are implemented in the interface below)
     {

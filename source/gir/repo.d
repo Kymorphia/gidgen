@@ -578,34 +578,17 @@ final class Repo : Base
     writer ~= ["module " ~ packageNamespace ~ ".c.types;", ""];
     writer ~= "public import gid.basictypes;"; // Imported for glong/gulong types which change size depending on Windows or not
     writer ~= includes.map!(x => "public import " ~ x.name.toLower ~ ".c.types;\n").array;
+    writer ~= "import " ~ packageNamespace ~ ".types;";
     writer ~= "";
 
     foreach (a; aliases)
     {
-      a.writeDocs(writer);
+      writer ~= a.genDocs;
       writer ~= ["alias " ~ a.cName ~ " = " ~ a.cType ~ ";", ""];
     }
 
-    foreach (e; enums)
-    {
-      e.writeDocs(writer);
-
-      writer ~= ["enum " ~ e.cType ~ (e.bitfield ? " : uint"d : ""), "{"];
-
-      foreach (m; e.members)
-      {
-        if (m.active == Active.Enabled)
-        {
-          if (writer.lines[$ - 1] != "{")
-            writer ~= "";
-
-          m.writeDocs(writer);
-          writer ~= m.dName ~ " = " ~ m.value ~ ",";
-        }
-      }
-
-      writer ~= ["}", ""];
-    }
+    foreach (i, en; enums.filter!(x => x.active == Active.Enabled).enumerate) // Write out enum aliases
+      writer ~= (i == 0 ? [""d, "// Enums"] : []) ~ ["alias " ~ en.cType ~ " = " ~ en.fullDType ~ ";"];
 
     foreach (st; structs)
     {
@@ -618,13 +601,13 @@ final class Repo : Base
         st.writeCStruct(writer);
       else if (st.pointer)
       {
-        st.writeDocs(writer);
+        writer ~= st.genDocs;
         writer ~= ["alias " ~ st.cType ~ " = " ~ st.cType ~ "_st*;", ""];
         writer ~= ["struct " ~ st.cType ~ "_st;", ""];
       }
       else // Opaque structure or pointer to opaque structure
       {
-        st.writeDocs(writer);
+        writer ~= st.genDocs;
         writer ~= ["struct " ~ st.cType ~ ";"d, ""];
       }
     }
@@ -775,7 +758,7 @@ final class Repo : Base
     dstring[] callbackDecls;
 
     foreach (i, cb; callbacks.filter!(x => x.active == Active.Enabled).enumerate) // Generate callback prototypes (to populate imports), added to writer output below
-      callbackDecls ~= (i == 0 ? [""d, "// Callbacks"] : []) ~ cb.getDelegPrototype;
+      callbackDecls ~= (i == 0 ? [""d, "// Callbacks"] : []) ~ ["", cb.genDocs, cb.getDelegPrototype];
 
     dstring[] aliasDecls;
 
@@ -787,17 +770,17 @@ final class Repo : Base
         continue;
 
       if (al.kind == TypeKind.Callback) // Callback aliases should alias to D callback delegates, not C functions
-        aliasDecls ~= ["alias " ~ al.name ~ " = " ~ al.fullDType ~ ";"];
+        aliasDecls ~= ["", "/** */", "alias " ~ al.name ~ " = " ~ al.fullDType ~ ";"];
       else if (al.name == al.cName)
-        aliasDecls ~= ["alias " ~ al.name ~ " = " ~ packageNamespace ~ ".c.types." ~ al.cName ~ ";"];
+        aliasDecls ~= ["", "/** */", "alias " ~ al.name ~ " = " ~ packageNamespace ~ ".c.types." ~ al.cName ~ ";"];
       else
       {
         auto aliasType = al.typeRepo.typeObjectHash.get(al._dType, null);
 
         if (aliasType && aliasType._dType == al._dType)
-          aliasDecls ~= ["alias " ~ al.name ~ " = " ~ aliasType.fullDType ~ ";"];
+          aliasDecls ~= ["", "/** */", "alias " ~ al.name ~ " = " ~ aliasType.fullDType ~ ";"];
         else
-          aliasDecls ~= ["alias " ~ al.name ~ " = " ~ al.cName ~ ";"];
+          aliasDecls ~= ["", "/** */", "alias " ~ al.name ~ " = " ~ al.cName ~ ";"];
       }
     }
 
@@ -809,9 +792,6 @@ final class Repo : Base
 
     writer ~= aliasDecls; // Write the aliases
 
-    foreach (i, en; enums.filter!(x => x.active == Active.Enabled).enumerate) // Write out enums
-      writer ~= (i == 0 ? [""d, "// Enums"] : []) ~ ["alias " ~ en.dType ~ " = " ~ en.cType ~ ";"];
-
     // Filter out structures that aren't enabled, have their own module, or whose D types match the C type name (no prefix)
     auto simpleStructs = structs.filter!(x => x.active == Active.Enabled && !x.inModule && x.name != x.cType).enumerate;
 
@@ -820,18 +800,39 @@ final class Repo : Base
       if (i == 0)
         writer ~= [""d, "// Structs"];
 
-      writer ~= ["alias " ~ st.name ~ " = " ~ st.cType ~ (st.kind == TypeKind.Pointer && !st.pointer ? "*"d : "")
-        ~ ";"];
+      writer ~= ["", "/** */", "alias " ~ st.name ~ " = " ~ st.cType ~ (st.kind == TypeKind.Pointer
+        && !st.pointer ? "*"d : "") ~ ";"];
     }
 
     writer ~= callbackDecls;
 
+    foreach (e; enums)
+    {
+      writer ~= "";
+      writer ~= e.genDocs;
+      writer ~= ["enum " ~ e.dType ~ (e.bitfield ? " : uint"d : ""), "{"];
+
+      foreach (m; e.members)
+      {
+        if (m.active == Active.Enabled)
+        {
+          if (writer.lines[$ - 1] != "{")
+            writer ~= "";
+
+          writer ~= m.genDocs;
+          writer ~= m.dName ~ " = " ~ m.value ~ ",";
+        }
+      }
+
+      writer ~= ["}"];
+    }
+
     foreach (i, con; constants.filter!(x => x.active == Active.Enabled).enumerate) // Write out constants
     {
       writer ~= "";
-      con.writeDocs(writer);
+      writer ~= con.genDocs;
       writer ~= ["enum " ~ con.name ~ (con.kind == TypeKind.String ? (" = \"" ~ con.value ~ "\";")
-        : (" = " ~ con.value ~ ";")), ""];
+        : (" = " ~ con.value ~ ";"))];
     }
 
     if (typesStruct.defCode.preClass.length > 0)
@@ -1054,7 +1055,6 @@ final class Repo : Base
     auto constRe = ctRegex!(r"%([A-Za-z0-9_]+)"d);
 
     s = s.replaceAll(escapeRe, "\\$&"); // Escape special characters
-    s = s.replaceAll(nlRe, "\n" ~ prefix); // Format newlines for comment block
 
     dstring refReplace(Captures!dstring m)
     {

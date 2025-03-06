@@ -133,26 +133,25 @@ abstract class Base
    * Params:
    *   writer = The CodeWriter
    */
-  void writeDocs(CodeWriter writer)
+  dstring genDocs()
   {
     if (docContent.length == 0)
-      return;
+      return "/** */"; // Add blank docs if none, so that it is still included in generated DDocs
 
-    writer ~= "/**";
-    writer ~= "  " ~ repo.gdocToDDoc(docContent, "  ");
+    auto s = "/**\n  "d ~ repo.gdocToDDoc(docContent, "  ") ~ "\n";
 
     if (!docVersion.empty || !docDeprecated.empty)
     {
-      writer ~= "";
+       s ~= "\n";
 
       if (!docVersion.empty)
-        writer ~= "  Version: " ~ docVersion;
+        s ~= "  Version: " ~ docVersion ~ "\n";
 
       if (!docDeprecated.empty)
-        writer ~= "  Deprecated: " ~ repo.gdocToDDoc(docDeprecated, "    ");
+        s ~= "  Deprecated: " ~ repo.gdocToDDoc(docDeprecated, "    ") ~ "\n";
     }
 
-    writer ~= "*/";
+    return s ~ "*/";
   }
 
   /**

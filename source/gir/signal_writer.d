@@ -230,22 +230,22 @@ class SignalWriter
    */
   void write(CodeWriter writer, ModuleType moduleType = ModuleType.Normal)
   {
-    signal.writeDocs(writer);
+    writer ~= signal.genDocs;
 
     auto baseName = signal.titleName ~ "Callback";
 
     // Define a delegate and function alias
-    writer ~= ["alias " ~ baseName ~ "Dlg = " ~ aliasDecl, "alias " ~ baseName ~ "Func = "
-      ~ aliasDecl.replaceFirst("delegate", "function"), ""];
+    writer ~= ["alias " ~ baseName ~ "Dlg = " ~ aliasDecl, "", "/** ditto */", "alias " ~ baseName ~ "Func = "
+      ~ aliasDecl.replaceFirst("delegate", "function"), ""]; // Add ditto comment to use the same documentation for the function alias
 
-    writer ~= ["/**", "* Connect to " ~ signal.titleName ~ " signal.", "* Params:"];
+    writer ~= ["/**", "  Connect to " ~ signal.titleName ~ " signal.", "  Params:"];
 
     if (signal.detailed)
-      writer ~= "*   detail = Signal detail or null (default)";
+      writer ~= "    detail = Signal detail or null (default)";
 
-    writer ~= ["*   callback = signal callback delegate or function to connect",
-    "*   after = Yes.After to execute callback after default handler, No.After to execute before (default)",
-      "* Returns: Signal ID", "*/"];
+    writer ~= ["    callback = signal callback delegate or function to connect",
+    "    after = Yes.After to execute callback after default handler, No.After to execute before (default)",
+      "  Returns: Signal ID", "*/"];
 
     if (moduleType == ModuleType.Iface)
     {
