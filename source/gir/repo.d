@@ -578,7 +578,6 @@ final class Repo : Base
     writer ~= ["module " ~ packageNamespace ~ ".c.types;", ""];
     writer ~= "public import gid.basictypes;"; // Imported for glong/gulong types which change size depending on Windows or not
     writer ~= includes.map!(x => "public import " ~ x.name.toLower ~ ".c.types;\n").array;
-    writer ~= "import " ~ packageNamespace ~ ".types;";
     writer ~= "";
 
     foreach (a; aliases)
@@ -587,8 +586,26 @@ final class Repo : Base
       writer ~= ["alias " ~ a.cName ~ " = " ~ a.cType ~ ";", ""];
     }
 
-    foreach (i, en; enums.filter!(x => x.active == Active.Enabled).enumerate) // Write out enum aliases
-      writer ~= (i == 0 ? [""d, "// Enums"] : []) ~ ["alias " ~ en.cType ~ " = " ~ en.fullDType ~ ";"];
+    foreach (e; enums)
+    {
+      writer ~= e.genDocs;
+
+      writer ~= ["enum " ~ e.cType ~ (e.bitfield ? " : uint"d : ""), "{"];
+
+      foreach (m; e.members)
+      {
+        if (m.active == Active.Enabled)
+        {
+          if (writer.lines[$ - 1] != "{")
+            writer ~= "";
+
+          writer ~= m.genDocs;
+          writer ~= m.dName ~ " = " ~ m.value ~ ",";
+        }
+      }
+
+      writer ~= ["}", ""];
+    }
 
     foreach (st; structs)
     {
@@ -792,6 +809,9 @@ final class Repo : Base
 
     writer ~= aliasDecls; // Write the aliases
 
+    foreach (i, en; enums.filter!(x => x.active == Active.Enabled).enumerate) // Write out enums
+      writer ~= (i == 0 ? [""d, "// Enums"] : []) ~ ["", "/** */", "alias " ~ en.dType ~ " = " ~ en.cType ~ ";"];
+
     // Filter out structures that aren't enabled, have their own module, or whose D types match the C type name (no prefix)
     auto simpleStructs = structs.filter!(x => x.active == Active.Enabled && !x.inModule && x.name != x.cType).enumerate;
 
@@ -805,27 +825,6 @@ final class Repo : Base
     }
 
     writer ~= callbackDecls;
-
-    foreach (e; enums)
-    {
-      writer ~= "";
-      writer ~= e.genDocs;
-      writer ~= ["enum " ~ e.dType ~ (e.bitfield ? " : uint"d : ""), "{"];
-
-      foreach (m; e.members)
-      {
-        if (m.active == Active.Enabled)
-        {
-          if (writer.lines[$ - 1] != "{")
-            writer ~= "";
-
-          writer ~= m.genDocs;
-          writer ~= m.dName ~ " = " ~ m.value ~ ",";
-        }
-      }
-
-      writer ~= ["}"];
-    }
 
     foreach (i, con; constants.filter!(x => x.active == Active.Enabled).enumerate) // Write out constants
     {
