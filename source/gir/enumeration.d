@@ -46,11 +46,11 @@ final class Enumeration : TypeNode
       if (auto dup = m.dName in dupCheck)
       {
         m.active = Active.Ignored;
-        dup.xmlNode.warn("Ignoring duplicate enum member '" ~ m.fullDName ~ "'");
+        infoWithLoc(__FILE__, __LINE__, dup.xmlLocation, "Ignoring duplicate enum member '" ~ m.fullDName.to!string ~ "'");
         continue;
       }
 
-      dupCheck[dName] = m;
+      dupCheck[m.dName] = m;
     }
   }
 
