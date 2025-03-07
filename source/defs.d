@@ -520,7 +520,10 @@ class Defs
     output ~= sortedRepos.map!(x => `    "` ~ buildPath(relPath, x).replace("\\", "/") ~ `/"`).join(",\n"); // Just use forward slashes on Windows
     output ~= "\n  ]\n}\n";
 
-    write(buildPath(pkgPath, "dub.json"), output);
+    auto path = buildPath(pkgPath, "dub.json");
+
+    if (!path.exists || readText(path) != output) // Only update dub.json if changed (build optimization)
+      write(path, output);
   }
 
   /**

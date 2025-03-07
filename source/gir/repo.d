@@ -563,6 +563,8 @@ final class Repo : Base
     }
 
     output ~= "\n}\n";
+
+    if (!path.exists || readText(path) != output) // Only update dub.json if changed (build optimization)
     write(path, output);
   }
 
