@@ -277,7 +277,7 @@ class Defs
             throw new Exception("Too many arguments to 'class' command " ~ posInfo);
 
           if (classSplitName.length == 1) // Only update current module name if this is not a module definition file
-            curModName = cmdTokens[1].toSnakeCase;
+            curModName = cmdTokens[1].snakeCase;
 
           if (cmdTokens.length > 2)
           {

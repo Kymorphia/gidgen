@@ -173,9 +173,9 @@ final class Structure : TypeNode
     import std.string : chomp;
 
     if (origDType.canFind('_')) // If the original D type was snake case, make sure to remove any _t (FIXME - Kind of a hack for Harfbuzz)
-      _moduleName = repo.defs.symbolName(origDType.toSnakeCase.chomp("_t"));
+      _moduleName = repo.defs.symbolName(origDType.snakeCase.chomp("_t"));
     else // FIXME - Add support to set the module name, default to using the original type (prior to any postfixes like for ObjectAtk for example)
-      _moduleName = repo.defs.symbolName(origDType.toSnakeCase);
+      _moduleName = repo.defs.symbolName(origDType.snakeCase);
 
     if (auto field = cast(Field)parent) // Structure as a field of another structure?
     { // dType and cType are the field name (not an actual type)

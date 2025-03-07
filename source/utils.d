@@ -108,7 +108,7 @@ unittest
  * Convert camelCase or TitleCase to snake_case
  * Returns: The name converted to snake_case
  */
-dstring toSnakeCase(dstring name)
+dstring snakeCase(dstring name)
 {
   import std.array : appender;
   import std.uni : isUpper, toLower;
