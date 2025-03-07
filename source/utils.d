@@ -54,22 +54,22 @@ dstring normalizeDTypeName(dstring typeStr)
 /**
  * Changes snake or kabob case to camelCase.
  * Params:
- *   snakeCase = snake_case string
+ *   str = snake_case string
  *   firstUpper = set to true to make first character uppercase, defaults to lowercase
  * Returns: camelCase string
  */
-dstring camelCase(dstring snakeCase, bool firstUpper = false)
+dstring camelCase(dstring str, bool firstUpper = false)
 {
   dstring camelStr;
   bool upperNext = firstUpper;
   ulong lastPos;
 
-  foreach (i, c; snakeCase)
+  foreach (i, c; str)
   {
     if (c == '_' || c == '-')
     {
       upperNext = true;
-      camelStr ~= snakeCase[lastPos .. i];
+      camelStr ~= str[lastPos .. i];
       lastPos = i + 1;
     }
     else if (upperNext)
@@ -81,10 +81,10 @@ dstring camelCase(dstring snakeCase, bool firstUpper = false)
   }
 
   if (lastPos == 0)
-    return snakeCase;
+    return str;
 
-  if (lastPos < snakeCase.length)
-    camelStr ~= snakeCase[lastPos .. $];
+  if (lastPos < str.length)
+    camelStr ~= str[lastPos .. $];
 
   return camelStr;
 }
