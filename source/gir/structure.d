@@ -271,6 +271,9 @@ final class Structure : TypeNode
     if (!parentType.empty && !parentStruct)
       throw new Exception("Failed to resolve parent type '" ~ parentType.to!string ~ "'");
  
+    if (parentStruct && parentStruct.active != Active.Enabled)
+      throw new Exception("Structure parent type '" ~ parentStruct.fullName.to!string ~ "' is disabled");
+
     foreach (ifaceName; implements)
       if (!cast(Structure)repo.findTypeObject(ifaceName))
       {
