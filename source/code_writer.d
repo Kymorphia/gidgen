@@ -85,18 +85,17 @@ class CodeWriter
           indent -= 2;
         else if (line.startsWith('{'))
           indentStatement = false; // Don't add single statement indent if indent statement is followed by an open brace
+
+        auto calcIndent = indent + (indentStatement ? 2 : 0); // Indent statements without braces
+        auto stripLine = line.strip;
+
+        if (stripLine.length > 0)
+          content ~= (cast(dchar)' ').repeat(calcIndent).array ~ stripLine ~ "\n"d;
+        else
+          content ~= "\n";
       }
-
-      auto calcIndent = indent
-        + (line.startsWith("*") ? 1 : 0) // Indent an extra space for multiline comments
-        + (indentStatement ? 2 : 0); // Indent statements without braces
-
-      auto stripLine = line.strip;
-
-      if (stripLine.length > 0)
-        content ~= (cast(dchar)' ').repeat(calcIndent).array ~ stripLine ~ "\n"d;
       else
-        content ~= "\n";
+        content ~= (cast(dchar)' ').repeat(indent).array ~ line ~ "\n";
 
       indentStatement = false;
 

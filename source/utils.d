@@ -430,3 +430,79 @@ unittest
     ~ r" with a second [blah blah](https://url.yay) etc";
   assert(escapeNonRefLinkParens(testText) == escText);
 }
+
+enum MaxListStartIndent = 4;
+
+/**
+ * Convert a markdown formatted list (dashes only), with a $(LIST) DDoc adrdox list.
+ * Params:
+ *   docs = The doc content
+ * Returns: The doc content with any markdown lists replaced with a $(LIST)
+ */
+dstring markdownListToDDoc(dstring docs)
+{
+  auto lines = docs.split("\n");
+  dstring[] retLines;
+  uint listIndent;
+  dchar listChar = 0;
+
+  outer: foreach (line; lines)
+  {
+    if (listChar != 0) // In list?
+    {
+      foreach (i, c; line)
+      {
+        if (c == listChar) // Another list item?
+        {
+          retLines ~= (cast(dchar)' ').repeat(listIndent + 2).to!dstring ~ line[0 .. i] ~ "*" ~ line[i + 1 .. $];
+          continue outer;
+        }
+
+        if (c != ' ' && c != '\t') // Not a space character?  End of list
+        {
+          listChar = 0;
+
+          auto ndx = cast(int)retLines.length - 1;
+          for (; ndx >= 0; ndx--) // Find last non-blank line to insert list close parenthesis after
+            if (retLines[ndx].strip.length != 0)
+              break;
+
+          retLines = retLines[0 .. ndx + 1] ~ [(cast(dchar)' ').repeat(listIndent).to!dstring ~ ")"]
+            ~ retLines[ndx + 1 .. $];
+          break;
+        }
+        else if (i > listIndent)
+          break;
+      }
+    }
+    else // Not in list
+    {
+      foreach (i, c; line) // Loop over characters of line looking for list item char
+      {
+        if (i > MaxListStartIndent)
+          break;
+
+        if (c == '-' || c == '*') // Dash or star are valid
+        { // Next char must be space or tab
+          if (i + 1 < line.length && (line[i + 1] == ' ' || line[i + 1] == '\t'))
+          {
+            listChar = c;
+            listIndent = cast(uint)i;
+            retLines ~= (cast(dchar)' ').repeat(listIndent).to!dstring ~ "$(LIST";
+            retLines ~= (cast(dchar)' ').repeat(listIndent + 2).to!dstring ~ line[0 .. i] ~ "*" ~ line[i + 1 .. $];
+            continue outer;
+          }
+        }
+        else if (c != ' ' && c != '\t') // If character isn't whitespace, then can't be a list item
+          break;
+      }
+    }
+
+    retLines ~= (listChar != 0 ? (cast(dchar)' ').repeat(listIndent + 2).to!dstring : "") ~ line; // Add additional indent for list lines
+  }
+
+  if (listChar != 0)
+    retLines ~= (cast(dchar)' ').repeat(listIndent).to!dstring ~ ")";
+
+  return retLines.join("\n");
+}

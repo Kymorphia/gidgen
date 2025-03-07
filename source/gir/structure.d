@@ -393,7 +393,7 @@ final class Structure : TypeNode
     if (defCode.preClass.length > 0)
       writer ~= defCode.preClass;
 
-    writeDocs(writer);
+    writer ~= genDocs;
 
     Structure[] objIfaces;
 
@@ -662,14 +662,14 @@ final class Structure : TypeNode
   { // Recursive function to process embedded struct/union fields
     void recurseStruct(Structure st)
     {
-      st.writeDocs(writer);
+      writer ~= st.genDocs;
       auto typeName = st is this ? st.cType : (st.name ? (st.name.camelCase(true) ~ "Type") : null); // Handles anonymous or named embedded struct/unions
 
       writer ~= [(st.structType == StructType.Union ? "union"d : "struct"d) ~ (typeName ? (" " ~ typeName) : ""), "{"];
 
       foreach (fi, f; st.fields)
       {
-        f.writeDocs(writer);
+        writer ~= f.genDocs;
 
         if (f.directStruct)
         {

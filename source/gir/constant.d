@@ -20,6 +20,11 @@ final class Constant : TypeNode
     _name = val;
   }
 
+  override @property dstring dName()
+  {
+    return _name;
+  }
+
   override void fromXml(XmlNode node)
   {
     super.fromXml(node);

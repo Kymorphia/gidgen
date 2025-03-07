@@ -36,6 +36,22 @@ final class Enumeration : TypeNode
   {
     kind = bitfield ? TypeKind.Flags : TypeKind.Enum;
     super.fixup;
+
+    Member[dstring] dupCheck; // Duplicate member check
+
+    foreach (m; members)
+    {
+      m.fixup;
+
+      if (auto dup = m.dName in dupCheck)
+      {
+        m.active = Active.Ignored;
+        dup.xmlNode.warn("Ignoring duplicate enum member '" ~ m.fullDName ~ "'");
+        continue;
+      }
+
+      dupCheck[dName] = m;
+    }
   }
 
   bool bitfield; /// true if flags bitfield, false for enum

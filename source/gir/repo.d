@@ -120,7 +120,7 @@ final class Repo : Base
           break;
         case "disable": // Not an actual Gir attribute, used for disabling arbitrary nodes
           break;
-        case "doc": // Documentation file position
+        case "doc": // Documentation
           if (auto base = baseParentFromXmlNodeWarn!Base(node))
           {
             base.docContent = node.content;
@@ -305,6 +305,14 @@ final class Repo : Base
 
       if (en.origDType != en.dType)
         typeObjectHash[en.origDType] = en;
+
+      foreach (m; en.members) // Add enum/flag member names
+      {
+        if (m.glibName) // FIXME - Is glibName more reliable?
+          defs.cSymbolHash[m.cName] = m;
+        else if (m.cName)
+          defs.cSymbolHash[m.glibName] = m;
+      }
     }
 
     foreach (cb; callbacks) // Hash callbacks
@@ -574,35 +582,26 @@ final class Repo : Base
 
     foreach (a; aliases)
     {
-      a.writeDocs(writer);
+      writer ~= a.genDocs;
       writer ~= ["alias " ~ a.cName ~ " = " ~ a.cType ~ ";", ""];
     }
 
     foreach (e; enums)
     {
-      e.writeDocs(writer);
+      writer ~= e.genDocs;
 
       writer ~= ["enum " ~ e.cType ~ (e.bitfield ? " : uint"d : ""), "{"];
 
-      Member[dstring] dupCheck; // Duplicate member check
-
       foreach (m; e.members)
       {
-        auto memberName = m.name.camelCase(true);
-
-        if (auto dup = memberName in dupCheck)
+        if (m.active == Active.Enabled)
         {
-          dup.xmlNode.warn("Ignoring duplicate enum member '" ~ memberName ~ "'");
-          continue;
+          if (writer.lines[$ - 1] != "{")
+            writer ~= "";
+
+          writer ~= m.genDocs;
+          writer ~= m.dName ~ " = " ~ m.value ~ ",";
         }
-
-        dupCheck[memberName] = m;
-
-        if (writer.lines[$ - 1] != "{")
-          writer ~= "";
-
-        m.writeDocs(writer);
-        writer ~= defs.symbolName(memberName) ~ " = " ~ m.value ~ ",";
       }
 
       writer ~= ["}", ""];
@@ -619,13 +618,13 @@ final class Repo : Base
         st.writeCStruct(writer);
       else if (st.pointer)
       {
-        st.writeDocs(writer);
+        writer ~= st.genDocs;
         writer ~= ["alias " ~ st.cType ~ " = " ~ st.cType ~ "_st*;", ""];
         writer ~= ["struct " ~ st.cType ~ "_st;", ""];
       }
       else // Opaque structure or pointer to opaque structure
       {
-        st.writeDocs(writer);
+        writer ~= st.genDocs;
         writer ~= ["struct " ~ st.cType ~ ";"d, ""];
       }
     }
@@ -776,7 +775,7 @@ final class Repo : Base
     dstring[] callbackDecls;
 
     foreach (i, cb; callbacks.filter!(x => x.active == Active.Enabled).enumerate) // Generate callback prototypes (to populate imports), added to writer output below
-      callbackDecls ~= (i == 0 ? [""d, "// Callbacks"] : []) ~ cb.getDelegPrototype;
+      callbackDecls ~= (i == 0 ? [""d, "// Callbacks"] : []) ~ ["", cb.genDocs, cb.getDelegPrototype];
 
     dstring[] aliasDecls;
 
@@ -788,17 +787,17 @@ final class Repo : Base
         continue;
 
       if (al.kind == TypeKind.Callback) // Callback aliases should alias to D callback delegates, not C functions
-        aliasDecls ~= ["alias " ~ al.name ~ " = " ~ al.fullDType ~ ";"];
+        aliasDecls ~= ["", "/** */", "alias " ~ al.name ~ " = " ~ al.fullDType ~ ";"];
       else if (al.name == al.cName)
-        aliasDecls ~= ["alias " ~ al.name ~ " = " ~ packageNamespace ~ ".c.types." ~ al.cName ~ ";"];
+        aliasDecls ~= ["", "/** */", "alias " ~ al.name ~ " = " ~ packageNamespace ~ ".c.types." ~ al.cName ~ ";"];
       else
       {
         auto aliasType = al.typeRepo.typeObjectHash.get(al._dType, null);
 
         if (aliasType && aliasType._dType == al._dType)
-          aliasDecls ~= ["alias " ~ al.name ~ " = " ~ aliasType.fullDType ~ ";"];
+          aliasDecls ~= ["", "/** */", "alias " ~ al.name ~ " = " ~ aliasType.fullDType ~ ";"];
         else
-          aliasDecls ~= ["alias " ~ al.name ~ " = " ~ al.cName ~ ";"];
+          aliasDecls ~= ["", "/** */", "alias " ~ al.name ~ " = " ~ al.cName ~ ";"];
       }
     }
 
@@ -811,7 +810,7 @@ final class Repo : Base
     writer ~= aliasDecls; // Write the aliases
 
     foreach (i, en; enums.filter!(x => x.active == Active.Enabled).enumerate) // Write out enums
-      writer ~= (i == 0 ? [""d, "// Enums"] : []) ~ ["alias " ~ en.dType ~ " = " ~ en.cType ~ ";"];
+      writer ~= (i == 0 ? [""d, "// Enums"] : []) ~ ["", "/** */", "alias " ~ en.dType ~ " = " ~ en.cType ~ ";"];
 
     // Filter out structures that aren't enabled, have their own module, or whose D types match the C type name (no prefix)
     auto simpleStructs = structs.filter!(x => x.active == Active.Enabled && !x.inModule && x.name != x.cType).enumerate;
@@ -821,8 +820,8 @@ final class Repo : Base
       if (i == 0)
         writer ~= [""d, "// Structs"];
 
-      writer ~= ["alias " ~ st.name ~ " = " ~ st.cType ~ (st.kind == TypeKind.Pointer && !st.pointer ? "*"d : "")
-        ~ ";"];
+      writer ~= ["", "/** */", "alias " ~ st.name ~ " = " ~ st.cType ~ (st.kind == TypeKind.Pointer
+        && !st.pointer ? "*"d : "") ~ ";"];
     }
 
     writer ~= callbackDecls;
@@ -830,9 +829,9 @@ final class Repo : Base
     foreach (i, con; constants.filter!(x => x.active == Active.Enabled).enumerate) // Write out constants
     {
       writer ~= "";
-      con.writeDocs(writer);
+      writer ~= con.genDocs;
       writer ~= ["enum " ~ con.name ~ (con.kind == TypeKind.String ? (" = \"" ~ con.value ~ "\";")
-        : (" = " ~ con.value ~ ";")), ""];
+        : (" = " ~ con.value ~ ";"))];
     }
 
     if (typesStruct.defCode.preClass.length > 0)
@@ -1048,28 +1047,27 @@ final class Repo : Base
   dstring gdocToDDoc(dstring s, dstring prefix)
   {
     import std.regex : Captures, ctRegex, replaceAll;
-    auto escapeRe = ctRegex!(r"[$=]"d);
-    auto nlSpaceRe = ctRegex!(r"\n\s*"d);
+    auto nlRe = ctRegex!(r"\n"d);
     auto refRe = ctRegex!(r"\[`?([a-z]+@[^\]]+)`?\]"d);
     auto funcRe = ctRegex!(r"([a-z0-9_]+)\(\)"d);
+    auto backtickRe = ctRegex!(r"`([A-Za-z0-9_]+)`"d);
+    auto constRe = ctRegex!(r"%([A-Za-z0-9_]+)"d);
+    auto oldCodeBlockRe = ctRegex!("\\|\\[(?:<!-- +language=\"([^\"]+)\" +-->)?(.*?)\\]\\|"d, "s");
 
-    s = s.replaceAll(escapeRe, "\\$&"); // Escape special characters
+    dstring codeBlockReplace(Captures!dstring m) // Replace |[<!-- language="LANG" -->  ]| code blocks with triple backticks
+    {
+      return "```" ~ m[1].toLower ~ m[2] ~ "```";
+    }
 
-    // Format newlines for comment block
-    prefix = "\n" ~ prefix;
-    s = s.replaceAll(nlSpaceRe, prefix);
-
-    dstring refReplace(Captures!(dstring) m)
+    dstring refReplace(Captures!dstring m) // Replace [kind@name] with DDoc reference
     {
       if (auto tn = findTypeObjectByGDocRef(m[1]))
         return "[" ~ tn.fullDName ~ "]";
       else
-        return m[1];
+        return "`" ~ m[1] ~ "`";
     }
 
-    s = replaceAll!(refReplace)(s, refRe); // Replace [kind@name] with DDoc reference
-
-    dstring funcReplace(Captures!(dstring) m)
+    dstring funcOrBacktickReplace(Captures!dstring m) // Replace func() or `backtick` references with links, or keep it as a backtick if not resolved
     {
       if (auto tn = defs.cSymbolHash.get(m[1], null))
         return "[" ~ tn.fullDName ~ "]";
@@ -1077,9 +1075,42 @@ final class Repo : Base
         return m[0];
     }
 
-    s = replaceAll!(funcReplace)(s, funcRe); // Replace func() references
+    dstring constReplace(Captures!dstring m) // Replace %CONST symbol references
+    {
+      auto lcMatch = m[1].toLower;
 
-    return s.escapeNonRefLinkParens;
+      if (lcMatch.among("null"d, "true"d, "false"d))
+        return lcMatch;
+
+      if (auto tn = defs.cSymbolHash.get(m[1], null))
+        return "[" ~ tn.fullDName ~ "]";
+      else
+        return "`" ~ m[1] ~ "`";
+    }
+
+    s = replaceAll!codeBlockReplace(s, oldCodeBlockRe); // replace old code blocks with triple backticks
+    s = s.markdownListToDDoc; // Replace markdown lists with adrdox lists
+
+    auto lines = s.split("\n");
+    bool inCodeBlock;
+
+    foreach (ref line; lines) // Make sure other replacements don't occur inside of code blocks
+    {
+      if (line.stripLeft.startsWith("```"))
+        inCodeBlock = !inCodeBlock;
+
+      if (!inCodeBlock)
+      {
+        line = replaceAll!refReplace(line, refRe);
+        line = replaceAll!funcOrBacktickReplace(line, funcRe);
+        line = replaceAll!funcOrBacktickReplace(line, backtickRe);
+        line = replaceAll!constReplace(line, constRe);
+      }
+
+      line = prefix ~ line;
+    }
+
+    return lines.join("\n");
   }
 
   /**
