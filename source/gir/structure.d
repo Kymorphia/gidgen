@@ -171,7 +171,11 @@ final class Structure : TypeNode
   override void fixup()
   {
     import std.string : chomp;
-    _moduleName = repo.defs.symbolName(origDType.toSnakeCase.chomp("_t")); // FIXME - Kind of a hack, to remove _t from type names (Harfbuzz)
+
+    if (origDType.canFind('_')) // If the original D type was snake case, make sure to remove any _t (FIXME - Kind of a hack for Harfbuzz)
+      _moduleName = repo.defs.symbolName(origDType.toSnakeCase.chomp("_t"));
+    else // FIXME - Add support to set the module name, default to using the original type (prior to any postfixes like for ObjectAtk for example)
+      _moduleName = repo.defs.symbolName(origDType.toSnakeCase);
 
     if (auto field = cast(Field)parent) // Structure as a field of another structure?
     { // dType and cType are the field name (not an actual type)
