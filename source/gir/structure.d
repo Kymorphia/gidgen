@@ -540,12 +540,12 @@ final class Structure : TypeNode
       writer ~= ["", "void* cPtr()", "{", "return cast(void*)&cInstance;", "}"];
 
     if (kind.among(TypeKind.Boxed, TypeKind.Object) || (kind == TypeKind.Interface && moduleType == ModuleType.Iface))
-      writer ~= ["", "static GType getType()", "{", "import gid.loader : gidSymbolNotFound;",
+      writer ~= ["", "static GType getGType()", "{", "import gid.loader : gidSymbolNotFound;",
         "return cast(void function())" ~ glibGetType
         ~ " != &gidSymbolNotFound ? " ~ glibGetType ~ "() : cast(GType)0;", "}"]; // Return 0 if get_type() function was not resolved
 
     if (kind.among(TypeKind.Boxed, TypeKind.Object))
-      writer ~= ["", "override @property GType gType()", "{", "return getType();", "}"];
+      writer ~= ["", "override @property GType gType()", "{", "return getGType();", "}"];
 
     if (kind.among(TypeKind.Opaque, TypeKind.Wrap, TypeKind.Boxed))
       writer ~= propMethods;
