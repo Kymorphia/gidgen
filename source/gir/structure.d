@@ -183,6 +183,9 @@ final class Structure : TypeNode
 
     super.fixup;
 
+    if (cType.empty) // If cType is unset, set it to glibTypeName
+      cType = glibTypeName;
+
     foreach (f; fields) // Fixup structure fields
     {
       f.fixup;
