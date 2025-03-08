@@ -30,7 +30,7 @@ class SignalWriter
   {
     auto baseName = signal.titleName ~ "Callback";
     connectDecl = "ulong connect" ~ signal.titleName ~ "(T)(" ~ (signal.detailed ? "string detail = null, "d : "")
-      ~ "T callback, " ~  "Flag!\"After\" after = No.After)\nif (is(T : " ~ baseName ~ "Dlg) || is(T : " ~ baseName
+      ~ "T callback, " ~  "Flag!\"after\" after = No.after)\nif (is(T : " ~ baseName ~ "Dlg) || is(T : " ~ baseName
       ~ "Func))";
 
     preCall ~= "extern(C) void _cmarshal(GClosure* _closure, GValue* _returnValue, uint _nParams,"
@@ -203,17 +203,17 @@ class SignalWriter
           break;
         case String:
           inpProcess ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n_" ~ param.dName ~ " ~= " ~ param.dName ~ "[i].fromCString("
-            ~ param.fullOwnerFlag ~ ".Free);\n";
+            ~ param.fullOwnerFlag ~ ".free);\n";
           break;
         case Opaque, Boxed, Wrap, Reffed:
           inpProcess ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n_" ~ param.dName ~ " ~= new " ~ elemType.fullDType ~ "(cast("
             ~ elemType.cType.stripConst ~ "*)&" ~ param.dName ~ "[i]"
-            ~ (param.kind != Wrap ? (", " ~ param.fullOwnerFlag ~ ".Take") : "") ~ ");\n";
+            ~ (param.kind != Wrap ? (", " ~ param.fullOwnerFlag ~ ".take") : "") ~ ");\n";
           break;
         case Object, Interface:
           auto objectGSym = param.repo.resolveSymbol("GObject.ObjectG");
           inpProcess ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n_" ~ param.dName ~ " ~= " ~ objectGSym ~ ".getDObject!("
-            ~ elemType.fullDType ~ ")(" ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);\n";
+            ~ elemType.fullDType ~ ")(" ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".take);\n";
           break;
         case Unknown, Callback, Container, Namespace:
           assert(0, "Unsupported parameter array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType.kind.to!string
@@ -244,7 +244,7 @@ class SignalWriter
       writer ~= "    detail = Signal detail or null (default)";
 
     writer ~= ["    callback = signal callback delegate or function to connect",
-    "    after = Yes.After to execute callback after default handler, No.After to execute before (default)",
+    "    after = Yes.after to execute callback after default handler, No.after to execute before (default)",
       "  Returns: Signal ID", "*/"];
 
     if (moduleType == ModuleType.Iface)

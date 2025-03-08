@@ -339,7 +339,7 @@ class TypeNode : Base
     if (_dType.canFind('.')) // If substituted type contains a repo name, resolve it
       _dType = parseRepoType(_dType, typeRepo);
 
-    cType = typeRepo.subTypeStr(origCType, Yes.CType);
+    cType = typeRepo.subTypeStr(origCType, Yes.cType);
 
     foreach (typ; elemTypes) // Fixup container element types
       typ.fixup;
@@ -400,7 +400,7 @@ class TypeNode : Base
 
     if (elemTypes[0].origCType)
     {
-      elemTypes[0].cType = elemTypes[0].typeRepo.subTypeStr(elemTypes[0].origCType, Yes.CType);
+      elemTypes[0].cType = elemTypes[0].typeRepo.subTypeStr(elemTypes[0].origCType, Yes.cType);
 
       info("Using member C type '" ~ elemTypes[0].cType.to!string ~ "' for D type '"
         ~ elemTypes[0]._dType.to!string ~ "' for an array with C type '" ~ cType.to!string ~ "' in "
