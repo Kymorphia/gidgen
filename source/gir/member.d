@@ -41,7 +41,7 @@ final class Member : TypeNode
   override void fixup()
   {
     super.fixup;
-    _dName = repo.defs.symbolName(_name.camelCase);
+    _dName = repo.defs.symbolName(_name.camelCase(true));
   }
 
   private dstring _name; /// Name of the enumeration or bitfield member
