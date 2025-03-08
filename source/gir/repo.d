@@ -519,7 +519,7 @@ final class Repo : Base
       "import " ~ st.fullModuleName ~ "_mixin;", "",
       "/// Proxy object for " ~ st.fullName ~ " interface when a GObject has no applicable D binding",
       "class " ~ className ~ " : IfaceProxy, " ~ st.fullDType, "{",
-      "this(void* ptr, Flag!\"take\" take = No.take)", "{", "super(cast(void*)ptr, take);", "}", "",
+      "this(void* ptr, Flag!\"Take\" take = No.Take)", "{", "super(cast(void*)ptr, take);", "}", "",
       "override TypeInfo_Interface getIface()", "{", "return typeid(" ~ st.fullDType ~ ");", "}", "",
       "mixin " ~ st.dType ~ "T!();",
       "}",
@@ -1140,13 +1140,13 @@ final class Repo : Base
    * Substitute type.
    * Params:
    *   type = Type string
-   *   cType = No.cType for D type substitution, Yes.cType for C type (defaults to No)
+   *   cType = No.CType for D type substitution, Yes.CType for C type (defaults to No)
    * Returns: Type string with any relevant substitutions
    */
-  dstring subTypeStr(dstring type, Flag!"cType" cType = No.cType)
+  dstring subTypeStr(dstring type, Flag!"CType" cType = No.CType)
   {
-    auto subs = (cType == No.cType) ? defs.dTypeSubs : defs.cTypeSubs;
-    auto localSubs = (cType == No.cType) ? dTypeSubs : cTypeSubs;
+    auto subs = (cType == No.CType) ? defs.dTypeSubs : defs.cTypeSubs;
+    auto localSubs = (cType == No.CType) ? dTypeSubs : cTypeSubs;
 
     enum State
     {
