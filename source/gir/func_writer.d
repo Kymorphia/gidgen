@@ -156,7 +156,7 @@ class FuncWriter
         decl ~= retVal.fullDType ~ " ";
         preCall ~= retVal.cType ~ " _cretval;\n";
         call ~= "_cretval = ";
-        postCall ~= retVal.fullDType ~ " _retval;\nif (_cretval)\n_retval = *_cretval;\n";
+        postCall ~= retVal.fullDType ~ " _retval;\nif (_cretval)\n_retval = *cast(" ~ retVal.fullDType ~ "*)_cretval;\n";
         break;
       case Callback:
         decl ~= retVal.fullDType ~ "* ";
@@ -618,7 +618,8 @@ class FuncWriter
           preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";\n";
           addCallParam("&_" ~ param.dName);
           postCall ~= param.dName ~ ".length = " ~ lengthStr ~ ";\n";
-          postCall ~= param.dName ~ "[0 .. $] = _" ~ param.dName ~ "[0 .. " ~ lengthStr ~ "];\n";
+          postCall ~= param.dName ~ "[0 .. $] = (cast(" ~ elemType.fullDType ~ "*)_" ~ param.dName ~ ")[0 .. "
+            ~ lengthStr ~ "];\n";
 
           if (param.ownership != Ownership.None)
             postCall ~= "safeFree(cast(void*)_" ~ param.dName ~ ");\n";

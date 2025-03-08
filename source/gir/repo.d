@@ -143,7 +143,8 @@ final class Repo : Base
           if (auto st = node.baseParentFromXmlNodeWarn!Structure)
             st.fields ~= new Field(st, node);
           break;
-        case "function-macro": // Function macro (namespace)
+        case "function-inline": // Inline function
+        case "function-macro": // Function macro
           goto noRecurse; // Ignore function macros
         case "glib:boxed":
           break; // Silently ignore this seldom used node (only TreeRowData seen so far)
@@ -231,7 +232,7 @@ final class Repo : Base
           if (node.id !in unknownElements)
           {
             unknownElements[node.id] = true;
-            warning(cast(string)("Unknown XML element '" ~ node.id ~ "'"));
+            warning("Unknown XML element '" ~ node.id.to!string ~ "'");
           }
           break;
       }
@@ -563,7 +564,9 @@ final class Repo : Base
     }
 
     output ~= "\n}\n";
-    write(path, output);
+
+    if (!path.exists || readText(path) != output) // Only update dub.json if changed (build optimization)
+      write(path, output);
   }
 
   /**

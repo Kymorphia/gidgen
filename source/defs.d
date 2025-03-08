@@ -277,7 +277,7 @@ class Defs
             throw new Exception("Too many arguments to 'class' command " ~ posInfo);
 
           if (classSplitName.length == 1) // Only update current module name if this is not a module definition file
-            curModName = cmdTokens[1].toSnakeCase;
+            curModName = cmdTokens[1].snakeCase;
 
           if (cmdTokens.length > 2)
           {
@@ -520,7 +520,10 @@ class Defs
     output ~= sortedRepos.map!(x => `    "` ~ buildPath(relPath, x).replace("\\", "/") ~ `/"`).join(",\n"); // Just use forward slashes on Windows
     output ~= "\n  ]\n}\n";
 
-    write(buildPath(pkgPath, "dub.json"), output);
+    auto path = buildPath(pkgPath, "dub.json");
+
+    if (!path.exists || readText(path) != output) // Only update dub.json if changed (build optimization)
+      write(path, output);
   }
 
   /**

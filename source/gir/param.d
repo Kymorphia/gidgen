@@ -111,6 +111,14 @@ final class Param : TypeNode
 
     auto func = getParentByType!Func;
 
+    // Convert char** out parameters to output strings, not output array of strings
+    if (containerType == ContainerType.Array && direction == ParamDirection.Out && cType.stripConst == "char**")
+    {
+      containerType = ContainerType.None;
+      kind = TypeKind.String;
+      elemTypes.length = 0;
+    }
+
     if (lengthParamIndex != ArrayLengthUnset) // Array has a length argument?
     {
       if (lengthParamIndex >= 0)
