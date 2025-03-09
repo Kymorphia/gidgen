@@ -64,16 +64,6 @@ final class Field : TypeNode
     else if (directStruct) // Embedded structure
       foreach (f; directStruct.fields)
         f.fixup;
-
-    foreach (s; ["reserved"d, "dummy"d])
-    {
-      if (active == Active.Enabled && name.toLower.canFind(s))
-      {
-        active = Active.Disabled;
-        info("Disabling field '" ~ name.to!string ~ "' containing '" ~ s.to!string ~ "'");
-        break;
-      }
-    }
   }
 
   override void resolve()
