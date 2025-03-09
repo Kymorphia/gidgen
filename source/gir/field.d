@@ -52,6 +52,9 @@ final class Field : TypeNode
   {
     super.fixup;
 
+    if (private_ || !introspectable) // Ignore private or non-introspectable fields
+      active = Active.Ignored;
+
     if (callback) // Embedded callback type
     {
       cType = origCType = null;
@@ -64,16 +67,6 @@ final class Field : TypeNode
     else if (directStruct) // Embedded structure
       foreach (f; directStruct.fields)
         f.fixup;
-
-    foreach (s; ["reserved"d, "dummy"d])
-    {
-      if (active == Active.Enabled && name.toLower.canFind(s))
-      {
-        active = Active.Disabled;
-        info("Disabling field '" ~ name.to!string ~ "' containing '" ~ s.to!string ~ "'");
-        break;
-      }
-    }
   }
 
   override void resolve()
@@ -89,7 +82,7 @@ final class Field : TypeNode
 
   override void verify()
   {
-    if (active != Active.Enabled || private_)
+    if (active != Active.Enabled)
       return;
 
     super.verify;

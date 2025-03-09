@@ -321,6 +321,9 @@ final class Structure : TypeNode
 
     foreach (f; fields) // Verify structure fields
     {
+      if (kind != TypeKind.Wrap && kind != TypeKind.Boxed) // Ignore fields in structures other than Wrap and Boxed
+        f.active = Active.Ignored;
+
       if (f.active != Active.Enabled)
         continue;
 
@@ -564,7 +567,7 @@ final class Structure : TypeNode
 
     foreach (f; fields)
     {
-      if (f.active != Active.Enabled || f.private_)
+      if (f.active != Active.Enabled)
         continue;
 
       assert(!f.directStruct, "Unsupported embedded structure field " ~ f.fullName.to!string);

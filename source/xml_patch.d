@@ -21,7 +21,9 @@ import xml_tree;
  *   Wildcards:
  *   To match a node anywhere in the XML doc use '*' as the first node ID component: *.array[ByteArray]
  *   Selectors select a single node/attribute unless wildcards are used
- *   A wildcard node selector is specified by prepending a '*' before the node ID: function[my_function].*parameter
+ *   A wildcard node selector is specified by prepending a '*' before the node ID: function[my_function].*parameter.
+ *     NOTE: Node ID name wildcards are not used for matching the node ID name, but for indicating that multiple nodes can match.
+ *       Pattern matching of node IDs is not supported currently.
  *   A wildcard attribute selector is followed by square brackets to specify the attribute: record[my_record].*parameter[introspectable]
  *   Wildcards can be specified in attribute values by including them in the value: function[new*]
  *
