@@ -21,6 +21,9 @@ class Report
       { // Add the structure to the report objects array by active state
         report.objs[cast(int)st.active][cast(int)ReportObjType.Structs] ~= st;
 
+        if (st.active != Active.Enabled)  // Ignore stats of structures that aren't active
+          continue;
+
         foreach (ndx, objArray; tuple(st.functions, st.signals, st.fields)) // Add functions, signals, and fields by active state
           foreach (obj; objArray)
             report.objs[cast(int)obj.active][ndx + 1] ~= obj;
