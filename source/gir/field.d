@@ -52,6 +52,9 @@ final class Field : TypeNode
   {
     super.fixup;
 
+    if (private_ || !introspectable) // Ignore private or non-introspectable fields
+      active = Active.Ignored;
+
     if (callback) // Embedded callback type
     {
       cType = origCType = null;
@@ -79,7 +82,7 @@ final class Field : TypeNode
 
   override void verify()
   {
-    if (active != Active.Enabled || private_)
+    if (active != Active.Enabled)
       return;
 
     super.verify;
