@@ -507,7 +507,7 @@ final class Structure : TypeNode
 
     // Boxed structures with defined structures can be allocated, add ctor without args
     if (kind == TypeKind.Boxed && !ctorFunc && !opaque && !pointer && !fields.empty)
-      writer ~= ["", "this()", "{", "super(safeMalloc(" ~ cType ~ ".sizeof), Yes.Take);", "}"];
+      writer ~= ["", "this()", "{", "super(gMalloc(" ~ cType ~ ".sizeof), Yes.Take);", "}"];
 
     if (kind == TypeKind.Opaque)
       writer ~= ["", "this(void* ptr, Flag!\"Take\" take = No.Take)", "{",
@@ -524,7 +524,7 @@ final class Structure : TypeNode
     else if (kind == TypeKind.Opaque && pointer)
       writer ~= ["cInstancePtr = cast(" ~ cType ~ ")ptr;", "", "owned = take;", "}"];
     else if (kind == TypeKind.Wrap)
-      writer ~= ["cInstance = *cast(" ~ cTypeRemPtr ~ "*)ptr;", "", "if (take)", "safeFree(ptr);", "}"];
+      writer ~= ["cInstance = *cast(" ~ cTypeRemPtr ~ "*)ptr;", "", "if (take)", "gFree(ptr);", "}"];
     else if (kind == TypeKind.Reffed && !parentStruct)
       writer ~= ["cInstancePtr = cast(" ~ cTypeRemPtr ~ "*)ptr;", "", "if (!take)", glibRefFunc
         ~ "(cInstancePtr);", "}", "", "~this()", "{", glibUnrefFunc ~ "(cInstancePtr);", "}", ""];
@@ -575,27 +575,23 @@ final class Structure : TypeNode
       assert(f.containerType == ContainerType.None, "Unsupported structure field " ~ f.fullName.to!string
           ~ " with container type " ~ f.containerType.to!string);
 
-      with (TypeKind) if (!f.kind.among(Callback, Simple))
+      if (f.kind != TypeKind.Callback)
         lines ~= ["", "@property " ~ f.fullDType ~ " " ~ f.dName ~ "()", "{"];
       else if (!f.typeObject) // Callback function type directly defined in field?
-        lines ~= [
-        "", "alias " ~ f.name.camelCase(true) ~ "FuncType = extern(C) " ~ f.callback.getCPrototype ~ ";"
-      ]; // Add a type alias, since extern(C) can't be used directly in arg definition
+        lines ~= ["", "alias " ~ f.name.camelCase(true) ~ "FuncType = extern(C) " ~ f.callback.getCPrototype ~ ";"]; // Add a type alias, since extern(C) can't be used directly in arg definition
+
+      dstring addrIfNeeded() // Returns an & if field is a direct structure, when we need a pointer to it
+      {
+        with (TypeKind) return (f.kind.among(Simple, Boxed, Reffed) && f.cType.countStars == 0) ? "&"d : "";
+      }
 
       final switch (f.kind) with (TypeKind)
       {
         case Basic, BasicAlias, Pointer:
           lines ~= "return " ~ cPtr ~ "." ~ f.dName ~ ";";
           break;
-        case String:
-          lines ~= "return " ~ cPtr ~ "." ~ f.dName ~ ".fromCString(No.Free);";
-          break;
         case Enum, Flags:
           lines ~= "return cast(" ~ f.fullDType ~ ")" ~ cPtr ~ "." ~ f.dName ~ ";";
-          break;
-        case Simple:
-          lines ~= ["", "@property " ~ f.fullDType ~ " " ~ f.dName ~ "()", "{"];
-          lines ~= "return " ~ (f.cType.countStars == 1 ? "*"d : "") ~ cPtr ~ "." ~ f.dName ~ ";"; // Copy structure (dereference if it is a pointer to a structure)
           break;
         case Callback:
           if (f.typeObject) // Callback function is an alias type?
@@ -605,7 +601,10 @@ final class Structure : TypeNode
 
           lines ~= "return " ~ cPtr ~ "." ~ f.dName ~ ";";
           break;
-        case Opaque, Wrap, Boxed, Reffed:
+        case String, Simple, Object, Boxed, Reffed, Interface:
+          lines ~= "return cToD!(" ~ f.fullDType ~ ")(cast(void*)" ~ addrIfNeeded ~ cPtr ~ "." ~ f.dName ~ ");";
+          break;
+        case Opaque, Wrap:
           auto starCount = f.cType.retro.countUntil!(x => x != '*');
 
           if (starCount < 1) // The cast is for casting away "const"
@@ -613,11 +612,7 @@ final class Structure : TypeNode
           else
             lines ~= "return new " ~ f.fullDType ~ "(cast(" ~ f.cType.stripConst ~ ")" ~ cPtr ~ "." ~ f.dName ~ ");";
           break;
-        case Object:
-          auto objectGSym = repo.resolveSymbol("GObject.ObjectG");
-          lines ~= "return " ~ objectGSym ~ ".getDObject!(" ~ f.fullDType ~ ")(" ~ cPtr ~ "." ~ f.dName ~ ", No.Take);";
-          break;
-        case Unknown, Interface, Container, Namespace:
+        case Unknown, Container, Namespace:
           throw new Exception(
               "Unhandled readable field property type '" ~ f.fullDType.to!string ~ "' (" ~ f.kind.to!string
               ~ ") for struct " ~ fullDType.to!string);
@@ -628,7 +623,7 @@ final class Structure : TypeNode
       if (!f.writable)
         continue;
 
-      if (f.kind != TypeKind.Callback && f.kind != TypeKind.Simple)
+      if (f.kind != TypeKind.Callback) // Callback setter declaration is specially handled below
         lines ~= ["", "@property void " ~ f.dName ~ "(" ~ f.fullDType ~ " propval)", "{"];
 
       final switch (f.kind) with (TypeKind)
@@ -636,15 +631,10 @@ final class Structure : TypeNode
         case Basic, BasicAlias, Pointer:
           lines ~= cPtr ~ "." ~ f.dName ~ " = propval;";
           break;
-        case String:
-          lines ~= ["safeFree(cast(void*)" ~ cPtr ~ "." ~ f.dName ~ ");",
-            cPtr ~ "." ~ f.dName ~ " = propval.toCString(Yes.Alloc);"];
-          break;
         case Enum, Flags:
           lines ~= cPtr ~ "." ~ f.dName ~ " = cast(" ~ f.cType ~ ")propval;";
           break;
         case Simple:
-          lines ~= ["", "@property void " ~ f.dName ~ "(" ~ f.fullDType ~ " propval)", "{"];
           lines ~= cPtr ~ "." ~ f.dName ~ " = " ~ (f.cType.countStars == 1 ? "&"d : ""d) ~ "propval;"; // If field is a pointer, use the address of the structure
           break;
         case Callback:
@@ -655,7 +645,11 @@ final class Structure : TypeNode
 
           lines ~= cPtr ~ "." ~ f.dName ~ " = propval;";
           break;
-        case Opaque, Boxed, Wrap, Reffed, Object, Interface, Container, Namespace, Unknown:
+        case String, Boxed, Reffed, Object, Interface:
+          lines ~= ["cValueFree!(" ~ f.fullDType ~ ")(cast(void*)" ~ addrIfNeeded ~ cPtr ~ "." ~ f.dName ~ ");",
+            "dToC(propval, cast(void*)&" ~ cPtr ~ "." ~ f.dName ~ ");"];
+          break;
+        case Opaque, Wrap, Container, Namespace, Unknown:
           throw new Exception("Unhandled writable field property type '" ~ f.fullDType.to!string ~ "' (" ~ f
               .kind.to!string ~ ") for struct " ~ fullDType.to!string);
       }

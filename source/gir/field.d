@@ -102,10 +102,10 @@ final class Field : TypeNode
     if (containerType != ContainerType.None)
       throw new Exception("Container type '" ~ containerType.to!string ~ "' not supported");
 
-    if (kind.among(TypeKind.Unknown, TypeKind.Interface, TypeKind.Namespace))
+    if (kind.among(TypeKind.Unknown, TypeKind.Namespace))
       throw new Exception("Unhandled type '" ~ dType.to!string ~ "' (" ~ kind.to!string ~ ")");
 
-    with (TypeKind) if (writable && kind.among(Opaque, Boxed, Wrap, Reffed, Object, Interface))
+    with (TypeKind) if (writable && (kind.among(Opaque, Wrap) || (kind == Boxed && cType.countStars == 0))) // Non-pointer boxed types not currently supported (GValue for example)
     {
       writable = false;
       warnWithLoc(__FILE__, __LINE__, xmlLocation, "Setting writable to false for field '" ~ fullName.to!string ~ "' with unhandled type '"
