@@ -622,7 +622,7 @@ class FuncWriter
             ~ lengthStr ~ "];\n";
 
           if (param.ownership != Ownership.None)
-            postCall ~= "safeFree(cast(void*)_" ~ param.dName ~ ");\n";
+            postCall ~= "gFree(cast(void*)_" ~ param.dName ~ ");\n";
         }
         else
           addCallParam(param.dName ~ ".ptr");
@@ -637,7 +637,7 @@ class FuncWriter
             ~ param.fullOwnerFlag ~ ".Free);\n";
 
           if (param.ownership != Ownership.None)
-            postCall ~= "safeFree(cast(void*)_" ~ param.dName ~ ");\n";
+            postCall ~= "gFree(cast(void*)_" ~ param.dName ~ ");\n";
         }
         else
         {
@@ -659,7 +659,7 @@ class FuncWriter
             ~ param.dName ~ "[i]" ~ (param.kind != Wrap ? (", " ~ param.fullOwnerFlag ~ ".Take") : "") ~ ");\n";
 
           if (param.ownership != Ownership.None)
-            postCall ~= "safeFree(cast(void*)_" ~ param.dName ~ ");\n";
+            postCall ~= "gFree(cast(void*)_" ~ param.dName ~ ");\n";
         }
         else
         {
@@ -672,7 +672,7 @@ class FuncWriter
             : "") ~ ");\n";
 
           if (param.ownership != Ownership.None)
-            postCall ~= "safeFree(cast(void*)_" ~ param.dName ~ ");\n";
+            postCall ~= "gFree(cast(void*)_" ~ param.dName ~ ");\n";
         }
         break;
       case Object, Interface:
@@ -687,7 +687,7 @@ class FuncWriter
             ~ elemType.fullDType ~ ")(_" ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);\n";
 
           if (param.ownership != Ownership.None)
-            postCall ~= "safeFree(cast(void*)_" ~ param.dName ~ ");\n";
+            postCall ~= "gFree(cast(void*)_" ~ param.dName ~ ");\n";
         }
         else
         {
