@@ -558,9 +558,8 @@ final class Structure : TypeNode
         ~ " != &gidSymbolNotFound ? " ~ glibGetType ~ "() : cast(GType)0;", "}"]; // Return 0 if get_type() function was not resolved
 
     if (kind.among(TypeKind.Boxed, TypeKind.Object))
-      writer ~= ["", "/** */", "override @property GType gType()", "{", "return getGType();", "}", "",
-        "/** Returns `this`, for use in `with` statements. */", "override " ~ dType ~ " self()", "{", "return this;", "}"];
-  }
+      writer ~= ["", "override @property GType gType()", "{", "return getGType();", "}", "",
+        "override " ~ dType ~ " self()", "{", "return this;", "}"];
 
   // Write a Boxed type constructor with all fields as parameters with default values (optional)
   private dstring writeBoxedCtor()
