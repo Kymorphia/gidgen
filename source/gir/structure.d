@@ -355,30 +355,6 @@ final class Structure : TypeNode
     beginImports(this);
     scope(exit) endImports;
 
-    dstring[] propMethods;
-    FuncWriter[] funcWriters;
-    SignalWriter[] signalWriters;
-
-    // Create the function and signal writers first to construct the imports
-    if (!(defCode.inhibitFlags & DefInhibitFlags.Funcs))
-    {
-      if (kind == TypeKind.Wrap || kind == TypeKind.Boxed)
-        propMethods = constructFieldProps(); // Construct wrapper property methods in order to collect imports
-
-      foreach (fn; functions)
-        if (fn.active == Active.Enabled)
-          funcWriters ~= new FuncWriter(fn);
-
-      foreach (sig; signals)
-      {
-        if (sig.active == Active.Enabled)
-        {
-          codeTrap("struct.signal", sig.fullName);
-          signalWriters ~= new SignalWriter(sig);
-        }
-      }
-    }
-
     if (parentStruct)
       importManager.add(parentStruct.fullModuleName); // Add parent to imports
 
@@ -394,14 +370,10 @@ final class Structure : TypeNode
       importManager.add("glib.error");
     }
 
-    if (!(defCode.inhibitFlags & DefInhibitFlags.Imports))
-    {
-      if (kind == TypeKind.Interface)
-        writer ~= "public import " ~ fullModuleName ~ "_iface_proxy;";
+    if (!(defCode.inhibitFlags & DefInhibitFlags.Imports) && kind == TypeKind.Interface)
+      writer ~= "public import " ~ fullModuleName ~ "_iface_proxy;";
 
-      if (importManager.write(writer, isIfaceTemplate ? "public " : "")) // Interface templates use public imports so they are conveyed to the object they are mixed into
-        writer ~= "";
-    }
+    auto importLine = writer.lines.length; // Save position where imports should go, which are inserted later, to gather all dependencies
 
     if (defCode.preClass.length > 0)
       writer ~= defCode.preClass;
@@ -428,7 +400,12 @@ final class Structure : TypeNode
     writer ~= "{";
 
     if (!(defCode.inhibitFlags & DefInhibitFlags.Init))
-      writeInitCode(writer, propMethods, moduleType);
+    {
+      writeInitCode(writer, moduleType);
+
+      if (kind == TypeKind.Wrap || kind == TypeKind.Boxed)
+        writer ~= constructFieldProps(); // Construct wrapper property methods in order to collect imports
+    }
 
     if (kind == TypeKind.Object && !objIfaces.empty)
     {
@@ -459,16 +436,22 @@ final class Structure : TypeNode
 
     if (!(defCode.inhibitFlags & DefInhibitFlags.Funcs))
     {
-      foreach (fnWriter; funcWriters)
+      foreach (fn; functions)
       {
-        writer ~= "";
-        fnWriter.write(writer, moduleType);
+        if (fn.active == Active.Enabled)
+        {
+          writer ~= "";
+          (new FuncWriter(fn)).write(writer, moduleType);
+        }
       }
 
-      foreach (sigWriter; signalWriters)
+      foreach (sig; signals)
       {
-        writer ~= "";
-        sigWriter.write(writer, moduleType);
+        if (sig.active == Active.Enabled)
+        {
+          writer ~= "";
+          (new SignalWriter(sig)).write(writer, moduleType);
+        }
       }
     }
 
@@ -489,11 +472,21 @@ final class Structure : TypeNode
     if (defCode.postClass.length > 0)
       writer ~= defCode.postClass;
 
+    if (!(defCode.inhibitFlags & DefInhibitFlags.Imports))
+    {
+      auto imports = importManager.generate(isIfaceTemplate ? "public " : ""); // Interface templates use public imports so they are conveyed to the object they are mixed into
+
+      if (imports.length)
+        imports ~= "";
+
+      writer.insert(cast(int)importLine, imports);
+    }
+
     writer.write();
   }
 
   // Write class init code
-  private void writeInitCode(CodeWriter writer, dstring[] propMethods, ModuleType moduleType)
+  private void writeInitCode(CodeWriter writer, ModuleType moduleType)
   {
     if ((kind == TypeKind.Opaque && !pointer) || (kind == TypeKind.Reffed && !parentStruct))
       writer ~= [cTypeRemPtr ~ "* cInstancePtr;"];
@@ -554,9 +547,6 @@ final class Structure : TypeNode
     if (kind.among(TypeKind.Boxed, TypeKind.Object))
       writer ~= ["", "override @property GType gType()", "{", "return getGType();", "}", "",
         "override " ~ dType ~ " self()", "{", "return this;", "}"];
-
-    if (kind.among(TypeKind.Opaque, TypeKind.Wrap, TypeKind.Boxed))
-      writer ~= propMethods;
   }
 
   // Construct struct wrapper property methods

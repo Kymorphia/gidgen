@@ -28,6 +28,8 @@ class SignalWriter
   // Process the signal
   private void process()
   {
+    codeTrap("struct.signal", signal.fullName);
+
     auto baseName = signal.titleName ~ "Callback";
     connectDecl = "ulong connect" ~ signal.titleName ~ "(T)(" ~ (signal.detailed ? "string detail = null, "d : "")
       ~ "T callback, " ~  "Flag!\"After\" after = No.After)\nif (is(T : " ~ baseName ~ "Dlg) || is(T : " ~ baseName
