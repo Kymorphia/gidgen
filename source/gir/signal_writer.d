@@ -32,7 +32,7 @@ class SignalWriter
 
     processReturn();
 
-    call ~= "_dClosure.dlg(_paramTuple[0 .. Parameters!T.length]);";
+    call ~= "_dClosure.dlg(_paramTuple[]);";
 
     foreach (i, param; signal.params)
       processParam(param, i);
@@ -199,7 +199,7 @@ class SignalWriter
       ~ " const(GValue)* _paramVals, void* _invocHint, void* _marshalData)", "{",
       "assert(_nParams == " ~ (signal.params.length + 1).to!dstring ~ ", \"Unexpected number of signal parameters\");", // assert C marshal receives expected number of parameters
       "auto _dClosure = cast(DGClosure!T*)_closure;",
-      "Tuple!(" ~ callbackTypes[1 .. $].map!(ct => ct.type).join(", ") ~ ") _paramTuple;"]; // Create D type parameter tuple
+      "Tuple!(Parameters!T) _paramTuple;", ""]; // Create D type parameter tuple
 
     if (!preCall.empty)
       writer ~= preCall;
