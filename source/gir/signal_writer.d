@@ -231,10 +231,11 @@ class SignalWriter
     docs ~= "      callback = signal callback delegate or function to connect";
 
     docs ~= signal.params.filter!(pa => !(pa.isInstanceParam || pa.isArrayLength || pa.isClosure || pa.isDestroy))
-      .map!(pa => "        `" ~ pa.dName ~ "` " ~ signal.gdocToDDocFunc(pa.docContent, "          ").stripLeft
-      ~ " (optional)").array;
+      .map!(pa => ["", "        `" ~ pa.dName ~ "` " ~ signal.gdocToDDocFunc(pa.docContent, "          ").stripLeft
+      ~ " (optional)"]).join.array;
 
-    docs ~= "        `" ~ signal.signalDelegInstanceParam ~ "`" ~ " the instance the signal is connected to (optional)";
+    docs ~= ["", "        `" ~ signal.signalDelegInstanceParam ~ "`"
+      ~ " the instance the signal is connected to (optional)", ""];
 
     if (signal.returnVal && signal.returnVal.origDType != "none" && signal.returnVal.lengthArrayParams.length == 0)
       docs ~= "        `Returns` " ~ signal.gdocToDDocFunc(signal.returnVal.docContent, "          ").stripLeft;
