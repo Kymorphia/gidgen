@@ -44,12 +44,17 @@ class SignalWriter
       ~ "])(&_paramVals[0]);", ""]; // The instance type is the first value in the parameters passed to the C marshal, we make it last though
 
     callbackTypes ~= CallbackType(owningClass.fullDType, true); // Add the instance parameter type (last)
+    callbackProto ~= (callbackProto[$ - 1] != '(' ? ", "d : "") ~ owningClass.fullDType ~ " "
+      ~ signal.signalDelegInstanceParam;
+    callbackProto ~= ")";
   }
 
   /// Process return value
   private void processReturn()
   {
     auto retVal = signal.returnVal;
+
+    callbackProto ~= retVal.fullDType ~ " callback(";
 
     if (!retVal || retVal.origDType == "none")
     {
@@ -102,6 +107,8 @@ class SignalWriter
 
     with (TypeKind) callbackTypes ~= CallbackType(param.fullDType, param.kind.among(Object, Interface) != 0,
       param.direction);
+
+    callbackProto ~= (callbackProto[$ - 1] != '(' ? ", "d : "") ~ param.fullDType ~ " " ~ param.dName;
   }
 
   /// Process array parameter
@@ -165,6 +172,7 @@ class SignalWriter
     }
 
     inpProcess ~= ["_paramTuple[" ~ paramIndex.to!dstring ~ "] = _dArray;", "}"];
+    callbackProto ~= (callbackProto[$ - 1] != '(' ? ", "d : "") ~ param.fullDType ~ " " ~ param.dName;
   }
 
   /**
@@ -230,9 +238,10 @@ class SignalWriter
 
     docs ~= "      callback = signal callback delegate or function to connect";
 
-    docs ~= signal.params.filter!(pa => !(pa.isInstanceParam || pa.isArrayLength || pa.isClosure || pa.isDestroy))
-      .map!(pa => ["", "        `" ~ pa.dName ~ "` " ~ signal.gdocToDDocFunc(pa.docContent, "          ").stripLeft
-      ~ " (optional)"]).join.array;
+    docs ~= ["", "        $(D " ~ callbackProto ~ ")"];
+
+    docs ~= signal.params.filter!(pa => pa.isDParam).map!(pa => ["", "        `" ~ pa.dName ~ "` "
+      ~ signal.gdocToDDocFunc(pa.docContent, "          ").stripLeft ~ " (optional)"]).join.array;
 
     docs ~= ["", "        `" ~ signal.signalDelegInstanceParam ~ "`"
       ~ " the instance the signal is connected to (optional)", ""];
@@ -268,6 +277,7 @@ class SignalWriter
   Func signal; /// The signal object being written
   Structure owningClass; /// The class which owns the signal (parent)
   CallbackType[] callbackTypes; /// Array of callback D types, first one is return type
+  dstring callbackProto; /// Callback prototype (for docs)
   dstring[] preCall; /// Pre-call code for call return variable, call output parameter variables, and input variable processing
   dstring[] inpProcess; /// Input processing (after preCall variable assignments and before the delegate call)
   dstring call; /// The D delegate call
