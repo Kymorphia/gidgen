@@ -28,51 +28,25 @@ class SignalWriter
   // Process the signal
   private void process()
   {
-    auto baseName = signal.titleName ~ "Callback";
-    connectDecl = "ulong connect" ~ signal.titleName ~ "(T)(" ~ (signal.detailed ? "string detail = null, "d : "")
-      ~ "T callback, " ~  "Flag!\"After\" after = No.After)\nif (is(T : " ~ baseName ~ "Dlg) || is(T : " ~ baseName
-      ~ "Func))";
-
-    preCall ~= "extern(C) void _cmarshal(GClosure* _closure, GValue* _returnValue, uint _nParams,"
-      ~ " const(GValue)* _paramVals, void* _invocHint, void* _marshalData)\n{\n";
-    preCall ~= "assert(_nParams == " ~ (signal.params.length + 1).to!dstring
-      ~ ", \"Unexpected number of signal parameters\");\n";
-    preCall ~= "auto _dClosure = cast(DGClosure!T*)_closure;\n";
+    codeTrap("struct.signal", signal.fullName);
 
     processReturn();
 
-    auto instanceParamName = signal.repo.defs.symbolName(owningClass.dType[0].toLower ~ owningClass.dType[1 .. $]);
-    preCall ~= "auto " ~ instanceParamName ~ " = getVal!(" ~ owningClass.fullDType ~ ")(_paramVals);\n"; // Instance parameter is the first value
-    aliasDecl ~= " delegate("; // Replaced in write() for function alias
-    call ~= "_dClosure.dlg(";
+    call ~= "_dClosure.dlg(_paramTuple[]);";
 
     foreach (i, param; signal.params)
       processParam(param, i);
 
-    // Add the instance parameter (last)
-    addDeclParam(owningClass.fullDType ~ " " ~ instanceParamName);
-    addCallParam(instanceParamName);
+    // Add instance parameter
+    auto cbIndex = cast(int)callbackTypes.length - 1;
+    preCall ~= ["static if (Parameters!T.length > " ~ cbIndex.to!dstring ~ ")", // Only process parameters which are included in the callback
+      "_paramTuple[" ~ cbIndex.to!dstring ~ "] = getVal!(Parameters!T[" ~ cbIndex.to!dstring
+      ~ "])(&_paramVals[0]);", ""]; // The instance type is the first value in the parameters passed to the C marshal, we make it last though
 
-    aliasDecl ~= ");";
-    call ~= ");";
-  }
-
-  // Helper to add parameter to call string with comma separator
-  private void addCallParam(dstring paramStr)
-  {
-    if (!call.endsWith('('))
-      call ~= ", ";
-
-    call ~= paramStr;
-  }
-
-  // Helper to add parameter to aliasDecl string with comma separator
-  private void addDeclParam(dstring paramStr)
-  {
-    if (!aliasDecl.endsWith('('))
-      aliasDecl ~= ", ";
-
-    aliasDecl ~= paramStr;
+    callbackTypes ~= CallbackType(owningClass.fullDType, true); // Add the instance parameter type (last)
+    callbackProto ~= (callbackProto[$ - 1] != '(' ? ", "d : "") ~ owningClass.fullDType ~ " "
+      ~ signal.signalDelegInstanceParam;
+    callbackProto ~= ")";
   }
 
   /// Process return value
@@ -80,44 +54,23 @@ class SignalWriter
   {
     auto retVal = signal.returnVal;
 
+    callbackProto ~= retVal.fullDType ~ " callback(";
+
     if (!retVal || retVal.origDType == "none")
     {
-      aliasDecl ~= "void";
+      callbackTypes ~= CallbackType("void");
       return;
     }
 
     assert(retVal.containerType == ContainerType.None, "No support for signal container return type '"
       ~ retVal.containerType.to!string ~ "'");
 
-    final switch (retVal.kind) with (TypeKind)
-    {
-      case Basic, BasicAlias:
-        aliasDecl ~= retVal.fullDType;
-        preCall ~= retVal.fullDType ~ " _retval;\n";
-        call ~= "_retval = ";
-        break;
-      case String:
-        aliasDecl ~= "string";
-        call ~= "auto _retval = ";
-        break;
-      case Enum, Flags:
-        aliasDecl ~= retVal.fullDType;
-        call ~= "auto _dretval = ";
-        postCall ~= retVal.cType ~ " _retval = cast(" ~ retVal.cType ~ ")_dretval;\n";
-        break;
-      case Boxed:
-        aliasDecl ~= retVal.fullDType;
-        call ~= "auto _retval = ";
-        break;
-      case Wrap, Reffed, Object, Interface:
-        aliasDecl ~= retVal.fullDType;
-        call ~= "auto _retval = ";
-        break;
-      case Simple, Pointer, Callback, Opaque, Unknown, Container, Namespace:
-        assert(0, "Unsupported signal return value type '" ~ retVal.fullDType.to!string ~ "' (" ~ retVal.kind.to!string ~ ") for "
-            ~ signal.fullName.to!string);
-    }
+    with (TypeKind) assert(!retVal.kind.among(Simple, Pointer, Callback, Opaque, Unknown, Container, Namespace),
+      "Unsupported signal return value type '" ~ retVal.fullDType.to!string ~ "' (" ~ retVal.kind.to!string ~ ") for "
+      ~ signal.fullName.to!string);
 
+    with (TypeKind) callbackTypes ~= CallbackType(retVal.fullDType, retVal.kind.among(Object, Interface) != 0);
+    call ~= "auto _retval = ";
     postCall ~= "setVal!" ~ retVal.fullDType ~ "(_returnValue, _retval);\n";
   }
 
@@ -130,9 +83,6 @@ class SignalWriter
       return;
     }
 
-    preCall ~= "auto " ~ param.dName ~ " = getVal!(" ~ param.fullDType ~ ")(&_paramVals[" ~ (paramIndex + 1).to!dstring
-      ~ "]);\n"; // The parameter index is +1 because the first one is the object instance
-
     assert(param.containerType == ContainerType.None, "No support for signal container parameter type '"
       ~ param.containerType.to!string ~ "'");
 
@@ -140,25 +90,25 @@ class SignalWriter
       ~ param.direction.to!string ~ "'");
 
     if (param.isArrayLength) // Array length parameter?
-      return;
-
-    addCallParam(param.dName);
-
-    final switch (param.kind) with (TypeKind)
     {
-      case Basic, BasicAlias, Enum, Flags, Simple, Pointer, Opaque:
-        addDeclParam(param.directionStr ~ param.fullDType ~ " " ~ param.dName);
-        break;
-      case String:
-        addDeclParam(param.directionStr ~ "string " ~ param.dName);
-        break;
-      case Wrap, Boxed, Reffed, Object, Interface:
-        addDeclParam(param.fullDType ~ " " ~ param.dName);
-        break;
-      case Callback, Unknown, Container, Namespace:
-        assert(0, "Unsupported signal parameter type '" ~ param.fullDType.to!string ~ "' (" ~ param.kind.to!string ~ ") for "
-            ~ signal.fullName.to!string);
+      preCall ~= "auto " ~ param.dName ~ " = getVal!(" ~ param.fullDType ~ ")(&_paramVals["
+        ~ (paramIndex + 1).to!dstring ~ "]);"; // The parameter index is +1 because the first one is the object instance
+      return;
     }
+
+    with (TypeKind) assert(!param.kind.among(Callback, Unknown, Container, Namespace),
+      "Unsupported signal parameter type '" ~ param.fullDType.to!string ~ "' (" ~ param.kind.to!string ~ ") for "
+      ~ signal.fullName.to!string);
+
+    auto cbIndex = cast(int)callbackTypes.length - 1;
+    preCall ~= ["", "static if (Parameters!T.length > " ~ cbIndex.to!dstring ~ ")", // Only process parameters which are included in the callback
+      "_paramTuple[" ~ cbIndex.to!dstring ~ "] = getVal!(Parameters!T[" ~ cbIndex.to!dstring
+      ~ "])(&_paramVals[" ~ (paramIndex + 1).to!dstring ~ "]);", ""]; // The parameter index is +1 because the first one is the object instance
+
+    with (TypeKind) callbackTypes ~= CallbackType(param.fullDType, param.kind.among(Object, Interface) != 0,
+      param.direction);
+
+    callbackProto ~= (callbackProto[$ - 1] != '(' ? ", "d : "") ~ param.fullDType ~ " " ~ param.dName;
   }
 
   /// Process array parameter
@@ -169,12 +119,14 @@ class SignalWriter
         ~ "' and ownership '" ~ param.ownership.to!string ~ "'");
 
     auto elemType = param.elemTypes[0];
+    auto cbIndex = cast(int)callbackTypes.length - 1;
 
-    preCall ~= "auto " ~ param.dName ~ " = getVal!(" ~ elemType.cTypeRemPtr ~ "**)(&_paramVals[" ~ (paramIndex + 1).to!dstring ~ "]);\n"; // The parameter index is +1 because the first one is the object instance
+    inpProcess ~= ["", "static if (Parameters!T.length > " ~ (cbIndex + 1).to!dstring ~ ")", // Only process parameters which are included in the callback
+      "{", "auto _cArray = getVal!(" ~ elemType.cTypeRemPtr ~ "**)(&_paramVals[" ~ (paramIndex + 1).to!dstring // The parameter index is +1 because the first one is the object instance
+      ~ "]);", elemType.fullDType ~ "[] _dArray;"];
 
-    addDeclParam(elemType.fullDType ~ "[] " ~ param.dName);
-    preCall ~= elemType.fullDType ~ "[] _" ~ param.dName ~ ";\n";
-    addCallParam("_" ~ param.dName);
+    with (TypeKind) callbackTypes ~= CallbackType(param.fullDType, elemType.kind.among(Object, Interface) != 0,
+      param.direction);
 
     // Pre delegate call processing
     if (param.direction == ParamDirection.In || param.direction == ParamDirection.InOut)
@@ -187,9 +139,8 @@ class SignalWriter
         lengthStr = param.fixedSize.to!dstring;
       else if (param.zeroTerminated) // Array is zero terminated?
       {
-        inpProcess ~= "uint _len" ~ param.dName ~ ";\nif (" ~ param.dName ~ ")\nfor (; " ~ param.dName
-          ~ "[_len" ~ param.dName ~ "] " ~ (elemType.cType.endsWith("*") ? "!is null"d : "!= 0") ~ "; _len" ~ param.dName
-          ~ "++)\nbreak;\n";
+        inpProcess ~= ["uint _len" ~ param.dName ~ ";", "if (_cArray)", "for (; _cArray" ~ "[_len" ~ param.dName ~ "] "
+          ~ (elemType.cType.endsWith("*") ? "!is null"d : "!= 0") ~ "; _len" ~ param.dName ~ "++)", "break;"];
         lengthStr = "_len" ~ param.dName;
       }
       else
@@ -198,28 +149,30 @@ class SignalWriter
       final switch (elemType.kind) with (TypeKind)
       {
         case Basic, BasicAlias, Enum, Flags, Simple, Pointer:
-          inpProcess ~= "_" ~ param.dName ~ " = cast(" ~ elemType.fullDType ~ "[])" ~ param.dName ~ "[0 .. " ~ lengthStr
-            ~ "];\n";
+          inpProcess ~= "_dArray = cast(" ~ elemType.fullDType ~ "[])_cArray[0 .. " ~ lengthStr ~ "];";
           break;
         case String:
-          inpProcess ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n_" ~ param.dName ~ " ~= " ~ param.dName ~ "[i].fromCString("
-            ~ param.fullOwnerFlag ~ ".Free);\n";
+          inpProcess ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_dArray ~= _cArray[i].fromCString("
+            ~ param.fullOwnerFlag ~ ".Free);"];
           break;
         case Opaque, Boxed, Wrap, Reffed:
-          inpProcess ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n_" ~ param.dName ~ " ~= new " ~ elemType.fullDType ~ "(cast("
-            ~ elemType.cType.stripConst ~ "*)&" ~ param.dName ~ "[i]"
-            ~ (param.kind != Wrap ? (", " ~ param.fullOwnerFlag ~ ".Take") : "") ~ ");\n";
+          inpProcess ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_dArray ~= new " ~ elemType.fullDType ~ "(cast("
+            ~ elemType.cType.stripConst ~ "*)&_cArray[i]" ~ (param.kind != Wrap ? (", " ~ param.fullOwnerFlag
+            ~ ".Take") : "") ~ ");"];
           break;
         case Object, Interface:
           auto objectGSym = param.repo.resolveSymbol("GObject.ObjectG");
-          inpProcess ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n_" ~ param.dName ~ " ~= " ~ objectGSym ~ ".getDObject!("
-            ~ elemType.fullDType ~ ")(" ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);\n";
+          inpProcess ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_dArray ~= " ~ objectGSym ~ ".getDObject!("
+            ~ elemType.fullDType ~ ")(_cArray[i], " ~ param.fullOwnerFlag ~ ".Take);"];
           break;
         case Unknown, Callback, Container, Namespace:
           assert(0, "Unsupported parameter array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType.kind.to!string
               ~ ") for signal " ~ signal.fullName.to!string);
       }
     }
+
+    inpProcess ~= ["_paramTuple[" ~ paramIndex.to!dstring ~ "] = _dArray;", "}"];
+    callbackProto ~= (callbackProto[$ - 1] != '(' ? ", "d : "") ~ param.fullDType ~ " " ~ param.dName;
   }
 
   /**
@@ -230,31 +183,31 @@ class SignalWriter
    */
   void write(CodeWriter writer, ModuleType moduleType = ModuleType.Normal)
   {
-    writer ~= signal.genDocs;
-
-    auto baseName = signal.titleName ~ "Callback";
-
-    // Define a delegate and function alias
-    writer ~= ["alias " ~ baseName ~ "Dlg = " ~ aliasDecl, "", "/** ditto */", "alias " ~ baseName ~ "Func = "
-      ~ aliasDecl.replaceFirst("delegate", "function"), ""]; // Add ditto comment to use the same documentation for the function alias
-
-    writer ~= ["/**", "  Connect to " ~ signal.titleName ~ " signal.", "  Params:"];
-
-    if (signal.detailed)
-      writer ~= "    detail = Signal detail or null (default)";
-
-    writer ~= ["    callback = signal callback delegate or function to connect",
-    "    after = Yes.After to execute callback after default handler, No.After to execute before (default)",
-      "  Returns: Signal ID", "*/"];
+    writer ~= genDocs;
+    writer ~= "ulong connect" ~ signal.titleName ~ "(T)(" ~ (signal.detailed ? "string detail = null, "d : "")
+      ~ "T callback, Flag!\"After\" after = No.After)" ~ (moduleType == ModuleType.Iface ? ";"d : "");
 
     if (moduleType == ModuleType.Iface)
-    {
-      writer ~= connectDecl ~ ";";
       return;
-    }
 
-    writer ~= connectDecl;
-    writer ~= "{";
+    writer ~= ["if (isCallable!T", "&& is(ReturnType!T " ~ (callbackTypes[0].isObject ? ": "d : "== "d) // Add isCallable and ReturnType constraints
+      ~ callbackTypes[0].type ~ ")"];
+
+    dstring[ParamDirection] dirStorage = [ParamDirection.In: "none", ParamDirection.Out: "out_", // Map of ParamDirection enum to ParameterStorageClass values
+      ParamDirection.InOut: "ref_"];
+
+    writer ~= callbackTypes[1 .. $].enumerate.map!(t => "&& (Parameters!T.length < " ~ (t.index + 1).to!dstring // Add parameter constraints, either callback does not have parameter or it complies
+      ~ " || (ParameterStorageClassTuple!T[" ~ t.index.to!dstring ~ "] == ParameterStorageClass." // Check storage class depending on direction
+      ~ dirStorage[t.value.direction] ~ " && is(Parameters!T[" ~ t.index.to!dstring ~ "] " // Check parameter type
+      ~ (t.value.isObject ? ": "d : "== "d) ~ t.value.type ~ ")))").array;
+
+    writer ~= ["&& Parameters!T.length < " ~ callbackTypes.length.to!dstring ~ ")", "{"]; // Ensure there aren't more arguments than expected
+
+    writer ~= ["extern(C) void _cmarshal(GClosure* _closure, GValue* _returnValue, uint _nParams," // C marshal function
+      ~ " const(GValue)* _paramVals, void* _invocHint, void* _marshalData)", "{",
+      "assert(_nParams == " ~ (signal.params.length + 1).to!dstring ~ ", \"Unexpected number of signal parameters\");", // assert C marshal receives expected number of parameters
+      "auto _dClosure = cast(DGClosure!T*)_closure;",
+      "Tuple!(Parameters!T) _paramTuple;", ""]; // Create D type parameter tuple
 
     if (!preCall.empty)
       writer ~= preCall;
@@ -272,12 +225,61 @@ class SignalWriter
       ~ (signal.detailed ? `~ (detail.length ? "::" ~ detail : "")`d : "") ~ ", closure, after);", "}"];
   }
 
+  // Generate documentation for connect template and signal callback
+  private dstring[] genDocs()
+  {
+    auto docs = ["/**", "    Connect to `" ~ signal.titleName ~ "` signal.", ""];
+
+    docs ~= "    " ~ signal.gdocToDDocFunc(signal.docContent, "      ").stripLeft;
+    docs ~= ["", "    Params:"];
+
+    if (signal.detailed)
+      docs ~= "      detail = Signal detail or null (default)";
+
+    docs ~= "      callback = signal callback delegate or function to connect";
+
+    docs ~= ["", "        $(D " ~ callbackProto ~ ")"];
+
+    docs ~= signal.params.filter!(pa => pa.isDParam).map!(pa => ["", "        `" ~ pa.dName ~ "` "
+      ~ signal.gdocToDDocFunc(pa.docContent, "          ").stripLeft ~ " (optional)"]).join.array;
+
+    docs ~= ["", "        `" ~ signal.signalDelegInstanceParam ~ "`"
+      ~ " the instance the signal is connected to (optional)", ""];
+
+    if (signal.returnVal && signal.returnVal.origDType != "none" && signal.returnVal.lengthArrayParams.length == 0)
+      docs ~= "        `Returns` " ~ signal.gdocToDDocFunc(signal.returnVal.docContent, "          ").stripLeft;
+
+    docs ~= ["      after = Yes.After to execute callback after default handler, No.After to execute before (default)",
+      "    Returns: Signal ID"];
+
+    if (!signal.docVersion.empty || !signal.docDeprecated.empty)
+    {
+      docs ~= "";
+
+      if (!signal.docVersion.empty)
+        docs ~= "    Version: " ~ signal.docVersion;
+
+      if (!signal.docDeprecated.empty)
+        docs ~= "    Deprecated: " ~ signal.gdocToDDocFunc(signal.docDeprecated, "      ").stripLeft;
+    }
+
+    return docs ~ "*/";
+  }
+
+  // Information on a signal callback type (return value or parameter)
+  struct CallbackType
+  {
+    dstring type; // The D type string
+    bool isObject; // true if type is a derivable class
+    ParamDirection direction; // Parameter direction (ignored for return values)
+  }
+
   Func signal; /// The signal object being written
   Structure owningClass; /// The class which owns the signal (parent)
-  dstring aliasDecl; /// Delegate/function alias declarations
-  dstring connectDecl; /// Signal connect method declaration
-  dstring preCall; /// Pre-call code for call return variable, call output parameter variables, and input variable processing
-  dstring inpProcess; /// Input processing (after preCall variable assignments and before the delegate call)
+  CallbackType[] callbackTypes; /// Array of callback D types, first one is return type
+  dstring callbackProto; /// Callback prototype (for docs)
+  dstring[] preCall; /// Pre-call code for call return variable, call output parameter variables, and input variable processing
+  dstring[] inpProcess; /// Input processing (after preCall variable assignments and before the delegate call)
   dstring call; /// The D delegate call
   dstring postCall; /// Post-call code for return value processing, output parameter processing, and input variable cleanup
 }

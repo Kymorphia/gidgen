@@ -1050,7 +1050,6 @@ final class Repo : Base
   dstring gdocToDDoc(dstring s, dstring prefix)
   {
     import std.regex : Captures, ctRegex, replaceAll;
-    auto nlRe = ctRegex!(r"\n"d);
     auto refRe = ctRegex!(r"\[`?([a-z]+@[^\]]+)`?\]"d);
     auto funcRe = ctRegex!(r"([a-z0-9_]+)\(\)"d);
     auto backtickRe = ctRegex!(r"`([A-Za-z0-9_]+)`"d);

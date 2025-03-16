@@ -138,17 +138,17 @@ abstract class Base
     if (docContent.length == 0)
       return "/** */"; // Add blank docs if none, so that it is still included in generated DDocs
 
-    auto s = "/**\n  "d ~ repo.gdocToDDoc(docContent, "  ") ~ "\n";
+    auto s = "/**\n    "d ~ repo.gdocToDDoc(docContent, "    ").stripLeft ~ "\n";
 
     if (!docVersion.empty || !docDeprecated.empty)
     {
        s ~= "\n";
 
       if (!docVersion.empty)
-        s ~= "  Version: " ~ docVersion ~ "\n";
+        s ~= "    Version: " ~ docVersion ~ "\n";
 
       if (!docDeprecated.empty)
-        s ~= "  Deprecated: " ~ repo.gdocToDDoc(docDeprecated, "    ") ~ "\n";
+        s ~= "    Deprecated: " ~ repo.gdocToDDoc(docDeprecated, "      ").stripLeft ~ "\n";
     }
 
     return s ~ "*/";

@@ -113,39 +113,29 @@ final class Func : TypeNode
     if (docContent.length == 0)
       return "/** */"; // Add blank docs if none, so that it is still included in generated DDocs
 
-    auto isAlias = funcType ==  FuncType.Signal || funcType == FuncType.Callback;
-
-    auto s = "/**\n  "d ~ gdocToDDocFunc(docContent, "  ") ~ "\n";
-    auto preName = isAlias ? "    * $(B "d : "    ";
-    auto postName = isAlias ? ") "d : " = ";
+    auto s = "/**\n    "d ~ gdocToDDocFunc(docContent, "    ").stripLeft ~ "\n";
 
     auto paramDescrs = params.filter!(pa => !(pa.isInstanceParam || pa.isArrayLength || pa.isClosure || pa.isDestroy))
-      .map!(pa => preName ~ pa.dName ~ postName ~ gdocToDDocFunc(pa.docContent, "      ")).array;
-
-    if (funcType == FuncType.Signal)
-      paramDescrs ~= preName ~ signalDelegInstanceParam ~ postName ~ "the instance the signal is connected to";
+      .map!(pa => "      " ~ pa.dName ~ " = " ~ gdocToDDocFunc(pa.docContent, "        ").stripLeft).array;
 
     if (!paramDescrs.empty)
     {
-      s ~= isAlias ? "\n  ## Parameters\n  $(LIST\n"d : "  Params:\n"d; // FIXME - Work around lack of support for DDoc delegate alias parameter support
+      s ~= "\n    Params:\n"d;
       s ~= paramDescrs.join("\n") ~ "\n";
-
-      if (isAlias)
-        s ~= "  )\n";
     }
 
     if (returnVal && returnVal.origDType != "none" && returnVal.lengthArrayParams.length == 0)
-      s ~= "  Returns: " ~ gdocToDDocFunc(returnVal.docContent, "    ") ~ "\n";
+      s ~= "    Returns: " ~ gdocToDDocFunc(returnVal.docContent, "      ").stripLeft ~ "\n";
 
     if (!docVersion.empty || !docDeprecated.empty)
     {
       s ~= "\n";
 
       if (!docVersion.empty)
-        s ~= "  Version: " ~ docVersion ~ "\n";
+        s ~= "    Version: " ~ docVersion ~ "\n";
 
       if (!docDeprecated.empty)
-        s ~= "  Deprecated: " ~ gdocToDDocFunc(docDeprecated, "    ") ~ "\n";
+        s ~= "    Deprecated: " ~ gdocToDDocFunc(docDeprecated, "      ").stripLeft ~ "\n";
     }
 
     return s ~ "*/";
@@ -172,7 +162,7 @@ final class Func : TypeNode
     {
       foreach (pa; params)
         if (pa.name == m[1])
-          return pa.dName;
+          return "`" ~ pa.dName ~ "`";
 
       return m[1];
     }
