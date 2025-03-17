@@ -83,8 +83,11 @@ class SignalWriter
       return;
     }
 
-    assert(param.containerType == ContainerType.None, "No support for signal container parameter type '"
-      ~ param.containerType.to!string ~ "'");
+    if (param.containerType != ContainerType.None) // Other container type?
+    {
+      processContainerParam(param, paramIndex);
+      return;
+    }
 
     assert(param.direction == ParamDirection.In, "No support for signal parameter direction '"
       ~ param.direction.to!string ~ "'");
@@ -172,6 +175,45 @@ class SignalWriter
     }
 
     inpProcess ~= ["_paramTuple[" ~ paramIndex.to!dstring ~ "] = _dArray;", "}"];
+    callbackProto ~= (callbackProto[$ - 1] != '(' ? ", "d : "") ~ param.fullDType ~ " " ~ param.dName;
+  }
+
+  // Process other container parameters (not arrays)
+  private void processContainerParam(Param param, ulong paramIndex)
+  {
+    if (param.direction != ParamDirection.In)
+      assert(0, "Unsupported delegate container '" ~ param.containerType.to!string ~ "' parameter direction '"
+        ~ param.direction.to!string ~ "' and ownership '" ~ param.ownership.to!string ~ "'");
+
+    auto cbIndex = cast(int)callbackTypes.length - 1;
+
+    preCall ~= ["", "static if (Parameters!T.length > " ~ cbIndex.to!dstring ~ ")"]; // Only process parameters which are included in the callback
+
+    with (TypeKind) callbackTypes ~= CallbackType(param.fullDType);
+
+    dstring templateParams;
+
+    switch (param.containerType) with(ContainerType)
+    {
+      case ByteArray:
+        templateParams = param.ownership.to!dstring;
+        break;
+      case ArrayG, PtrArray, List, SList:
+        templateParams = param.elemTypes[0].fullDType  ~ ", " ~ "GidOwnership." ~ param.ownership.to!dstring;
+        break;
+      case HashTable:
+        templateParams = param.elemTypes[0].fullDType ~ ", " ~ param.elemTypes[1].fullDType ~ ", "
+          ~ "GidOwnership." ~ param.ownership.to!dstring;
+        break;
+      default:
+        assert(0, "Unsupported 'in' container type '" ~ param.containerType.to!string ~ "' for "
+          ~ param.fullName.to!string);
+    }
+
+    preCall ~= "_paramTuple[" ~ paramIndex.to!dstring ~ "] = g" ~ param.containerType.to!dstring ~ "ToD!("
+      ~ templateParams ~ ")(cast(" ~ param.containerType.containerTypeCType ~ "*)getVal!(void*)(&_paramVals["
+      ~ (paramIndex + 1).to!dstring ~ "]));\n"; // The parameter index is +1 because the first one is the object instance
+
     callbackProto ~= (callbackProto[$ - 1] != '(' ? ", "d : "") ~ param.fullDType ~ " " ~ param.dName;
   }
 

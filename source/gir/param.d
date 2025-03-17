@@ -207,18 +207,15 @@ final class Param : TypeNode
 
     if (func.funcType == FuncType.Signal)
     {
-      with(ContainerType) if (!containerType.among(None, Array))
-        throw new Exception("Signal parameter container type '" ~ containerType.to!string ~ "' not supported");
-
       if (direction != ParamDirection.In)
         throw new Exception("Signal parameter direction '" ~ direction.to!string ~ "' not supported");
 
-      with(TypeKind) if (containerType == ContainerType.Array
+      with(TypeKind) if (containerType != ContainerType.None
           && elemTypes[0].kind.among(Unknown, Callback, Container, Namespace))
-        throw new Exception("Signal array parameter element kind '" ~ kind.to!string ~ "' not supported");
+        throw new Exception("Signal container '" ~ containerType.to!string ~ "' parameter element kind '"
+          ~ kind.to!string ~ "' not supported");
 
-      with(TypeKind) if (containerType == ContainerType.None
-          && kind.among(Callback, Unknown, Namespace))
+      with(TypeKind) if (containerType == ContainerType.None && kind.among(Callback, Unknown, Namespace))
         throw new Exception("Signal parameter '" ~ dType.to!string ~ "' with kind '" ~ kind.to!string ~ "' not supported");
 
       return;
