@@ -209,7 +209,7 @@ class DelegWriter
     {
       case ByteArray:
         break;
-      case Array, PtrArray:
+      case ArrayG, PtrArray:
         templateParams = "!(" ~ retVal.elemTypes[0].fullDType  ~ ", " ~ retVal.zeroTerminated.to!dstring ~ ")";
         break;
       case List, SList:
@@ -402,7 +402,7 @@ class DelegWriter
       case ByteArray:
         templateParams = param.ownership.to!dstring;
         break;
-      case Array, PtrArray, List, SList:
+      case ArrayG, PtrArray, List, SList:
         templateParams = param.elemTypes[0].fullDType  ~ ", " ~ "GidOwnership." ~ param.ownership.to!dstring;
         break;
       case HashTable:
