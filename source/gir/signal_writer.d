@@ -124,7 +124,7 @@ class SignalWriter
     auto elemType = param.elemTypes[0];
     auto cbIndex = cast(int)callbackTypes.length - 1;
 
-    inpProcess ~= ["", "static if (Parameters!T.length > " ~ (cbIndex + 1).to!dstring ~ ")", // Only process parameters which are included in the callback
+    inpProcess ~= ["", "static if (Parameters!T.length > " ~ cbIndex.to!dstring ~ ")", // Only process parameters which are included in the callback
       "{", "auto _cArray = getVal!(" ~ elemType.cTypeRemPtr ~ "**)(&_paramVals[" ~ (paramIndex + 1).to!dstring // The parameter index is +1 because the first one is the object instance
       ~ "]);", elemType.fullDType ~ "[] _dArray;"];
 
