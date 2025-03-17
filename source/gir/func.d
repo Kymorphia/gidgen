@@ -305,7 +305,7 @@ final class Func : TypeNode
         {
           if (returnVal.ownership != Ownership.Full)
           {
-            disableFunc(__FILE__, __LINE__, "callback container type '" ~ returnVal.containerType.to!string
+            disableFunc(__FILE__, __LINE__, "callback return container type '" ~ returnVal.containerType.to!string
               ~ "' ownership '" ~ returnVal.ownership.to!string ~ "' is not supported");
             return;
           }
