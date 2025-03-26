@@ -32,7 +32,7 @@ class SignalWriter
 
     processReturn();
 
-    call ~= "_dClosure.dlg(_paramTuple[]);";
+    call ~= "_dClosure.cb(_paramTuple[]);";
 
     foreach (i, param; signal.params)
       processParam(param, i);
