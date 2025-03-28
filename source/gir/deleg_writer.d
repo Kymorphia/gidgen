@@ -161,11 +161,11 @@ class DelegWriter
 
     if (retVal.zeroTerminated)
     {
-      postCall ~= "_retval = cast(" ~ retVal.cType ~ ")g_malloc_n(_dretval.length + 1, (*_retval).sizeof);\n";
+      postCall ~= "_retval = cast(" ~ retVal.cType ~ ")gMalloc((_dretval.length + 1) * (*_retval).sizeof);\n";
       postCall ~= "zero(cast(void*)&_retval[_dretval.length], (*_retval).sizeof);";
     }
     else
-      postCall ~= "_retval = cast(" ~ retVal.cType ~ ")g_malloc_n(_dretval.length, (*_retval).sizeof);\n";
+      postCall ~= "_retval = cast(" ~ retVal.cType ~ ")gMalloc(_dretval.length * (*_retval).sizeof);\n";
 
     if (elemType.kind.among(TypeKind.Basic, TypeKind.BasicAlias, TypeKind.Enum))
       postCall ~= "_retval[0 .. _dretval.length] = _dretval[0 .. _dretval.length];\n";
@@ -196,7 +196,7 @@ class DelegWriter
     postCall ~= "}\n\n";
 
     if (retVal.lengthParam) // Array has length parameter?
-      postCall ~= retVal.lengthParam.dName ~ " = cast(" ~ retVal.lengthParam.dName ~ ".typeof)_dretval.length;\n";
+      postCall ~= "*" ~ retVal.lengthParam.dName ~ " = cast(typeof(" ~ retVal.lengthParam.dName ~ "))_dretval.length;\n";
   }
 
   /// Process a return container (not Array)
@@ -209,7 +209,7 @@ class DelegWriter
     {
       case ByteArray:
         break;
-      case Array, PtrArray:
+      case ArrayG, PtrArray:
         templateParams = "!(" ~ retVal.elemTypes[0].fullDType  ~ ", " ~ retVal.zeroTerminated.to!dstring ~ ")";
         break;
       case List, SList:
@@ -402,7 +402,7 @@ class DelegWriter
       case ByteArray:
         templateParams = param.ownership.to!dstring;
         break;
-      case Array, PtrArray, List, SList:
+      case ArrayG, PtrArray, List, SList:
         templateParams = param.elemTypes[0].fullDType  ~ ", " ~ "GidOwnership." ~ param.ownership.to!dstring;
         break;
       case HashTable:

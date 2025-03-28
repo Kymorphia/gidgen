@@ -900,6 +900,8 @@ final class Repo : Base
    */
   TypeKind typeKind(dstring type)
   {
+    auto repo = this;
+
     foreach (i; 0 .. 4) // Resolve up to 4 alias dereferences
     {
       if (type.among("char*"d, "const char*"d, "string"d, "utf8"d))
@@ -908,22 +910,26 @@ final class Repo : Base
       if (type.isBasicType)
         return i > 0 ? TypeKind.BasicAlias : TypeKind.Basic;
 
-      if (auto obj = typeObjectHash.get(type, null))
+      if (auto obj = repo.typeObjectHash.get(type, null))
       {
         if (auto al = cast(Alias)obj)
         {
           type = al.dType;
+
+          if (al.typeRepo)
+            repo = al.typeRepo;
+
           continue;
         }
 
         if (cast(Func)obj)
           return TypeKind.Callback;
-        else if (auto node = cast(TypeNode)obj)
-          return node.kind;
         else if (cast(Constant)obj)
           return TypeKind.Basic;
         else if (auto en = cast(Enumeration)obj)
           return en.bitfield ? TypeKind.Flags : TypeKind.Enum;
+        else if (auto node = cast(TypeNode)obj)
+          return node.kind;
         else
           return TypeKind.Unknown;
       }

@@ -669,6 +669,31 @@ long containerTypeElemCount(ContainerType container)
     return 1;
 }
 
+/**
+ * Get the C structure type for a container
+ * Params:
+ *   type = The container type
+ * Returns: The C type name or null if no C structure for given type
+ */
+dstring containerTypeCType(ContainerType type)
+{
+  switch (type) with (ContainerType)
+  {
+    case ArrayG:
+      return "GArray";
+    case PtrArray:
+      return "GPtrArray";
+    case List:
+      return "GList";
+    case SList:
+      return "GSList";
+    case HashTable:
+      return "GHashTable";
+    default:
+      return null;
+  }
+}
+
 /// Basic type names
 immutable string[] BasicTypeValues = [
   "bool", "byte", "char", "dchar", "double", "float", "glong", "gulong", "int", "long", "ptrdiff_t", "real", "short", // glong/gulong are versioned alias types which change depending on if Windows or not
