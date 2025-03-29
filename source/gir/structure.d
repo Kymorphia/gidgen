@@ -500,16 +500,16 @@ final class Structure : TypeNode
 
     // Boxed structures with defined structures can be allocated, add ctor without args
     if (kind == TypeKind.Boxed && !ctorFunc && !opaque && !pointer && !fields.empty)
-      writer ~= ["", "this()", "{", "super(gMalloc(" ~ cType ~ ".sizeof), Yes.Take);", "}"];
+      writer ~= ["", "/** */", "this()", "{", "super(gMalloc(" ~ cType ~ ".sizeof), Yes.Take);", "}"];
 
     if (kind == TypeKind.Opaque)
-      writer ~= ["", "this(void* ptr, Flag!\"Take\" take = No.Take)", "{",
+      writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take = No.Take)", "{",
         "if (!ptr)", "throw new GidConstructException(\"Null instance pointer for " ~ fullName ~ "\");", ""];
     else if (kind == TypeKind.Wrap || kind == TypeKind.Reffed)
-      writer ~= ["", "this(void* ptr, Flag!\"Take\" take = No.Take)", "{",
+      writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take = No.Take)", "{",
         "if (!ptr)", "throw new GidConstructException(\"Null instance pointer for " ~ fullName ~ "\");", ""];
     else if (kind == TypeKind.Boxed || kind == TypeKind.Object)
-      writer ~= ["", "this(void* ptr, Flag!\"Take\" take = No.Take)", "{",
+      writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take = No.Take)", "{",
         "super(cast(void*)ptr, take);", "}"];
 
     if (kind == TypeKind.Opaque && !pointer)
@@ -530,22 +530,22 @@ final class Structure : TypeNode
       writer ~= ["", "~this()", "{", freeFunction ~ "(&cInstance);", "}"];
 
     if (kind == TypeKind.Opaque)
-      writer ~= ["", "void* cPtr()", "{", "return cast(void*)cInstancePtr;", "}"];
+      writer ~= ["", "/** */", "void* cPtr()", "{", "return cast(void*)cInstancePtr;", "}"];
     else if (kind == TypeKind.Reffed && !parentStruct)
-      writer ~= ["", "void* cPtr(Flag!\"Dup\" dup = No.Dup)", "{", "if (dup)", glibRefFunc ~ "(cInstancePtr);", "",
+      writer ~= ["", "/** */", "void* cPtr(Flag!\"Dup\" dup = No.Dup)", "{", "if (dup)", glibRefFunc ~ "(cInstancePtr);", "",
         "return cInstancePtr;", "}"];
     else if (kind == TypeKind.Boxed)
-      writer ~= ["", "void* cPtr(Flag!\"Dup\" dup = No.Dup)", "{", "return dup ? copy_ : cInstancePtr;", "}"];
+      writer ~= ["", "/** */", "void* cPtr(Flag!\"Dup\" dup = No.Dup)", "{", "return dup ? copy_ : cInstancePtr;", "}"];
     else if (kind == TypeKind.Wrap)
-      writer ~= ["", "void* cPtr()", "{", "return cast(void*)&cInstance;", "}"];
+      writer ~= ["", "/** */", "void* cPtr()", "{", "return cast(void*)&cInstance;", "}"];
 
     if (kind.among(TypeKind.Boxed, TypeKind.Object) || (kind == TypeKind.Interface && moduleType == ModuleType.Iface))
-      writer ~= ["", "static GType getGType()", "{", "import gid.loader : gidSymbolNotFound;",
+      writer ~= ["", "/** */", "static GType getGType()", "{", "import gid.loader : gidSymbolNotFound;",
         "return cast(void function())" ~ glibGetType
         ~ " != &gidSymbolNotFound ? " ~ glibGetType ~ "() : cast(GType)0;", "}"]; // Return 0 if get_type() function was not resolved
 
     if (kind.among(TypeKind.Boxed, TypeKind.Object))
-      writer ~= ["", "override @property GType gType()", "{", "return getGType();", "}", "",
+      writer ~= ["", "/** */", "override @property GType gType()", "{", "return getGType();", "}", "",
         "override " ~ dType ~ " self()", "{", "return this;", "}"];
   }
 
