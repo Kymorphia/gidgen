@@ -350,6 +350,19 @@ final class Structure : TypeNode
 
     auto isIfaceTemplate = kind == TypeKind.Interface && moduleType == ModuleType.IfaceTemplate;
     auto writer = new CodeWriter(buildPath(path, moduleName.to!string ~ (isIfaceTemplate ? "_mixin" : "") ~ ".d")); // Append T to type name for interface mixin template module
+
+    dstring modType;
+
+    if (isIfaceTemplate)
+      modType = "interface mixin";
+    else if (structType == StructType.Interface)
+      modType = "interface";
+    else
+      modType = "class";
+
+    if (dType)
+      writer ~= "/// Module for [" ~ dType ~ "] " ~ modType;
+
     writer ~= ["module " ~ fullModuleName ~ (isIfaceTemplate ? "_mixin;"d : ";"d), ""];
 
     beginImports(this);

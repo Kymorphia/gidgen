@@ -513,11 +513,12 @@ final class Repo : Base
     auto className = st.dType ~ "IfaceProxy";
     auto modName = st.moduleName ~ "_iface_proxy";
     auto writer = new CodeWriter(buildPath(path, modName.to!string ~ ".d"));
-    writer ~= ["module " ~ packageNamespace ~ "." ~ modName ~ ";", "",
+    writer ~= ["/// Module for [" ~ className ~ "] interface proxy object",
+      "module " ~ packageNamespace ~ "." ~ modName ~ ";", "",
       "import gobject.object;",
       "import " ~ st.fullModuleName ~ ";",
       "import " ~ st.fullModuleName ~ "_mixin;", "",
-      "/// Proxy object for " ~ st.fullName ~ " interface when a GObject has no applicable D binding",
+      "/// Proxy object for [" ~ st.fullName ~ "] interface when a GObject has no applicable D binding",
       "class " ~ className ~ " : IfaceProxy, " ~ st.fullDType, "{",
       "this(void* ptr, Flag!\"Take\" take = No.Take)", "{", "super(cast(void*)ptr, take);", "}", "",
       "override TypeInfo_Interface getIface()", "{", "return typeid(" ~ st.fullDType ~ ");", "}", "",
@@ -578,6 +579,7 @@ final class Repo : Base
   {
     auto writer = new CodeWriter(path);
 
+    writer ~= "/// C types for " ~ dubPackageName ~ " library";
     writer ~= ["module " ~ packageNamespace ~ ".c.types;", ""];
     writer ~= "public import gid.basictypes;"; // Imported for glong/gulong types which change size depending on Windows or not
     writer ~= includes.map!(x => "public import " ~ x.name.toLower ~ ".c.types;\n").array;
@@ -647,6 +649,7 @@ final class Repo : Base
   {
     auto writer = new CodeWriter(path);
 
+    writer ~= "/// C functions for " ~ dubPackageName ~ " library";
     writer ~= ["module " ~ packageNamespace ~ ".c.functions;", ""];
     writer ~= ["public import gid.basictypes;", "import gid.loader;", "import " ~ packageNamespace ~ ".c.types;"]; // Import gid.basictypes for glong/gulong types which change size depending on Windows or not
 
@@ -671,7 +674,7 @@ final class Repo : Base
 
       if (!st.glibGetType.empty)
       { // Write GType function if set
-        writer ~= preamble ~ ["extern(C) GType function() c_" ~ st.glibGetType ~ ";"];
+        writer ~= preamble ~ ["GType function() c_" ~ st.glibGetType ~ "; ///"]; // Add comment so that adrdox includes function in API docs
         preamble = null;
       }
 
@@ -680,7 +683,7 @@ final class Repo : Base
         if (f.movedTo || !f.funcType.among(FuncType.Function, FuncType.Constructor, FuncType.Method))
           continue;
 
-        writer ~= preamble ~ [f.getCPrototype ~ " c_" ~ f.cName ~ ";"];
+        writer ~= preamble ~ [f.getCPrototype ~ " c_" ~ f.cName ~ "; ///"]; // Add comment so that adrdox includes function in API docs
         preamble = null;
       }
     }
@@ -693,7 +696,7 @@ final class Repo : Base
 
       if (st && !st.glibGetType.empty)
       { // Write GType function if set
-        writer ~= preamble ~ ["alias " ~ st.glibGetType ~ " = c_" ~ st.glibGetType ~ ";"];
+        writer ~= preamble ~ ["", "/** */", "alias " ~ st.glibGetType ~ " = c_" ~ st.glibGetType ~ ";"]; // Add comment so that adrdox includes alias in API docs
         preamble = null;
       }
 
@@ -702,7 +705,7 @@ final class Repo : Base
         if (f.movedTo || !f.funcType.among(FuncType.Function, FuncType.Constructor, FuncType.Method))
           continue;
 
-        writer ~= preamble ~ ["alias " ~ f.cName ~ " = c_" ~ f.cName ~ ";"];
+        writer ~= preamble ~ ["", "/** */", "alias " ~ f.cName ~ " = c_" ~ f.cName ~ ";"]; // Add comment so that adrdox includes alias in API docs
         preamble = null;
       }
     }
@@ -771,6 +774,8 @@ final class Repo : Base
   private void writeTypesModule(string path)
   {
     auto writer = new CodeWriter(path);
+
+    writer ~= "/// D types for " ~ dubPackageName ~ " library";
     writer ~= ["module " ~ packageNamespace ~ ".types;", ""];
     beginImports(typesStruct);
     scope(exit) endImports;
@@ -855,6 +860,7 @@ final class Repo : Base
   {
     auto writer = new CodeWriter(path);
 
+    writer ~= "/// Global functions for " ~ dubPackageName ~ " library";
     writer ~= ["module " ~ packageNamespace ~ ".global;", ""];
 
     // Create the function writers first to construct the imports
