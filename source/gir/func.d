@@ -127,6 +127,9 @@ final class Func : TypeNode
     if (returnVal && returnVal.origDType != "none" && returnVal.lengthArrayParams.length == 0)
       s ~= "    Returns: " ~ gdocToDDocFunc(returnVal.docContent, "      ").stripLeft ~ "\n";
 
+    if (throws)
+      s ~= "    Throws: [" ~ errorDomain ~ "]\n";
+
     if (!docVersion.empty || !docDeprecated.empty)
     {
       s ~= "\n";
