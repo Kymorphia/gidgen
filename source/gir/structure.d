@@ -513,7 +513,7 @@ final class Structure : TypeNode
 
     // Boxed structures with defined structures can be allocated, add ctor without args
     if (kind == TypeKind.Boxed && !ctorFunc && !opaque && !pointer && !fields.empty)
-      writer ~= ["", "/** */", "this()", "{", "super(gMalloc(" ~ cType ~ ".sizeof), Yes.Take);", "}"];
+      writer ~= writeBoxedCtor;
 
     if (kind == TypeKind.Opaque)
       writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take = No.Take)", "{",
@@ -560,6 +560,60 @@ final class Structure : TypeNode
     if (kind.among(TypeKind.Boxed, TypeKind.Object))
       writer ~= ["", "/** */", "override @property GType gType()", "{", "return getGType();", "}", "",
         "/** Returns `this`, for use in `with` statements. */", "override " ~ dType ~ " self()", "{", "return this;", "}"];
+  }
+
+  // Write a Boxed type constructor with all fields as parameters with default values (optional)
+  private dstring writeBoxedCtor()
+  {
+    dstring s = "\n/**\n    Create a `" ~ dName ~ "` boxed type.\n";
+    bool paramsShown;
+
+    foreach (f; fields)
+    {
+      if (f.active == Active.Enabled && f.writable)
+      {
+        if (!paramsShown)
+        {
+          paramsShown = true;
+          s ~= "    Params:\n";
+        }
+
+        s ~= "      " ~ f.dName ~ " = " ~ repo.gdocToDDoc(f.docContent, "        ").stripLeft ~ "\n";
+      }
+    }
+
+    s ~= "*/\nthis(";
+
+    foreach (f; fields)
+    {
+      if (f.active == Active.Enabled && f.writable)
+      {
+        if (s[$ - 1] != '(')
+          s ~= ", ";
+
+        dstring fieldType;
+
+        if (f.kind != TypeKind.Callback)
+          fieldType = f.fullDType;
+        else if (f.typeObject) // Callback function is an alias type?
+          fieldType = f.cType;
+        else // Callback function type is directly defined in field
+          fieldType = f.name.camelCase(true) ~ "FuncType";
+
+        if (f.dType == "float" || f.dType == "double")
+          s ~= fieldType ~ " " ~ f.dName ~ " = 0.0"; // Use 0.0 for default value for floating point values (not nan)
+        else
+          s ~= fieldType ~ " " ~ f.dName ~ " = " ~ fieldType ~ ".init"; // Otherwise use types .init value
+      }
+    }
+
+    s ~= ")\n{\nsuper(gMalloc(" ~ cType ~ ".sizeof), Yes.Take);\n";
+
+    foreach (f; fields)
+      if (f.active == Active.Enabled && f.writable)
+        s ~= "this." ~ f.dName ~ " = " ~ f.dName ~ ";\n";
+
+    return s ~ "}";
   }
 
   // Construct struct wrapper property methods
