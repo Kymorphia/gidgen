@@ -579,10 +579,15 @@ final class Structure : TypeNode
       assert(f.containerType == ContainerType.None, "Unsupported structure field " ~ f.fullName.to!string
           ~ " with container type " ~ f.containerType.to!string);
 
+      if (f.kind == TypeKind.Callback && !f.typeObject) // Callback function type directly defined in field?
+        lines ~= ["", "/** Function alias for field `"~ f.dName ~"` */",
+          "alias " ~ f.name.camelCase(true) ~ "FuncType = extern(C) "
+          ~ f.callback.getCPrototype ~ ";"]; // Add a type alias, since extern(C) can't be used directly in arg definition
+
+      lines ~= genFieldPropDocs(f, Yes.Getter);
+
       if (f.kind != TypeKind.Callback)
-        lines ~= ["", "@property " ~ f.fullDType ~ " " ~ f.dName ~ "()", "{"];
-      else if (!f.typeObject) // Callback function type directly defined in field?
-        lines ~= ["", "alias " ~ f.name.camelCase(true) ~ "FuncType = extern(C) " ~ f.callback.getCPrototype ~ ";"]; // Add a type alias, since extern(C) can't be used directly in arg definition
+        lines ~= ["@property " ~ f.fullDType ~ " " ~ f.dName ~ "()", "{"];
 
       dstring addrIfNeeded() // Returns an & if field is a direct structure, when we need a pointer to it
       {
@@ -599,9 +604,9 @@ final class Structure : TypeNode
           break;
         case Callback:
           if (f.typeObject) // Callback function is an alias type?
-            lines ~= ["", "@property " ~ f.cType ~ " " ~ f.dName ~ "()", "{"];
+            lines ~= ["@property " ~ f.cType ~ " " ~ f.dName ~ "()", "{"];
           else // Callback function type is directly defined in field
-            lines ~= ["", "@property " ~ f.name.camelCase(true) ~ "FuncType " ~ f.dName ~ "()", "{"];
+            lines ~= ["@property " ~ f.name.camelCase(true) ~ "FuncType " ~ f.dName ~ "()", "{"];
 
           lines ~= "return " ~ cPtr ~ "." ~ f.dName ~ ";";
           break;
@@ -627,8 +632,10 @@ final class Structure : TypeNode
       if (!f.writable)
         continue;
 
+      lines ~= genFieldPropDocs(f, No.Getter);
+
       if (f.kind != TypeKind.Callback) // Callback setter declaration is specially handled below
-        lines ~= ["", "@property void " ~ f.dName ~ "(" ~ f.fullDType ~ " propval)", "{"];
+        lines ~= ["@property void " ~ f.dName ~ "(" ~ f.fullDType ~ " propval)", "{"];
 
       final switch (f.kind) with (TypeKind)
       {
@@ -662,6 +669,39 @@ final class Structure : TypeNode
     }
 
     return lines;
+  }
+
+  /**
+   * Write DDoc documentation for an object to a CodeWriter.
+   * Params:
+   *   writer = The CodeWriter
+   */
+  private dstring[] genFieldPropDocs(Field field, Flag!"Getter" getter)
+  {
+    if (field.docContent.length == 0)
+      return ["", "/** */"]; // Add blank docs if none, so that it is still included in generated DDocs
+
+    dstring[] lines = [""];
+
+    if (getter)
+      lines ~= ["/**"d, "    Get field `"d ~ field.dName ~ "`.",
+        "    Returns: "d ~ repo.gdocToDDoc(field.docContent, "      ").stripLeft];
+    else
+      lines ~= ["/**"d, "    Set field `"d ~ field.dName ~ "`.",
+      "    Params:", "      propval = "d ~ repo.gdocToDDoc(field.docContent, "        ").stripLeft];
+
+    if (!field.docVersion.empty || !field.docDeprecated.empty)
+    {
+       lines ~= "";
+
+      if (!field.docVersion.empty)
+        lines ~= "    Version: " ~ field.docVersion;
+
+      if (!field.docDeprecated.empty)
+        lines ~= "    Deprecated: " ~ repo.gdocToDDoc(field.docDeprecated, "      ").stripLeft;
+    }
+
+    return lines ~ "*/";
   }
 
   /**
