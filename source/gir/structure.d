@@ -559,7 +559,7 @@ final class Structure : TypeNode
 
     if (kind.among(TypeKind.Boxed, TypeKind.Object))
       writer ~= ["", "/** */", "override @property GType gType()", "{", "return getGType();", "}", "",
-        "override " ~ dType ~ " self()", "{", "return this;", "}"];
+        "/** Returns `this`, for use in `with` statements. */", "override " ~ dType ~ " self()", "{", "return this;", "}"];
   }
 
   // Construct struct wrapper property methods
