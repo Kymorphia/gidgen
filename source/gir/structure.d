@@ -350,6 +350,19 @@ final class Structure : TypeNode
 
     auto isIfaceTemplate = kind == TypeKind.Interface && moduleType == ModuleType.IfaceTemplate;
     auto writer = new CodeWriter(buildPath(path, moduleName.to!string ~ (isIfaceTemplate ? "_mixin" : "") ~ ".d")); // Append T to type name for interface mixin template module
+
+    dstring modType;
+
+    if (isIfaceTemplate)
+      modType = "interface mixin";
+    else if (structType == StructType.Interface)
+      modType = "interface";
+    else
+      modType = "class";
+
+    if (dType)
+      writer ~= "/// Module for [" ~ dType ~ "] " ~ modType;
+
     writer ~= ["module " ~ fullModuleName ~ (isIfaceTemplate ? "_mixin;"d : ";"d), ""];
 
     beginImports(this);
@@ -500,16 +513,16 @@ final class Structure : TypeNode
 
     // Boxed structures with defined structures can be allocated, add ctor without args
     if (kind == TypeKind.Boxed && !ctorFunc && !opaque && !pointer && !fields.empty)
-      writer ~= ["", "this()", "{", "super(gMalloc(" ~ cType ~ ".sizeof), Yes.Take);", "}"];
+      writer ~= writeBoxedCtor;
 
     if (kind == TypeKind.Opaque)
-      writer ~= ["", "this(void* ptr, Flag!\"Take\" take = No.Take)", "{",
+      writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take = No.Take)", "{",
         "if (!ptr)", "throw new GidConstructException(\"Null instance pointer for " ~ fullName ~ "\");", ""];
     else if (kind == TypeKind.Wrap || kind == TypeKind.Reffed)
-      writer ~= ["", "this(void* ptr, Flag!\"Take\" take = No.Take)", "{",
+      writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take = No.Take)", "{",
         "if (!ptr)", "throw new GidConstructException(\"Null instance pointer for " ~ fullName ~ "\");", ""];
     else if (kind == TypeKind.Boxed || kind == TypeKind.Object)
-      writer ~= ["", "this(void* ptr, Flag!\"Take\" take = No.Take)", "{",
+      writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take = No.Take)", "{",
         "super(cast(void*)ptr, take);", "}"];
 
     if (kind == TypeKind.Opaque && !pointer)
@@ -530,23 +543,77 @@ final class Structure : TypeNode
       writer ~= ["", "~this()", "{", freeFunction ~ "(&cInstance);", "}"];
 
     if (kind == TypeKind.Opaque)
-      writer ~= ["", "void* cPtr()", "{", "return cast(void*)cInstancePtr;", "}"];
+      writer ~= ["", "/** */", "void* cPtr()", "{", "return cast(void*)cInstancePtr;", "}"];
     else if (kind == TypeKind.Reffed && !parentStruct)
-      writer ~= ["", "void* cPtr(Flag!\"Dup\" dup = No.Dup)", "{", "if (dup)", glibRefFunc ~ "(cInstancePtr);", "",
+      writer ~= ["", "/** */", "void* cPtr(Flag!\"Dup\" dup = No.Dup)", "{", "if (dup)", glibRefFunc ~ "(cInstancePtr);", "",
         "return cInstancePtr;", "}"];
     else if (kind == TypeKind.Boxed)
-      writer ~= ["", "void* cPtr(Flag!\"Dup\" dup = No.Dup)", "{", "return dup ? copy_ : cInstancePtr;", "}"];
+      writer ~= ["", "/** */", "void* cPtr(Flag!\"Dup\" dup = No.Dup)", "{", "return dup ? copy_ : cInstancePtr;", "}"];
     else if (kind == TypeKind.Wrap)
-      writer ~= ["", "void* cPtr()", "{", "return cast(void*)&cInstance;", "}"];
+      writer ~= ["", "/** */", "void* cPtr()", "{", "return cast(void*)&cInstance;", "}"];
 
     if (kind.among(TypeKind.Boxed, TypeKind.Object) || (kind == TypeKind.Interface && moduleType == ModuleType.Iface))
-      writer ~= ["", "static GType getGType()", "{", "import gid.loader : gidSymbolNotFound;",
+      writer ~= ["", "/** */", "static GType getGType()", "{", "import gid.loader : gidSymbolNotFound;",
         "return cast(void function())" ~ glibGetType
         ~ " != &gidSymbolNotFound ? " ~ glibGetType ~ "() : cast(GType)0;", "}"]; // Return 0 if get_type() function was not resolved
 
     if (kind.among(TypeKind.Boxed, TypeKind.Object))
-      writer ~= ["", "override @property GType gType()", "{", "return getGType();", "}", "",
-        "override " ~ dType ~ " self()", "{", "return this;", "}"];
+      writer ~= ["", "/** */", "override @property GType gType()", "{", "return getGType();", "}", "",
+        "/** Returns `this`, for use in `with` statements. */", "override " ~ dType ~ " self()", "{", "return this;", "}"];
+  }
+
+  // Write a Boxed type constructor with all fields as parameters with default values (optional)
+  private dstring writeBoxedCtor()
+  {
+    dstring s = "\n/**\n    Create a `" ~ dName ~ "` boxed type.\n";
+    bool paramsShown;
+
+    foreach (f; fields)
+    {
+      if (f.active == Active.Enabled && f.writable)
+      {
+        if (!paramsShown)
+        {
+          paramsShown = true;
+          s ~= "    Params:\n";
+        }
+
+        s ~= "      " ~ f.dName ~ " = " ~ repo.gdocToDDoc(f.docContent, "        ").stripLeft ~ "\n";
+      }
+    }
+
+    s ~= "*/\nthis(";
+
+    foreach (f; fields)
+    {
+      if (f.active == Active.Enabled && f.writable)
+      {
+        if (s[$ - 1] != '(')
+          s ~= ", ";
+
+        dstring fieldType;
+
+        if (f.kind != TypeKind.Callback)
+          fieldType = f.fullDType;
+        else if (f.typeObject) // Callback function is an alias type?
+          fieldType = f.cType;
+        else // Callback function type is directly defined in field
+          fieldType = f.name.camelCase(true) ~ "FuncType";
+
+        if (f.dType == "float" || f.dType == "double")
+          s ~= fieldType ~ " " ~ f.dName ~ " = 0.0"; // Use 0.0 for default value for floating point values (not nan)
+        else
+          s ~= fieldType ~ " " ~ f.dName ~ " = " ~ fieldType ~ ".init"; // Otherwise use types .init value
+      }
+    }
+
+    s ~= ")\n{\nsuper(gMalloc(" ~ cType ~ ".sizeof), Yes.Take);\n";
+
+    foreach (f; fields)
+      if (f.active == Active.Enabled && f.writable)
+        s ~= "this." ~ f.dName ~ " = " ~ f.dName ~ ";\n";
+
+    return s ~ "}";
   }
 
   // Construct struct wrapper property methods
@@ -566,10 +633,15 @@ final class Structure : TypeNode
       assert(f.containerType == ContainerType.None, "Unsupported structure field " ~ f.fullName.to!string
           ~ " with container type " ~ f.containerType.to!string);
 
+      if (f.kind == TypeKind.Callback && !f.typeObject) // Callback function type directly defined in field?
+        lines ~= ["", "/** Function alias for field `"~ f.dName ~"` */",
+          "alias " ~ f.name.camelCase(true) ~ "FuncType = extern(C) "
+          ~ f.callback.getCPrototype ~ ";"]; // Add a type alias, since extern(C) can't be used directly in arg definition
+
+      lines ~= genFieldPropDocs(f, Yes.Getter);
+
       if (f.kind != TypeKind.Callback)
-        lines ~= ["", "@property " ~ f.fullDType ~ " " ~ f.dName ~ "()", "{"];
-      else if (!f.typeObject) // Callback function type directly defined in field?
-        lines ~= ["", "alias " ~ f.name.camelCase(true) ~ "FuncType = extern(C) " ~ f.callback.getCPrototype ~ ";"]; // Add a type alias, since extern(C) can't be used directly in arg definition
+        lines ~= ["@property " ~ f.fullDType ~ " " ~ f.dName ~ "()", "{"];
 
       dstring addrIfNeeded() // Returns an & if field is a direct structure, when we need a pointer to it
       {
@@ -586,9 +658,9 @@ final class Structure : TypeNode
           break;
         case Callback:
           if (f.typeObject) // Callback function is an alias type?
-            lines ~= ["", "@property " ~ f.cType ~ " " ~ f.dName ~ "()", "{"];
+            lines ~= ["@property " ~ f.cType ~ " " ~ f.dName ~ "()", "{"];
           else // Callback function type is directly defined in field
-            lines ~= ["", "@property " ~ f.name.camelCase(true) ~ "FuncType " ~ f.dName ~ "()", "{"];
+            lines ~= ["@property " ~ f.name.camelCase(true) ~ "FuncType " ~ f.dName ~ "()", "{"];
 
           lines ~= "return " ~ cPtr ~ "." ~ f.dName ~ ";";
           break;
@@ -614,8 +686,10 @@ final class Structure : TypeNode
       if (!f.writable)
         continue;
 
+      lines ~= genFieldPropDocs(f, No.Getter);
+
       if (f.kind != TypeKind.Callback) // Callback setter declaration is specially handled below
-        lines ~= ["", "@property void " ~ f.dName ~ "(" ~ f.fullDType ~ " propval)", "{"];
+        lines ~= ["@property void " ~ f.dName ~ "(" ~ f.fullDType ~ " propval)", "{"];
 
       final switch (f.kind) with (TypeKind)
       {
@@ -649,6 +723,39 @@ final class Structure : TypeNode
     }
 
     return lines;
+  }
+
+  /**
+   * Write DDoc documentation for an object to a CodeWriter.
+   * Params:
+   *   writer = The CodeWriter
+   */
+  private dstring[] genFieldPropDocs(Field field, Flag!"Getter" getter)
+  {
+    if (field.docContent.length == 0)
+      return ["", "/** */"]; // Add blank docs if none, so that it is still included in generated DDocs
+
+    dstring[] lines = [""];
+
+    if (getter)
+      lines ~= ["/**"d, "    Get field `"d ~ field.dName ~ "`.",
+        "    Returns: "d ~ repo.gdocToDDoc(field.docContent, "      ").stripLeft];
+    else
+      lines ~= ["/**"d, "    Set field `"d ~ field.dName ~ "`.",
+      "    Params:", "      propval = "d ~ repo.gdocToDDoc(field.docContent, "        ").stripLeft];
+
+    if (!field.docVersion.empty || !field.docDeprecated.empty)
+    {
+       lines ~= "";
+
+      if (!field.docVersion.empty)
+        lines ~= "    Version: " ~ field.docVersion;
+
+      if (!field.docDeprecated.empty)
+        lines ~= "    Deprecated: " ~ repo.gdocToDDoc(field.docDeprecated, "      ").stripLeft;
+    }
+
+    return lines ~ "*/";
   }
 
   /**
