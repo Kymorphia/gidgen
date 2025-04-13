@@ -507,10 +507,10 @@ final class Func : TypeNode
       // Check if the method conforms to the parent class method (identical or derived parameters/return value of ancestor method)
       outConforms = (params.length == cmpFunc.params.length // Same number of parameters
         && (returnVal is null) == (cmpFunc.returnVal is null) // Both have return value or both do not
-        && (returnVal.dType == cmpFunc.returnVal.dType // Return value D type strings are equal
+        && (returnVal.typeEqual(cmpFunc.returnVal) // Return value D types are equal
           || structIsDerived(cmpFunc.returnVal.typeObject, returnVal.typeObject)) // or child method return type is derived from parent return type
         && zip(cmpFunc.params.filter!(x => !x.isInstanceParam), params.filter!(x => !x.isInstanceParam))
-          .filter!(t => t[0].dType != t[1].dType).empty); // All arguments match by D type string (not including instance types)
+          .filter!(t => !t[0].typeEqual(t[1])).empty); // All arguments types match (not including instance types)
 
       return retFunc;
     }

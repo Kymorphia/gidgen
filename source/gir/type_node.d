@@ -192,6 +192,16 @@ class TypeNode : Base
       return fullModuleName ~ "." ~ dType;
   }
 
+  /**
+   * Check if other type node is the same type.
+   * Returns: true if TypeNode objects are the same type, false otherwise
+   */
+  bool typeEqual(TypeNode other)
+  {
+    return (typeObject is null && other.typeObject is null && fullDType == other.fullDType)
+      || (typeObject && typeObject is other.typeObject);
+  }
+
   /// cPtr with a single '*' removed (if it has any)
   dstring cTypeRemPtr()
   {
