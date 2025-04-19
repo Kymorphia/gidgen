@@ -500,7 +500,7 @@ final class Repo : Base
       "import gobject.object;",
       "import " ~ st.fullModuleName ~ ";",
       "import " ~ st.fullModuleName ~ "_mixin;", "",
-      "/// Proxy object for [" ~ st.fullName ~ "] interface when a GObject has no applicable D binding",
+      "/// Proxy object for [" ~ st.fullDName ~ "] interface when a GObject has no applicable D binding",
       "class " ~ className ~ " : IfaceProxy, " ~ st.fullDType, "{",
       "this(void* ptr, Flag!\"Take\" take = No.Take)", "{", "super(cast(void*)ptr, take);", "}", "",
       "override TypeInfo_Interface getIface()", "{", "return typeid(" ~ st.fullDType ~ ");", "}", "",

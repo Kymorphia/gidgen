@@ -517,10 +517,10 @@ final class Structure : TypeNode
 
     if (kind == TypeKind.Opaque)
       writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take = No.Take)", "{",
-        "if (!ptr)", "throw new GidConstructException(\"Null instance pointer for " ~ fullName ~ "\");", ""];
+        "if (!ptr)", "throw new GidConstructException(\"Null instance pointer for " ~ fullDName ~ "\");", ""];
     else if (kind == TypeKind.Wrap || kind == TypeKind.Reffed)
       writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take = No.Take)", "{",
-        "if (!ptr)", "throw new GidConstructException(\"Null instance pointer for " ~ fullName ~ "\");", ""];
+        "if (!ptr)", "throw new GidConstructException(\"Null instance pointer for " ~ fullDName ~ "\");", ""];
     else if (kind == TypeKind.Boxed || kind == TypeKind.Object)
       writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take = No.Take)", "{",
         "super(cast(void*)ptr, take);", "}"];
