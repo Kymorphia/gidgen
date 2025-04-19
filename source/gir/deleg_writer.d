@@ -26,7 +26,7 @@ class DelegWriter
   // Process the delegate parameter
   private void process(bool staticDelegatePtr)
   {
-    codeTrap("deleg.write", delegParam.fullDName);
+    codeTrap("deleg.write", delegParam.fullName);
 
     decl ~= "extern(C) ";
 

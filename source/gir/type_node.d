@@ -482,6 +482,8 @@ class TypeNode : Base
 
   void verify()
   {
+    codeTrap("type.verify", fullName);
+
     if (unresolvedFlags)
       throw new Exception("Unresolved type '" ~ dType.to!string ~ "' (unresolvedFlags: " ~ unresolvedFlags.to!string ~ ")");
 
