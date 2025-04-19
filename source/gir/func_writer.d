@@ -26,10 +26,10 @@ class FuncWriter
 
     if (!func.isStatic) // Check for conflicting method in ancestor if not a static method
     {
-      conflictMethod = func.findMatchingAncestor(null, conflictConforms);
+      conflictClass = func.findMethodConflict(null, conflictConforms);
 
-      if (conflictMethod && !conflictConforms)
-        (cast(Structure)conflictMethod.parent).dType; // Resolve D type to add it to the active ImportManager
+      if (conflictClass && !conflictConforms)
+        conflictClass.dType(); // Resolve D type to add it to the active ImportManager
     }
 
     if (func.isStatic)
@@ -792,10 +792,10 @@ class FuncWriter
 
     if (parentNode && parentNode.kind == TypeKind.Interface && !isStatic) // All interface methods are override
       overrideStr = "override ";
-    else if (!isStatic && conflictMethod)
+    else if (!isStatic && conflictClass)
     {
       if (!conflictConforms) // Not-identical methods get aliased
-        writer ~= ["alias "d ~ func.dName ~ " = " ~ (cast(Structure)conflictMethod.parent).fullDType ~ "."
+        writer ~= ["alias "d ~ func.dName ~ " = " ~ conflictClass.fullDType ~ "."
           ~ func.dName ~ ";", ""];
       else
         overrideStr = "override "; // Conforming methods use override
@@ -830,7 +830,7 @@ class FuncWriter
   }
 
   Func func; /// The function object being written
-  Func conflictMethod; /// Set to a method that conflicts with func in parent ancestry or null
+  Structure conflictClass; /// Set to an ancestor class that has a conflicting method
   bool conflictConforms; /// Set to true if the conflicting method conforms to func (override vs alias)
   dstring decl; /// Function declaration
   dstring preCall; /// Pre-call code for call return variable, call output parameter variables, and input variable processing

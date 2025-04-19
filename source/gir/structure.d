@@ -94,6 +94,7 @@ final class Structure : TypeNode
   {
     functions ~= func;
     funcNameHash[func.name] = func;
+    dMethodHash[func.dName] = func;
   }
 
   /**
@@ -198,6 +199,9 @@ final class Structure : TypeNode
         f.active = Active.Unsupported;
     }
 
+    foreach (p; properties) // Fixup object properties
+      p.fixup;
+
     foreach (fn; functions) // Fixup structure function/methods
     {
       fn.fixup;
@@ -231,6 +235,9 @@ final class Structure : TypeNode
 
     foreach (f; fields) // Resolve structure fields
       f.resolve;
+
+    foreach (p; properties) // Resolve object properties
+      p.resolve;
 
     foreach (fn; functions) // Resolve structure function/methods
       fn.resolve;
@@ -336,6 +343,24 @@ final class Structure : TypeNode
         TypeNode.dumpSelectorOnWarning(f);
       }
     }
+
+    foreach (p; properties) // Verify object properties
+    {
+      if (p.active != Active.Enabled)
+        continue;
+
+      try
+      {
+        p.verify;
+        dMethodHash[p.dName] = p; // Add to method hash to detect conflicting method names
+      }
+      catch (Exception e)
+      {
+        p.active = Active.Unsupported;
+        warnWithLoc(e.file, e.line, p.xmlLocation, "Disabling property '" ~ p.fullName.to!string ~ "': " ~ e.msg);
+        TypeNode.dumpSelectorOnWarning(p);
+      }
+    }
   }
 
   /**
@@ -369,7 +394,12 @@ final class Structure : TypeNode
     scope(exit) endImports;
 
     if (parentStruct)
+    {
       importManager.add(parentStruct.fullModuleName); // Add parent to imports
+
+      if ((structType == StructType.Class || structType == StructType.Interface) && !properties.empty)
+        importManager.add("gobject.object"); // Import gobject.object for getProperty and setProperty templates (might not actually get used though)
+    }
 
     foreach (st; implementStructs) // Add implemented interfaces to imports
     {
@@ -417,7 +447,9 @@ final class Structure : TypeNode
       writeInitCode(writer, moduleType);
 
       if (kind == TypeKind.Wrap || kind == TypeKind.Boxed)
-        writer ~= constructFieldProps(); // Construct wrapper property methods in order to collect imports
+        writer ~= constructFieldProps; // Construct field property methods
+      else if (kind == TypeKind.Object || kind == TypeKind.Interface)
+        writer ~= constructProps(moduleType); // Construct property methods
     }
 
     if (kind == TypeKind.Object && !objIfaces.empty)
@@ -435,10 +467,9 @@ final class Structure : TypeNode
           {
             bool outIsIdentical;
 
-            if (auto matchedFunc = func.findMatchingAncestor(parentStruct, outIsIdentical))
+            if (auto conflictClass = func.findMethodConflict(parentStruct, outIsIdentical))
               if (!outIsIdentical)
-                writer ~= ["alias "d ~ func.dName ~ " = " ~ (cast(Structure)matchedFunc.parent).fullDType ~ "."
-                  ~ func.dName ~ ";"];
+                writer ~= ["alias "d ~ func.dName ~ " = " ~ conflictClass.fullDType ~ "." ~ func.dName ~ ";"];
           }
         }
       }
@@ -616,7 +647,7 @@ final class Structure : TypeNode
     return s ~ "}";
   }
 
-  // Construct struct wrapper property methods
+  // Construct struct wrapper field property methods
   private dstring[] constructFieldProps()
   {
     dstring[] lines;
@@ -638,7 +669,7 @@ final class Structure : TypeNode
           "alias " ~ f.name.camelCase(true) ~ "FuncType = extern(C) "
           ~ f.callback.getCPrototype ~ ";"]; // Add a type alias, since extern(C) can't be used directly in arg definition
 
-      lines ~= genFieldPropDocs(f, Yes.Getter);
+      lines ~= genPropDocs(f, Yes.Getter);
 
       if (f.kind != TypeKind.Callback)
         lines ~= ["@property " ~ f.fullDType ~ " " ~ f.dName ~ "()", "{"];
@@ -686,7 +717,7 @@ final class Structure : TypeNode
       if (!f.writable)
         continue;
 
-      lines ~= genFieldPropDocs(f, No.Getter);
+      lines ~= genPropDocs(f, No.Getter);
 
       if (f.kind != TypeKind.Callback) // Callback setter declaration is specially handled below
         lines ~= ["@property void " ~ f.dName ~ "(" ~ f.fullDType ~ " propval)", "{"];
@@ -726,36 +757,124 @@ final class Structure : TypeNode
   }
 
   /**
-   * Write DDoc documentation for an object to a CodeWriter.
-   * Params:
-   *   writer = The CodeWriter
+   * Generate adrdox documentation for a field or property getter/setter
+   * Returns: Lines of generated documentation
    */
-  private dstring[] genFieldPropDocs(Field field, Flag!"Getter" getter)
+  private dstring[] genPropDocs(TypeNode node, Flag!"Getter" getter)
   {
-    if (field.docContent.length == 0)
+    if (node.docContent.length == 0)
       return ["", "/** */"]; // Add blank docs if none, so that it is still included in generated DDocs
 
     dstring[] lines = [""];
+    dstring type;
+    dstring name;
+
+    if (auto field = cast(Field)node)
+    {
+      type = "field";
+      name = field.dName;
+    }
+    else if (auto prop = cast(Property)node)
+    {
+      type = "property";
+      name = prop.dName;
+    }
 
     if (getter)
-      lines ~= ["/**"d, "    Get field `"d ~ field.dName ~ "`.",
-        "    Returns: "d ~ repo.gdocToDDoc(field.docContent, "      ").stripLeft];
+      lines ~= ["/**"d, "    Get `"d ~ name ~ "` " ~ type ~ ".",
+        "    Returns: "d ~ repo.gdocToDDoc(node.docContent, "      ").stripLeft];
     else
-      lines ~= ["/**"d, "    Set field `"d ~ field.dName ~ "`.",
-      "    Params:", "      propval = "d ~ repo.gdocToDDoc(field.docContent, "        ").stripLeft];
+      lines ~= ["/**"d, "    Set `"d ~ name ~ "` " ~ type ~ ".",
+      "    Params:", "      propval = "d ~ repo.gdocToDDoc(node.docContent, "        ").stripLeft];
 
-    if (!field.docVersion.empty || !field.docDeprecated.empty)
+    if (!node.docVersion.empty || !node.docDeprecated.empty)
     {
        lines ~= "";
 
-      if (!field.docVersion.empty)
-        lines ~= "    Version: " ~ field.docVersion;
+      if (!node.docVersion.empty)
+        lines ~= "    Version: " ~ node.docVersion;
 
-      if (!field.docDeprecated.empty)
-        lines ~= "    Deprecated: " ~ repo.gdocToDDoc(field.docDeprecated, "      ").stripLeft;
+      if (!node.docDeprecated.empty)
+        lines ~= "    Deprecated: " ~ repo.gdocToDDoc(node.docDeprecated, "      ").stripLeft;
     }
 
     return lines ~ "*/";
+  }
+
+  // Construct struct wrapper property methods
+  private dstring[] constructProps(ModuleType moduleType)
+  {
+    dstring[] lines;
+
+    foreach (p; properties)
+    {
+      if (p.active != Active.Enabled || p.constructOnly)
+        continue;
+
+      if (p.readable)
+      {
+        bool outOverrideMethod;
+
+        if (parentStruct)
+          if (auto conflictClass = p.findMethodConflict(parentStruct, Yes.Getter, outOverrideMethod))
+            if (!outOverrideMethod)
+              lines ~= ["", "alias "d ~ p.dName ~ " = " ~ conflictClass.fullDType ~ "." ~ p.dName ~ ";"]; // Add an alias for conflicting methods which don't conform
+
+        lines ~= genPropDocs(p, Yes.Getter);
+        lines ~= (outOverrideMethod ? "override "d : ""d) ~ "@property " ~ p.fullDType ~ " " ~ p.dName ~ "()";
+
+        if (moduleType != ModuleType.Iface)
+        {
+          Func checkGetter(TypeNode n)
+          {
+            auto f = cast(Func)n;
+            return (f && p.checkGetter(f)) ? f : null;
+          }
+
+          auto getter = !p.getter.empty ? checkGetter(dMethodHash.get(repo.defs.symbolName(p.getter.camelCase), null)) : null; // Use getter method for improved performance
+          if (!getter)
+            getter = !p.propGet.empty ? checkGetter(cast(Func)repo.defs.cSymbolHash.get(p.propGet, null)) : null; // Use alternative org.gtk.Property.get attribute as a backup (full C symbol function name)
+
+          lines ~= ["{", getter ? ("return " ~ getter.dName ~ "();") : ("return gobject.object.ObjectG.getProperty!(" ~ p.fullDType
+            ~ ")(\"" ~ p.name ~ "\");"), "}"]; // Use getProperty if no getter method
+        }
+        else
+          lines[$ - 1] ~= ";";
+      }
+
+      if (!p.writable)
+        continue;
+
+      bool outOverrideMethod;
+
+      if (parentStruct)
+        if (auto conflictClass = p.findMethodConflict(parentStruct, No.Getter, outOverrideMethod))
+          if (!outOverrideMethod)
+            lines ~= ["", "alias "d ~ p.dName ~ " = " ~ conflictClass.fullDType ~ "." ~ p.dName ~ ";"]; // Add an alias for conflicting methods which don't conform
+
+      lines ~= genPropDocs(p, No.Getter);
+      lines ~= (outOverrideMethod ? "override "d : ""d) ~ "@property void " ~ p.dName ~ "(" ~ p.fullDType ~ " propval)";
+
+      if (moduleType != ModuleType.Iface)
+      {
+        Func checkSetter(TypeNode n)
+        {
+          auto f = cast(Func)n;
+          return (f && p.checkSetter(f)) ? f : null;
+        }
+
+        auto setter = !p.setter.empty ? checkSetter(dMethodHash.get(repo.defs.symbolName(p.setter.camelCase), null)) : null; // Use setter method for improved performance
+        if (!setter)
+          setter = !p.propSet.empty ? checkSetter(cast(Func)repo.defs.cSymbolHash.get(p.propSet, null)) : null; // Use alternative org.gtk.Property.set attribute as a backup (full C symbol function name)
+
+        lines ~= ["{", setter ? ("return " ~ setter.dName ~ "(propval);") : ("gobject.object.ObjectG.setProperty!(" ~ p.fullDType ~ ")(\""
+          ~ p.name ~ "\", propval);"), "}"];  // Use getProperty if no setter method
+      }
+      else
+        lines[$ - 1] ~= ";";
+    }
+
+    return lines;
   }
 
   /**
@@ -834,7 +953,8 @@ final class Structure : TypeNode
   dstring _moduleName; /// Package module file name (without the .d extension, usually just snake_case of origDType)
   Func ctorFunc; /// Primary instance constructor function in functions (not a Gir field)
   Func[] errorQuarks; /// List of GError quark functions for exceptions
-  Func[dstring] funcNameHash; /// Hash of functions by name
+  Func[dstring] funcNameHash; /// Hash of functions by GIR name (snake_case)
+  TypeNode[dstring] dMethodHash; /// Hash of methods by D name, includes function methods and properties
 
   bool abstract_; /// Is abstract type?
   bool deprecated_; /// Deprecated?
