@@ -106,7 +106,7 @@ class Report
           string[] fullNames;
 
           foreach (report; repoReports)
-            fullNames ~= report.objs[actNdx][objNdx].map!(x => x.fullName.to!string).array;
+            fullNames ~= report.objs[actNdx][objNdx].map!(x => x.fullDName.to!string).array;
 
           if (fullNames)
           {
