@@ -8,6 +8,7 @@ import defs;
 import gir.alias_;
 import gir.field;
 import gir.param;
+import gir.property;
 import gir.repo;
 import gir.return_value;
 import gir.structure;
@@ -477,13 +478,13 @@ final class Func : TypeNode
   }
 
   /**
-   * Search a class' ancestry for a method matching this.
+   * Search a class' ancestry for a conflicting method (requiring an alias or override).
    * Params:
    *   st = Structure to search parent ancestry of (null will search from parent of function's class)
-   *   outConforms = Output value set to true if matching method conforms (ret/arg values are )
-   * Returns: The matching method or null if none found, not a method, or not a derived class
+   *   outConforms = Output value set to true if matching method conforms
+   * Returns: The ancestor class containing the conflicting method or null if none
    */
-  Func findMatchingAncestor(Structure st, out bool outConforms)
+  Structure findMethodConflict(Structure st, out bool outConforms)
   {
     if (!st) // If klass not specified, use this function's klass parent
       st = cast(Structure)parent ? (cast(Structure)parent).parentStruct : null;
@@ -491,28 +492,38 @@ final class Func : TypeNode
     if (isStatic || funcType != FuncType.Method || !st || st.structType != StructType.Class)
       return null;
 
-    auto funcName = name;
+    auto methodName = dName;
 
     for (auto klass = st; klass; klass = klass.parentStruct)
     {
-      auto cmpFunc = klass.funcNameHash.get(funcName, null);
-      auto retFunc = cmpFunc;
+      auto node = klass.dMethodHash.get(methodName, null);
+      auto cmpFunc = cast(Func)node;
 
-      if (cmpFunc && cmpFunc.shadowedByFunc) // If the method is shadowed by another one, use it instead
+      if (cmpFunc && cmpFunc.shadowedByFunc) // If the method is shadowed by another one, use it instead, must do this before checking node.active
+      {
         cmpFunc = cmpFunc.shadowedByFunc;
+        node = cmpFunc;
+      }
 
-      if (!cmpFunc || cmpFunc.active != Active.Enabled)
+      if (!node || node.active != Active.Enabled)
         continue;
 
-      // Check if the method conforms to the parent class method (identical or derived parameters/return value of ancestor method)
-      outConforms = (params.length == cmpFunc.params.length // Same number of parameters
-        && (returnVal is null) == (cmpFunc.returnVal is null) // Both have return value or both do not
-        && (returnVal.typeEqual(cmpFunc.returnVal) // Return value D types are equal
-          || structIsDerived(cmpFunc.returnVal.typeObject, returnVal.typeObject)) // or child method return type is derived from parent return type
-        && zip(cmpFunc.params.filter!(x => !x.isInstanceParam), params.filter!(x => !x.isInstanceParam))
-          .filter!(t => !t[0].typeEqual(t[1])).empty); // All arguments types match (not including instance types)
+      if (cmpFunc) // Regular function method?
+      { // Check if the method conforms to the parent class method (identical or derived parameters/return value of ancestor method)
+        outConforms = (params.length == cmpFunc.params.length // Same number of parameters
+          && (returnVal is null) == (cmpFunc.returnVal is null) // Both have return value or both do not
+          && (returnVal.typeEqual(cmpFunc.returnVal) // Return value D types are equal
+            || structIsDerived(cmpFunc.returnVal.typeObject, returnVal.typeObject)) // or child method return type is derived from parent return type
+          && zip(cmpFunc.params.filter!(x => !x.isInstanceParam), params.filter!(x => !x.isInstanceParam))
+            .filter!(t => !t[0].typeEqual(t[1])).empty); // All arguments types match (not including instance types)
 
-      return retFunc;
+        return klass;
+      }
+      else if (auto cmpProp = cast(Property)node) // Property method
+      {
+        outConforms = cmpProp.checkGetter(this) || cmpProp.checkSetter(this);
+        return klass;
+      }
     }
 
     return null;
