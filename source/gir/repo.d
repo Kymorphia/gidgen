@@ -485,24 +485,6 @@ final class Repo : Base
       }
     }
 
-    foreach (al; aliases) // Write modules for aliases to structure types in modules
-    {
-      auto st = cast(Structure)al.typeObjectRoot;
-
-      if (al.active == Active.Enabled && st && st.inModule)
-      {
-        auto codeWriter = new CodeWriter(buildPath(sourcePath, al.name.to!string ~ ".d"), [
-          "module " ~ al.fullName ~ ";",
-          "",
-          "import " ~ st.fullName ~ ";",
-          "",
-          "alias " ~ al.name ~ " = " ~ st.name ~ ";"
-        ]);
-
-        codeWriter.write;
-      }
-    }
-
     if (!mergeRepo)
       writeDubJsonFile(buildPath(packagePath, "dub.json"));
   }
