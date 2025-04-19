@@ -51,7 +51,7 @@ final class Repo : Base
 
   override @property dstring name()
   {
-    return namespace;
+    return dubPackageName;
   }
 
   override @property dstring dName()

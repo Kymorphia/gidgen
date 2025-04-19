@@ -22,7 +22,7 @@ class FuncWriter
   // Process the function
   private void process()
   {
-    codeTrap("func.write", func.fullDName);
+    codeTrap("func.write", func.fullName);
 
     if (!func.isStatic) // Check for conflicting method in ancestor if not a static method
     {
