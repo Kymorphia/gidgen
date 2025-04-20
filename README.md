@@ -34,6 +34,7 @@ Some of the features of **gidgen** include:
 * GObject:
   * Wrapping of C GObject and Interface instances.
   * Uses interface proxy objects for interfaces when the GObject type is unknown to D.
+  * GObject properties are provided as getter/setter D `@property` methods.
   * Each GObject signal has delegate and function callback type aliases and a `connectSignalName()` template.
   * Support for signal "detail" parameters like property names used with the GObject "notify" property.
   * Method aliases are automatically generated for class or interface methods which conflict with ancestor classes.
@@ -352,7 +353,7 @@ There are several commands which modify the behavior of binding generation. Thes
 * **subtype** - Used for renaming (substituting) a type name. This command applies for both D and C types.
   Example: `//!subtype "unsigned char" ubyte`.
 * **subctype** - This command is used for renaming C types only. For example: `//!subctype GObject ObjectC`.
-* **subdtype** - Used for renaming D types only. For example `//!subdtype Object ObjectG`.
+* **subdtype** - Used for renaming D types only. For example `//!subdtype Object WrapObject`.
 
 ## What about GtkD and gir-to-d?
 
