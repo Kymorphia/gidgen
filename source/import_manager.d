@@ -35,6 +35,18 @@ void endImports()
   importManager = null;
 }
 
+/**
+ * Add a module to the current ImportManager which was started with a call to `beginImports`.
+ * Does nothing if there is no active ImportManager.
+ * Params:
+ *   mod = Full module name to add to imports
+ */
+void addImport(dstring mod)
+{
+  if (importManager)
+    importManager.add(mod);
+}
+
 final class ImportManager
 {
   this(Structure klassModule)

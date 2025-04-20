@@ -1110,26 +1110,6 @@ final class Repo : Base
   }
 
   /**
-   * Resolve a D type symbol name. Uses the D type name or an alias if it conflicts with
-   * another symbol imported into the current module which was defined by a call to beginImports().
-   * Params:
-   *   typeNode = The type node object to get the D type name of
-   * Returns: The D type name or an alias
-   */
-  dstring resolveSymbol(dstring typeName)
-  {
-    auto typeNode = findTypeObject(typeName);
-
-    if (!typeNode)
-      throw new Exception("Failed to resolve symbol '" ~ typeName.to!string ~ "'");
-
-    if (importManager)
-      importManager.add(typeNode.fullModuleName);
-
-    return typeNode.dType;
-  }
-
-  /**
    * Substitute type.
    * Params:
    *   type = Type string

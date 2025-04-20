@@ -6,6 +6,7 @@ import gir.func;
 import gir.param;
 import gir.structure;
 import gir.type_node;
+import import_manager;
 import std_includes;
 import utils;
 
@@ -20,7 +21,7 @@ class SignalWriter
     assert(owningClass && owningClass != signal.repo.globalStruct,
       "Signal '" ~ signal.fullName.to!string ~ "' does not have a valid class");
 
-    signal.repo.resolveSymbol("GObject.DClosure");
+    addImport("gobject.dclosure");
 
     process();
   }
@@ -164,8 +165,8 @@ class SignalWriter
             ~ ".Take") : "") ~ ");"];
           break;
         case Object, Interface:
-          auto objectGSym = param.repo.resolveSymbol("GObject.ObjectG");
-          inpProcess ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_dArray ~= " ~ objectGSym ~ ".getDObject!("
+          addImport("gobject.object");
+          inpProcess ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_dArray ~= gobject.object.ObjectWrap.getDObject!("
             ~ elemType.fullDType ~ ")(_cArray[i], " ~ param.fullOwnerFlag ~ ".Take);"];
           break;
         case Unknown, Callback, Container, Namespace:
