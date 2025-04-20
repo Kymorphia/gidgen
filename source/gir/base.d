@@ -70,7 +70,7 @@ abstract class Base
         return st.dType ~ "Exception";
     }
 
-    return "ErrorG"; // Default error domain
+    return "ErrorWrap"; // Default error domain
   }
 
   @property XmlNode xmlNode()

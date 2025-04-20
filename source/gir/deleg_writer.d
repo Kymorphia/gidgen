@@ -6,6 +6,7 @@ import gir.func;
 import gir.param;
 import gir.structure;
 import gir.type_node;
+import import_manager;
 import std_includes;
 import utils;
 
@@ -127,11 +128,11 @@ class DelegWriter
           ~ retVal.fullOwnerFlag ~ ".Dup);\n";
         break;
       case Interface:
-        auto objectGSym = retVal.repo.resolveSymbol("GObject.ObjectG");
+        addImport("gobject.object");
         preCall ~= retVal.fullDType ~ " _dretval;\n";
         call ~= "_dretval = ";
-        postCall ~= retVal.cType ~ " _retval = cast(" ~ retVal.cTypeRemPtr ~ "*)(cast(" ~ objectGSym ~ ")_dretval).cPtr("
-          ~ retVal.fullOwnerFlag ~ ".Dup);\n";
+        postCall ~= retVal.cType ~ " _retval = cast(" ~ retVal.cTypeRemPtr
+          ~ "*)(cast(gobject.object.ObjectWrap)_dretval).cPtr(" ~ retVal.fullOwnerFlag ~ ".Dup);\n";
         break;
       case Callback, Unknown, Container, Namespace:
         assert(0, "Unsupported delegate return value type '" ~ retVal.fullDType.to!string
@@ -289,8 +290,8 @@ class DelegWriter
         {
           if (param.kind == TypeKind.Object || param.kind == TypeKind.Interface)
           {
-            auto objectGSym = param.repo.resolveSymbol("GObject.ObjectG");
-            addCallParam(objectGSym ~ ".getDObject!(" ~ param.fullDType ~ ")(cast(void*)" ~ param.dName ~ ", "
+            addImport("gobject.object");
+            addCallParam("gobject.object.ObjectWrap.getDObject!(" ~ param.fullDType ~ ")(cast(void*)" ~ param.dName ~ ", "
               ~ param.fullOwnerFlag ~ ".Take)");
           }
           else
@@ -363,9 +364,9 @@ class DelegWriter
             ~ (param.kind != Wrap ? (", " ~ param.fullOwnerFlag ~ ".Take") : "") ~ ");\n";
           break;
         case Object, Interface:
-          auto objectGSym = param.repo.resolveSymbol("GObject.ObjectG");
-          preCall ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n_" ~ param.dName ~ "[i] = "
-            ~ objectGSym ~ ".getDObject(" ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);\n";
+          addImport("gobject.object");
+          preCall ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n_" ~ param.dName
+            ~ "[i] = gobject.object.ObjectWrap.getDObject(" ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);\n";
           break;
         case Unknown, Callback, Container, Namespace:
           assert(0, "Unsupported parameter array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType.kind.to!string

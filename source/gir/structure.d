@@ -163,7 +163,7 @@ final class Structure : TypeNode
     if (structType == StructType.Interface)
       return TypeKind.Interface;
 
-    if (dType == "ObjectG") // Minor HACK: ObjectG is the OG Object
+    if (dType == "ObjectWrap") // Minor HACK: ObjectWrap is the OG Object
       return TypeKind.Object;
 
     return TypeKind.Unknown;
@@ -394,12 +394,7 @@ final class Structure : TypeNode
     scope(exit) endImports;
 
     if (parentStruct)
-    {
       importManager.add(parentStruct.fullModuleName); // Add parent to imports
-
-      if ((structType == StructType.Class || structType == StructType.Interface) && !properties.empty)
-        importManager.add("gobject.object"); // Import gobject.object for getProperty and setProperty templates (might not actually get used though)
-    }
 
     foreach (st; implementStructs) // Add implemented interfaces to imports
     {
@@ -835,8 +830,11 @@ final class Structure : TypeNode
           if (!getter)
             getter = !p.propGet.empty ? checkGetter(cast(Func)repo.defs.cSymbolHash.get(p.propGet, null)) : null; // Use alternative org.gtk.Property.get attribute as a backup (full C symbol function name)
 
-          lines ~= ["{", getter ? ("return " ~ getter.dName ~ "();") : ("return gobject.object.ObjectG.getProperty!(" ~ p.fullDType
-            ~ ")(\"" ~ p.name ~ "\");"), "}"]; // Use getProperty if no getter method
+          if (!getter)
+            addImport("gobject.object");
+
+          lines ~= ["{", getter ? ("return " ~ getter.dName ~ "();") : ("return gobject.object.ObjectWrap.getProperty!("
+            ~ p.fullDType ~ ")(\"" ~ p.name ~ "\");"), "}"]; // Use getProperty if no getter method
         }
         else
           lines[$ - 1] ~= ";";
@@ -867,8 +865,11 @@ final class Structure : TypeNode
         if (!setter)
           setter = !p.propSet.empty ? checkSetter(cast(Func)repo.defs.cSymbolHash.get(p.propSet, null)) : null; // Use alternative org.gtk.Property.set attribute as a backup (full C symbol function name)
 
-        lines ~= ["{", setter ? ("return " ~ setter.dName ~ "(propval);") : ("gobject.object.ObjectG.setProperty!(" ~ p.fullDType ~ ")(\""
-          ~ p.name ~ "\", propval);"), "}"];  // Use getProperty if no setter method
+        if (!setter)
+          addImport("gobject.object");
+
+        lines ~= ["{", setter ? ("return " ~ setter.dName ~ "(propval);") : ("gobject.object.ObjectWrap.setProperty!("
+          ~ p.fullDType ~ ")(\"" ~ p.name ~ "\", propval);"), "}"];  // Use getProperty if no setter method
       }
       else
         lines[$ - 1] ~= ";";
