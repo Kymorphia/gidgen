@@ -72,7 +72,7 @@ class SignalWriter
 
     with (TypeKind) callbackTypes ~= CallbackType(retVal.fullDType, retVal.kind.among(Object, Interface) != 0);
     call ~= "auto _retval = ";
-    postCall ~= "setVal!" ~ retVal.fullDType ~ "(_returnValue, _retval);\n";
+    postCall ~= "setVal!(" ~ retVal.fullDType ~ ")(_returnValue, _retval);\n";
   }
 
   /// Process parameter
