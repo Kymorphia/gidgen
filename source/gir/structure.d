@@ -496,7 +496,7 @@ final class Structure : TypeNode
 
     writer ~= "}";
 
-    if (!(defCode.inhibitFlags & DefInhibitFlags.Funcs))
+    if (!isIfaceTemplate && !(defCode.inhibitFlags & DefInhibitFlags.Funcs))
     {
       foreach (quarkFunc; errorQuarks) // Add error exceptions
       {
