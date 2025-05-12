@@ -472,7 +472,7 @@ final class Func : TypeNode
     output = "class " ~ exceptionName ~ "Exception : ErrorWrap\n{\n";
     output ~= "this(GError* err)\n{\nsuper(err);\n}\n\n";
     output ~= "this(Code code, string msg)\n{\nsuper(" ~ st.fullDType ~ "." ~ dName ~ ", cast(int)code, msg);\n}\n";
-    output ~= "\nalias Code = G" ~ exceptionName ~ "Error;\n}";
+    output ~= "\nalias Code = " ~ exceptionName ~ "Error;\n}";
 
     return output;
   }
