@@ -202,7 +202,7 @@ class TypeNode : Base
       || (typeObject && typeObject is other.typeObject);
   }
 
-  /// cPtr with a single '*' removed (if it has any)
+  /// cType with a single '*' removed (if it has any)
   dstring cTypeRemPtr()
   {
     if (!cType.endsWith("*"))

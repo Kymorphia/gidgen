@@ -166,7 +166,7 @@ class SignalWriter
           break;
         case Object, Interface:
           addImport("gobject.object");
-          inpProcess ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_dArray ~= gobject.object.ObjectWrap.getDObject!("
+          inpProcess ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_dArray ~= gobject.object.ObjectWrap._getDObject!("
             ~ elemType.fullDType ~ ")(_cArray[i], " ~ param.fullOwnerFlag ~ ".Take);"];
           break;
         case Unknown, Callback, Container, Namespace:

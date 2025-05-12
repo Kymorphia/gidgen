@@ -124,7 +124,7 @@ class DelegWriter
       case Opaque, Wrap, Boxed, Reffed, Object:
         preCall ~= retVal.fullDType ~ " _dretval;\n";
         call ~= "_dretval = ";
-        postCall ~= retVal.cType ~ " _retval = cast(" ~ retVal.cTypeRemPtr ~ "*)_dretval.cPtr("
+        postCall ~= retVal.cType ~ " _retval = cast(" ~ retVal.cTypeRemPtr ~ "*)_dretval._cPtr("
           ~ retVal.fullOwnerFlag ~ ".Dup);\n";
         break;
       case Interface:
@@ -132,7 +132,7 @@ class DelegWriter
         preCall ~= retVal.fullDType ~ " _dretval;\n";
         call ~= "_dretval = ";
         postCall ~= retVal.cType ~ " _retval = cast(" ~ retVal.cTypeRemPtr
-          ~ "*)(cast(gobject.object.ObjectWrap)_dretval).cPtr(" ~ retVal.fullOwnerFlag ~ ".Dup);\n";
+          ~ "*)(cast(gobject.object.ObjectWrap)_dretval)._cPtr(" ~ retVal.fullOwnerFlag ~ ".Dup);\n";
         break;
       case Callback, Unknown, Container, Namespace:
         assert(0, "Unsupported delegate return value type '" ~ retVal.fullDType.to!string
@@ -186,7 +186,7 @@ class DelegWriter
           postCall ~= "_retval[i] = _dretval[i];\n";
           break;
         case Opaque, Wrap, Boxed, Reffed, Object, Interface:
-          postCall ~= "_retval[i] = _dretval[i].cPtr(" ~ retVal.fullOwnerFlag ~ ".Dup);\n";
+          postCall ~= "_retval[i] = _dretval[i]._cPtr(" ~ retVal.fullOwnerFlag ~ ".Dup);\n";
           break;
         case Basic, BasicAlias, Callback, Unknown, Container, Namespace:
           assert(0, "Unsupported delegate return value array type '" ~ elemType.fullDType.to!string
@@ -291,7 +291,7 @@ class DelegWriter
           if (param.kind == TypeKind.Object || param.kind == TypeKind.Interface)
           {
             addImport("gobject.object");
-            addCallParam("gobject.object.ObjectWrap.getDObject!(" ~ param.fullDType ~ ")(cast(void*)" ~ param.dName ~ ", "
+            addCallParam("gobject.object.ObjectWrap._getDObject!(" ~ param.fullDType ~ ")(cast(void*)" ~ param.dName ~ ", "
               ~ param.fullOwnerFlag ~ ".Take)");
           }
           else
@@ -302,7 +302,7 @@ class DelegWriter
         { // FIXME - Not sure if this will work for all cases, also could optimize by allowing C structure to be directly used in D object
           preCall ~= "auto _" ~ param.dName ~ " = new " ~ param.fullDType ~ "(" ~ param.dName ~ ", No.Take);\n";
           addCallParam("_" ~ param.dName);
-          postCall ~= "*" ~ param.dName ~ " = *cast(" ~ param.cType ~ ")_" ~ param.dName ~ ".cPtr;\n";
+          postCall ~= "*" ~ param.dName ~ " = *cast(" ~ param.cType ~ ")_" ~ param.dName ~ "._cPtr;\n";
         }
         else // InOut
           assert(0, "InOut arguments of type '" ~ param.kind.to!string ~ "' not supported"); // FIXME - Does this even exist?
@@ -366,7 +366,7 @@ class DelegWriter
         case Object, Interface:
           addImport("gobject.object");
           preCall ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n_" ~ param.dName
-            ~ "[i] = gobject.object.ObjectWrap.getDObject(" ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);\n";
+            ~ "[i] = gobject.object.ObjectWrap._getDObject(" ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);\n";
           break;
         case Unknown, Callback, Container, Namespace:
           assert(0, "Unsupported parameter array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType.kind.to!string

@@ -569,22 +569,22 @@ final class Structure : TypeNode
       writer ~= ["", "~this()", "{", freeFunction ~ "(&cInstance);", "}"];
 
     if (kind == TypeKind.Opaque)
-      writer ~= ["", "/** */", "void* cPtr()", "{", "return cast(void*)cInstancePtr;", "}"];
+      writer ~= ["", "/** */", "void* _cPtr()", "{", "return cast(void*)cInstancePtr;", "}"];
     else if (kind == TypeKind.Reffed && !parentStruct)
-      writer ~= ["", "/** */", "void* cPtr(Flag!\"Dup\" dup = No.Dup)", "{", "if (dup)", glibRefFunc ~ "(cInstancePtr);", "",
+      writer ~= ["", "/** */", "void* _cPtr(Flag!\"Dup\" dup = No.Dup)", "{", "if (dup)", glibRefFunc ~ "(cInstancePtr);", "",
         "return cInstancePtr;", "}"];
     else if (kind == TypeKind.Boxed)
-      writer ~= ["", "/** */", "void* cPtr(Flag!\"Dup\" dup = No.Dup)", "{", "return dup ? copy_ : cInstancePtr;", "}"];
+      writer ~= ["", "/** */", "void* _cPtr(Flag!\"Dup\" dup = No.Dup)", "{", "return dup ? copy_ : cInstancePtr;", "}"];
     else if (kind == TypeKind.Wrap)
-      writer ~= ["", "/** */", "void* cPtr()", "{", "return cast(void*)&cInstance;", "}"];
+      writer ~= ["", "/** */", "void* _cPtr()", "{", "return cast(void*)&cInstance;", "}"];
 
     if (kind.among(TypeKind.Boxed, TypeKind.Object) || (kind == TypeKind.Interface && moduleType == ModuleType.Iface))
-      writer ~= ["", "/** */", "static GType getGType()", "{", "import gid.loader : gidSymbolNotFound;",
+      writer ~= ["", "/** */", "static GType _getGType()", "{", "import gid.loader : gidSymbolNotFound;",
         "return cast(void function())" ~ glibGetType
         ~ " != &gidSymbolNotFound ? " ~ glibGetType ~ "() : cast(GType)0;", "}"]; // Return 0 if get_type() function was not resolved
 
     if (kind.among(TypeKind.Boxed, TypeKind.Object))
-      writer ~= ["", "/** */", "override @property GType gType()", "{", "return getGType();", "}", "",
+      writer ~= ["", "/** */", "override @property GType _gType()", "{", "return _getGType();", "}", "",
         "/** Returns `this`, for use in `with` statements. */", "override " ~ dType ~ " self()", "{", "return this;", "}"];
   }
 
@@ -647,7 +647,7 @@ final class Structure : TypeNode
   {
     dstring[] lines;
 
-    auto cPtr = "(cast(" ~ (cType.countStars > 0 ? cTypeRemPtr : cType) ~ "*)cPtr)";
+    auto cPtr = "(cast(" ~ (cType.countStars > 0 ? cTypeRemPtr : cType) ~ "*)_cPtr)";
 
     foreach (f; fields)
     {
