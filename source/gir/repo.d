@@ -693,6 +693,7 @@ final class Repo : Base
     }
 
     writer ~= ["", "shared static this()", "{"];
+    auto resolvedLibs = ["auto libs = gidResolveLibs(LIBS);"d, ""d];
 
     foreach (st; structs)
     {
@@ -703,7 +704,13 @@ final class Repo : Base
 
       if (st && !st.glibGetType.empty)
       { // Write GType function if set
-        writer ~= preamble ~ ["gidLink(cast(void**)&" ~ st.glibGetType ~ ", \"" ~ st.glibGetType ~ "\", LIBS);"];
+        if (resolvedLibs)
+        {
+          writer ~= resolvedLibs;
+          resolvedLibs = [];
+        }
+
+        writer ~= preamble ~ ["gidLink(cast(void**)&" ~ st.glibGetType ~ ", \"" ~ st.glibGetType ~ "\", libs);"];
         preamble = null;
       }
 
@@ -712,7 +719,13 @@ final class Repo : Base
         if (f.movedTo || !f.funcType.among(FuncType.Function, FuncType.Constructor, FuncType.Method))
           continue;
 
-        writer ~= preamble ~ ["gidLink(cast(void**)&" ~ f.cName ~ ", \"" ~ f.cName ~ "\", LIBS);"];
+        if (resolvedLibs)
+        {
+          writer ~= resolvedLibs;
+          resolvedLibs = [];
+        }
+
+        writer ~= preamble ~ ["gidLink(cast(void**)&" ~ f.cName ~ ", \"" ~ f.cName ~ "\", libs);"];
         preamble = null;
       }
     }
