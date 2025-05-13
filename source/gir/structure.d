@@ -647,7 +647,7 @@ final class Structure : TypeNode
   {
     dstring[] lines;
 
-    auto cPtr = "(cast(" ~ (cType.countStars > 0 ? cTypeRemPtr : cType) ~ "*)_cPtr)";
+    auto cPtr = "(cast(" ~ (cType.countStars > 0 ? cTypeRemPtr : cType) ~ "*)this._cPtr)";
 
     foreach (f; fields)
     {

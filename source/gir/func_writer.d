@@ -306,7 +306,7 @@ class FuncWriter
   {
     if (param.isInstanceParam) // Instance parameter?
     {
-      call ~= "cast(" ~ param.cType ~ ")_cPtr"d; // Pointer types have the pointer as part of the type
+      call ~= "cast(" ~ param.cType ~ ")this._cPtr"d; // Pointer types have the pointer as part of the type
       return;
     }
 
