@@ -195,17 +195,16 @@ class FuncWriter
           {
             addImport("gobject.object");
             postCall ~= "auto _retval = gobject.object.ObjectWrap._getDObject!("
-              ~ retVal.fullDType ~ ")(cast(" ~ retVal.cType.stripConst ~ ")_cretval"
-              ~ (retVal.kind != TypeKind.Wrap ? (", " ~ retVal.fullOwnerFlag ~ ".Take") : "") ~ ");\n";
+              ~ retVal.fullDType ~ ")(cast(" ~ retVal.cType.stripConst ~ ")_cretval, " ~ retVal.fullOwnerFlag
+              ~ ".Take);\n";
           }
           else
             postCall ~= "auto _retval = _cretval ? new "
-              ~ retVal.fullDType ~ "(cast(" ~ retVal.cType.stripConst ~ ")_cretval"
-              ~ (retVal.kind != TypeKind.Wrap ? (", " ~ retVal.fullOwnerFlag ~ ".Take") : "") ~ ") : null;\n";
+              ~ retVal.fullDType ~ "(cast(" ~ retVal.cType.stripConst ~ ")_cretval, " ~ retVal.fullOwnerFlag
+                ~ ".Take) : null;\n";
         }
         else // Constructor method
-          postCall ~= "this(_cretval" ~ (retVal.kind != TypeKind.Wrap ? (", " ~ retVal.fullOwnerFlag ~ ".Take") : "")
-            ~ ");\n";
+          postCall ~= "this(_cretval, " ~ retVal.fullOwnerFlag ~ ".Take);\n";
         break;
       case Unknown, Container, Namespace:
         assert(0, "Unsupported return value type '" ~ retVal.fullDType.to!string ~ "' (" ~ retVal.kind.to!string ~ ") for "
@@ -457,7 +456,7 @@ class FuncWriter
           addCallParam("&_" ~ param.dName);
           postCall ~= param.dName ~ " = " ~ "new " ~ param.fullDType;
           postCall ~= "(cast(void*)" ~ (param.cTypeRemPtr.endsWith('*') ? "_"d : "&_"d) ~ param.dName;
-          postCall ~= (param.kind != TypeKind.Wrap ? (", " ~ param.fullOwnerFlag ~ ".Take") : "") ~ ");\n";
+          postCall ~= ", " ~ param.fullOwnerFlag ~ ".Take);\n";
         }
         break;
       case Interface:
@@ -658,7 +657,7 @@ class FuncWriter
           addCallParam("&_" ~ param.dName);
           postCall ~= param.dName ~ ".length = " ~ lengthStr ~ ";\n";
           postCall ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n" ~ param.dName ~ "[i] = new " ~ elemType.fullDType ~ "(cast(void*)&_"
-            ~ param.dName ~ "[i]" ~ (param.kind != Wrap ? (", " ~ param.fullOwnerFlag ~ ".Take") : "") ~ ");\n";
+            ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);\n";
 
           if (param.ownership != Ownership.None)
             postCall ~= "gFree(cast(void*)_" ~ param.dName ~ ");\n";
@@ -670,8 +669,7 @@ class FuncWriter
           addCallParam("_" ~ param.dName ~ ".ptr");
           postCall ~= param.dName ~ ".length = " ~ lengthStr ~ ";\n";
           postCall ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n" ~ param.dName ~ "[i] = new " ~ elemType.fullDType
-            ~ "(cast(void*)&_" ~ param.dName ~ "[i]" ~ (param.kind != Wrap ? (", " ~ param.fullOwnerFlag ~ ".Take")
-            : "") ~ ");\n";
+            ~ "(cast(void*)&_" ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);\n";
 
           if (param.ownership != Ownership.None)
             postCall ~= "gFree(cast(void*)_" ~ param.dName ~ ");\n";

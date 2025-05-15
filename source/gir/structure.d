@@ -542,13 +542,13 @@ final class Structure : TypeNode
       writer ~= writeBoxedCtor;
 
     if (kind == TypeKind.Opaque)
-      writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take = No.Take)", "{",
+      writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take)", "{",
         "if (!ptr)", "throw new GidConstructException(\"Null instance pointer for " ~ fullDName ~ "\");", ""];
     else if (kind == TypeKind.Wrap || kind == TypeKind.Reffed)
-      writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take = No.Take)", "{",
+      writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take)", "{",
         "if (!ptr)", "throw new GidConstructException(\"Null instance pointer for " ~ fullDName ~ "\");", ""];
     else if (kind == TypeKind.Boxed || kind == TypeKind.Object)
-      writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take = No.Take)", "{",
+      writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take)", "{",
         "super(cast(void*)ptr, take);", "}"];
 
     if (kind == TypeKind.Opaque && !pointer)
@@ -697,9 +697,11 @@ final class Structure : TypeNode
           auto starCount = f.cType.retro.countUntil!(x => x != '*');
 
           if (starCount < 1) // The cast is for casting away "const"
-            lines ~= "return new " ~ f.fullDType ~ "(cast(" ~ f.cType.stripConst ~ "*)" ~ "&" ~ cPtr ~ "." ~ f.dName ~ ");";
+            lines ~= "return new " ~ f.fullDType ~ "(cast(" ~ f.cType.stripConst ~ "*)" ~ "&" ~ cPtr ~ "." ~ f.dName
+              ~ ", No.Take);";
           else
-            lines ~= "return new " ~ f.fullDType ~ "(cast(" ~ f.cType.stripConst ~ ")" ~ cPtr ~ "." ~ f.dName ~ ");";
+            lines ~= "return new " ~ f.fullDType ~ "(cast(" ~ f.cType.stripConst ~ ")" ~ cPtr ~ "." ~ f.dName
+              ~ ", No.Take);";
           break;
         case Unknown, Container, Namespace:
           throw new Exception(

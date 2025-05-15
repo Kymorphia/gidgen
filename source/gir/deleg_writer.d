@@ -360,8 +360,8 @@ class DelegWriter
           break;
         case Opaque, Boxed, Wrap, Reffed:
           preCall ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n_" ~ param.dName ~ "[i] = "
-            ~ "new " ~ elemType.fullDType ~ "(cast(" ~ elemType.cType.stripConst ~ "*)&" ~ param.dName ~ "[i]"
-            ~ (param.kind != Wrap ? (", " ~ param.fullOwnerFlag ~ ".Take") : "") ~ ");\n";
+            ~ "new " ~ elemType.fullDType ~ "(cast(" ~ elemType.cType.stripConst ~ "*)&" ~ param.dName ~ "[i], "
+            ~ param.fullOwnerFlag ~ ".Take);\n";
           break;
         case Object, Interface:
           addImport("gobject.object");

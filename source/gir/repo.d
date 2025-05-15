@@ -502,7 +502,7 @@ final class Repo : Base
       "import " ~ st.fullModuleName ~ "_mixin;", "",
       "/// Proxy object for [" ~ st.fullDName ~ "] interface when a GObject has no applicable D binding",
       "class " ~ className ~ " : IfaceProxy, " ~ st.fullDType, "{",
-      "this(void* ptr, Flag!\"Take\" take = No.Take)", "{", "super(cast(void*)ptr, take);", "}", "",
+      "this(void* ptr, Flag!\"Take\" take)", "{", "super(cast(void*)ptr, take);", "}", "",
       "override TypeInfo_Interface getIface()", "{", "return typeid(" ~ st.fullDType ~ ");", "}", "",
       "mixin " ~ st.dType ~ "T!();",
       "}",
