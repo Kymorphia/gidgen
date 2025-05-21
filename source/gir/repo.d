@@ -263,7 +263,7 @@ final class Repo : Base
       dubInfo["version"] = defs.dubInfo["version"];
 
     if ("description" !in dubInfo)
-      dubInfo["description"] ~= namespace ~ " library D binding";
+      dubInfo["description"] ~= "D binding for the " ~ namespace ~ " " ~ nsVersion ~ " library";
 
     void recurseDeps(Repo r)
     {
@@ -486,7 +486,10 @@ final class Repo : Base
     }
 
     if (!mergeRepo)
+    {
       writeDubJsonFile(buildPath(packagePath, "dub.json"));
+      writeReadme(buildPath(packagePath, "README.md"));
+    }
   }
 
   // Write an interface proxy object (to use when a GObject has no known applicable D object binding when using the interface)
@@ -520,7 +523,7 @@ final class Repo : Base
   {
     string output = "{\n";
 
-    foreach (key; ["name", "version", "description", "copyright", "authors", "license"])
+    foreach (key; ["name", "version", "description", "copyright", "authors", "license", "website"])
     {
       if (auto val = dubInfo.get(key, defs.dubInfo.get(key, null))) // Fall back to master dub info
       {
@@ -541,8 +544,8 @@ final class Repo : Base
     if (!includeRepos.empty)
     {
       auto deps = includeRepos.map!(x => x.mergeRepo ? x.mergeRepo : x).assocArray(true.repeat).keys; // Consider merge repos and deduplicate
-      output ~= ",\n  \"dependencies\": {\n" ~ deps.map!(repo => `    "gid:` // Construct package dependencies with any specified versions from `info` definition commands
-        ~ repo.dubPackageName.to!string ~ `": "` ~ repo.dubInfo.get("version", ["*"])[0].to!string
+      output ~= ",\n  \"dependencies\": {\n" ~ deps.map!(r => `    "gid:` // Construct package dependencies with any specified versions from `info` definition commands
+        ~ r.dubPackageName.to!string ~ `": "` ~ r.dubInfo.get("version", ["*"])[0].to!string
         ~ `"`).array.sort.join(",\n") ~ "\n  }";
     }
 
@@ -550,6 +553,38 @@ final class Repo : Base
 
     if (!path.exists || readText(path) != output) // Only update dub.json if changed (build optimization)
       write(path, output);
+  }
+
+  /**
+   * Write package README.md.
+   * Params:
+   *   path = Path to README.md file to write
+   */
+  private void writeReadme(string path)
+  {
+    auto s = "# " ~ dubInfo["description"][0] ~ "\n\n";
+    s ~= "This [Dub](https://dub.pm/) sub-package of [giD](https://gid.dub.pm) provides a [D language](https://www.dlang.org) binding to the ";
+    s ~= ("website" in dubInfo ? ("[" ~ namespace ~ " " ~ nsVersion ~ "](" ~ dubInfo["website"][0] ~ ")")
+      : (namespace ~ " " ~ nsVersion)) ~ " library.\n\n";
+
+    s ~= "## Information\n\n";
+
+    // Create a markdown table with info/links
+    s ~= "|     |     |\n| --- | --- |\n"; // Not sure if headers are required, but it doesn't render in VSC preview otherwise
+
+    auto info = [
+      ["Dub Package", "[gid:" ~ dubPackageName ~ "](https://code.dlang.org/packages/gid%3A" ~ dubPackageName ~ ")"],
+      ["Library Website", dubInfo.get("website", [null])[0]],
+      ["D API Reference", dubInfo.get("docs", [null])[0]],
+      ["C API Reference", dubInfo.get("capi", [null])[0]],
+    ];
+    s ~= info.filter!(x => x[1].length > 0).map!(x => format("| %-24s | %-80s |\n"d, "**" ~ x[0] ~ "**", x[1])).join
+      ~ "\n";
+
+    s ~= "Consult the [giD README](https://github.com/Kymorphia/gid) for more information on programming with giD"
+      ~ " and links to examples.\n";
+
+    write(path, s.to!string);
   }
 
   /**
@@ -1248,7 +1283,7 @@ final class Repo : Base
   NamespaceVersion mergeNsVer; /// Package namespace/version to merge this repo into
   Repo mergeRepo; /// Repo object to merge this repo into
   Repo[] mergedRepos; /// Repos which have been merged into this one
-  dstring[][string] dubInfo; /// Dub JSON file info ("name", "description", "copyright", "authors", "license"), only "authors" uses multiple values
+  dstring[][string] dubInfo; /// Dub JSON file info (name, description, copyright, authors, license, website, docs, capi), only "authors" uses multiple values, docs and capi are website URLs for D and C API docs used in generated README.md files only
 
   TypeNode[dstring] typeObjectHash; /// Hash of type objects by name (Alias, Func (callback), Constant, Enumeration, or Structure)
 
