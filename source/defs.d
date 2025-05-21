@@ -483,6 +483,7 @@ class Defs
       repo.writePackage(subPkgPath);
 
     writeDubJsonFile(pkgPath, subPkgPath);
+    writePackageReadme(pkgPath);
   }
 
   /**
@@ -497,7 +498,7 @@ class Defs
 
     string output = "{\n";
 
-    foreach (key; ["name", "description", "copyright", "authors", "license"])
+    foreach (key; ["name", "description", "copyright", "authors", "license", "website"])
     {
       if (auto val = dubInfo.get(key, null))
       {
@@ -526,6 +527,32 @@ class Defs
       write(path, output);
   }
 
+  /// Write the top-level package README.md file
+  private void writePackageReadme(string pkgPath)
+  {
+    auto s = "# " ~ ("name" in dubInfo ? (dubInfo["name"][0] ~ " -") : "") ~ dubInfo["description"][0] ~ "\n\n";
+
+    s ~= "This is the top-level [Dub](https://dub.pm/) package for [giD](https://github.com/Kymorphia/gid) "
+      ~ "the GObject Introspection D Language Binding Repository.\n\n";
+    s ~= "## Sub Package Information\n\n";
+
+    // Create a markdown table with info/links
+    s ~= "| Library | Dub Package | D API | C API |\n| --- | --- | --- | --- |\n";
+
+    s ~= repos.filter!(x => x.name != "gid").map!(r => format("| %-80s | %-80s | %-80s | %-80s |\n"d,
+      "website" in r.dubInfo ? ("[" ~ r.namespace ~ " " ~ r.nsVersion ~ "](" ~ r.dubInfo["website"][0] ~ ")")
+      : r.namespace ~ " " ~ r.nsVersion,
+      "[gid:" ~ r.dubPackageName ~ "](https://code.dlang.org/packages/gid%3A" ~ r.dubPackageName ~ ")",
+      "docs" in r.dubInfo ? ("[D API](" ~ r.dubInfo["docs"][0] ~ ")") : "",
+      "capi" in r.dubInfo ? ("[C API](" ~ r.dubInfo["capi"][0] ~ ")") : "",
+    )).join ~ "\n";
+
+    s ~= "Consult the [giD README](https://github.com/Kymorphia/gid) for more information on programming with giD"
+      ~ " and links to examples.\n";
+
+    write(buildPath(pkgPath, "packages", "README.md"), s.to!string);
+  }
+
   /**
    * Fix symbol name if it is a reserved word, by appending an underscore to it.
    * Params:
@@ -545,7 +572,7 @@ class Defs
   bool[dstring] reservedWords; /// Reserved words (_ appended)
   dstring[dstring] cTypeSubs; /// Global C type substitutions
   dstring[dstring] dTypeSubs; /// Global D type substitutions
-  dstring[][string] dubInfo; /// Dub JSON file info ("name", "description", "copyright", "authors", "license"), only "authors" uses multiple values
+  dstring[][string] dubInfo; /// Dub JSON file info (name, description, copyright, authors, license, website, docs), only "authors" uses multiple values, docs is a website URL for D API docs used in generated README.md files only
   XmlPatch[] patches; /// Global XML patches specified in definitions file
   Repo[] repos; /// Gir repositories
   Repo[NamespaceVersion] repoHash; /// Hash of repositories by namespace name and version
@@ -622,8 +649,8 @@ immutable DefCmd[] defCommandInfo = [
     ~ " location (defaults to In)"},
   {"del", 1, DefCmdFlags.None, "del <XmlSelect> - Delete an XML attribute or node"},
   {"gir", 1, DefCmdFlags.None, "gir <GirName> - GIR file to load"},
-  {"info", 2, DefCmdFlags.None, "info <name> <value> - Set JSON dub info for repo or master package"
-    ~ " (name, description, copyright, authors, license), multiple authors values can be given"},
+  {"info", 2, DefCmdFlags.None, "info <name> <value> - Set package info"
+    ~ " (name, description, copyright, authors, license, website, docs, capi), multiple authors values can be given"},
   {"inhibit", 1, DefCmdFlags.ReqClass | DefCmdFlags.VarArgs, "inhibit [" ~ [EnumMembers!DefInhibitFlags]
     .map!(x => x.to!string.toLower).join(" ") ~ "] - Inhibit generation of certain module code (space separated flags)"},
   {"kind", 2, DefCmdFlags.ReqRepo, "kind <TypeName> <TypeKind> - Override a type kind"},
