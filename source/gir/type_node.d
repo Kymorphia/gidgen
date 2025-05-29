@@ -41,7 +41,7 @@ class TypeNode : Base
     super.name(val);
   }
 
-  /// Get the D type string. Subject to subtype type substitutions and aliases if defs.openModule() has been called and there is a conflict.
+  /// Get the D type string
   @property dstring dType()
   {
     if (importManager)
