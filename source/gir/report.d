@@ -29,6 +29,11 @@ class Report
             report.objs[cast(int)obj.active][ndx + 1] ~= obj;
       }
 
+      foreach (en; repo.enums) // Loop over enums/flags looking for namespaced functions
+        if (en.active == Active.Enabled) // Ignore stats of enums that aren't active
+          foreach (fn; en.functions)
+            report.objs[cast(int)fn.active][ReportObjType.Funcs] ~= fn;
+
       repoReports ~= report;
     }
   }
