@@ -498,7 +498,7 @@ class Defs
 
     string output = "{\n";
 
-    foreach (key; ["name", "description", "copyright", "authors", "license", "website"])
+    foreach (key; ["name", "description", "copyright", "authors", "license", "homepage"])
     {
       if (auto val = dubInfo.get(key, null))
       {
@@ -540,7 +540,7 @@ class Defs
     s ~= "| Library | Dub Package | D API | C API |\n| --- | --- | --- | --- |\n";
 
     s ~= repos.filter!(x => x.name != "gid").map!(r => format("| %-80s | %-80s | %-80s | %-80s |\n"d,
-      "website" in r.dubInfo ? ("[" ~ r.namespace ~ " " ~ r.nsVersion ~ "](" ~ r.dubInfo["website"][0] ~ ")")
+      "homepage" in r.dubInfo ? ("[" ~ r.namespace ~ " " ~ r.nsVersion ~ "](" ~ r.dubInfo["homepage"][0] ~ ")")
       : r.namespace ~ " " ~ r.nsVersion,
       "[gid:" ~ r.dubPackageName ~ "](https://code.dlang.org/packages/gid%3A" ~ r.dubPackageName ~ ")",
       "docs" in r.dubInfo ? ("[D API](" ~ r.dubInfo["docs"][0] ~ ")") : "",
@@ -572,7 +572,7 @@ class Defs
   bool[dstring] reservedWords; /// Reserved words (_ appended)
   dstring[dstring] cTypeSubs; /// Global C type substitutions
   dstring[dstring] dTypeSubs; /// Global D type substitutions
-  dstring[][string] dubInfo; /// Dub JSON file info (name, description, copyright, authors, license, website, docs), only "authors" uses multiple values, docs is a website URL for D API docs used in generated README.md files only
+  dstring[][string] dubInfo; /// Dub JSON file info (name, description, copyright, authors, license, homepage, docs), only "authors" uses multiple values, docs is a URL for D API docs used in generated README.md files only
   XmlPatch[] patches; /// Global XML patches specified in definitions file
   Repo[] repos; /// Gir repositories
   Repo[NamespaceVersion] repoHash; /// Hash of repositories by namespace name and version
@@ -650,7 +650,7 @@ immutable DefCmd[] defCommandInfo = [
   {"del", 1, DefCmdFlags.None, "del <XmlSelect> - Delete an XML attribute or node"},
   {"gir", 1, DefCmdFlags.None, "gir <GirName> - GIR file to load"},
   {"info", 2, DefCmdFlags.None, "info <name> <value> - Set package info"
-    ~ " (name, description, copyright, authors, license, website, docs, capi), multiple authors values can be given"},
+    ~ " (name, description, copyright, authors, license, homepage, docs, capi), multiple authors values can be given"},
   {"inhibit", 1, DefCmdFlags.ReqClass | DefCmdFlags.VarArgs, "inhibit [" ~ [EnumMembers!DefInhibitFlags]
     .map!(x => x.to!string.toLower).join(" ") ~ "] - Inhibit generation of certain module code (space separated flags)"},
   {"kind", 2, DefCmdFlags.ReqRepo, "kind <TypeName> <TypeKind> - Override a type kind"},
