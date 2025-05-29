@@ -6,6 +6,7 @@ import std.range : zip;
 import code_writer;
 import defs;
 import gir.alias_;
+import gir.enumeration;
 import gir.field;
 import gir.param;
 import gir.property;
@@ -44,6 +45,15 @@ final class Func : TypeNode
   override dstring dName()
   {
     return repo.defs.symbolName(_name.camelCase);
+  }
+
+  /// Override to handle functions which are namespaced inside of an Enumeration
+  override dstring fullDName()
+  {
+    if (auto en = cast(Enumeration)parent)
+      return en.fullNamespaceStruct ~ "." ~ dName;
+    else
+      return super.fullDName;
   }
 
   /**

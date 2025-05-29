@@ -11,19 +11,29 @@ import gir.type_node;
 ImportManager importManager;
 
 /**
-  * Designate the start of output processing for module imports. Enables tracking of symbol names and
-  * creation of aliases for conflicts for used symbols.
+  * Designate the start of output processing for module imports.
   * Params:
   *   klassModule = The klass or module being processed
   */
 void beginImports(Structure klassModule)
 {
+  beginImports(klassModule.fullModuleName, klassModule.repo.packageNamespace);
+}
+
+/**
+  * Designate the start of output processing for module imports.
+  * Params:
+  *   moduleName = The module name
+  *   namespace = The default namespace (or null, the default)
+  */
+void beginImports(dstring moduleName, dstring namespace = null)
+{
   assert(!importManager);
-  importManager = new ImportManager(klassModule);
+  importManager = new ImportManager(moduleName, namespace);
   importManager.add("gid.gid");
   importManager.add("types");
-  importManager.add(klassModule.repo.packageNamespace ~ ".c.functions");
-  importManager.add(klassModule.repo.packageNamespace ~ ".c.types");
+  importManager.add(namespace ~ ".c.functions");
+  importManager.add(namespace ~ ".c.types");
 }
 
 /**
@@ -49,31 +59,15 @@ void addImport(dstring mod)
 
 final class ImportManager
 {
-  this(Structure klassModule)
+  this(dstring moduleName, dstring namespace = null)
   {
-    this.classFullModuleName = klassModule.fullModuleName;
-    this.defaultNamespace = klassModule.repo.packageNamespace;
-  }
-
-  this(ImportManager imSyms, Structure klassModule)
-  {
-    this(klassModule);
-    merge(imSyms);
-  }
-
-  this(dstring defaultNamespace = null)
-  {
-    this.defaultNamespace = defaultNamespace;
-  }
-
-  this(ImportManager imSyms, dstring defaultNamespace = null)
-  {
-    this(defaultNamespace);
-    merge(imSyms);
+    this.classFullModuleName = moduleName;
+    this.defaultNamespace = namespace;
   }
 
   /**
-   * Add import module as a string with an optional symbol to an import symbols object. Should only be used if there is no associated Structure object for the import.
+   * Add import module as a string with an optional symbol to an import symbols object.
+   * Should only be used if there is no associated Structure object for the import.
    * Params:
    *   mod = The import module name (default namespace is used if not present)
    *   symbol = Optional symbol in the module to import

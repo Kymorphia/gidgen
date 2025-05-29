@@ -114,7 +114,7 @@ final class Repo : Base
           if (auto st = node.baseParentFromXmlNode!Structure)
             st.addFunc(new Func(st, node));
           else if (auto en = node.baseParentFromXmlNode!Enumeration)
-            en.functions ~= new Func(en, node);
+            en.addFunc(new Func(en, node));
           else
             globalStruct.addFunc(new Func(globalStruct, node));
           break;
@@ -485,6 +485,12 @@ final class Repo : Base
       }
     }
 
+    foreach (en; enums) // Write modules for enumerations which have functions
+    {
+      if (en.active == Active.Enabled && (en.functions.length || en.errorQuarks.length))
+        en.write(sourcePath);
+    }
+
     if (!mergeRepo)
     {
       writeDubJsonFile(buildPath(packagePath, "dub.json"));
@@ -705,6 +711,23 @@ final class Repo : Base
       }
     }
 
+    foreach (en; enums) // Enums and bitfields can have functions
+    {
+      auto preamble = ["", "// " ~ en.dType];
+
+      if (writer.lines[$ - 1] == "{")
+        preamble = preamble[1 .. $];
+
+      foreach (f; en.functions)
+      {
+        if (f.movedTo || f.funcType != FuncType.Function)
+          continue;
+
+        writer ~= preamble ~ [f.getCPrototype ~ " c_" ~ f.cName ~ "; ///"]; // Add comment so that adrdox includes function in API docs
+        preamble = null;
+      }
+    }
+
     writer ~= ["}"];
 
     foreach (st; structs)
@@ -720,6 +743,20 @@ final class Repo : Base
       foreach (f; st.functions)
       {
         if (f.movedTo || !f.funcType.among(FuncType.Function, FuncType.Constructor, FuncType.Method))
+          continue;
+
+        writer ~= preamble ~ ["", "/** */", "alias " ~ f.cName ~ " = c_" ~ f.cName ~ ";"]; // Add comment so that adrdox includes alias in API docs
+        preamble = null;
+      }
+    }
+
+    foreach (en; enums)
+    {
+      auto preamble = ["", "// " ~ en.name];
+
+      foreach (f; en.functions)
+      {
+        if (f.movedTo || f.funcType != FuncType.Function)
           continue;
 
         writer ~= preamble ~ ["", "/** */", "alias " ~ f.cName ~ " = c_" ~ f.cName ~ ";"]; // Add comment so that adrdox includes alias in API docs
@@ -752,6 +789,29 @@ final class Repo : Base
       foreach (f; st.functions)
       {
         if (f.movedTo || !f.funcType.among(FuncType.Function, FuncType.Constructor, FuncType.Method))
+          continue;
+
+        if (resolvedLibs)
+        {
+          writer ~= resolvedLibs;
+          resolvedLibs = [];
+        }
+
+        writer ~= preamble ~ ["gidLink(cast(void**)&" ~ f.cName ~ ", \"" ~ f.cName ~ "\", libs);"];
+        preamble = null;
+      }
+    }
+
+    foreach (en; enums)
+    {
+      auto preamble = ["", "// " ~ en.name];
+
+      if (writer.lines[$ - 1] == "{")
+        preamble = preamble[1 .. $];
+
+      foreach (f; en.functions)
+      {
+        if (f.movedTo || f.funcType != FuncType.Function)
           continue;
 
         if (resolvedLibs)
