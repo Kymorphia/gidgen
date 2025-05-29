@@ -523,7 +523,7 @@ final class Repo : Base
   {
     string output = "{\n";
 
-    foreach (key; ["name", "version", "description", "copyright", "authors", "license", "website"])
+    foreach (key; ["name", "version", "description", "copyright", "authors", "license", "homepage"])
     {
       if (auto val = dubInfo.get(key, defs.dubInfo.get(key, null))) // Fall back to master dub info
       {
@@ -564,7 +564,7 @@ final class Repo : Base
   {
     auto s = "# " ~ dubInfo["description"][0] ~ "\n\n";
     s ~= "This [Dub](https://dub.pm/) sub-package of [giD](https://gid.dub.pm) provides a [D language](https://www.dlang.org) binding to the ";
-    s ~= ("website" in dubInfo ? ("[" ~ namespace ~ " " ~ nsVersion ~ "](" ~ dubInfo["website"][0] ~ ")")
+    s ~= ("homepage" in dubInfo ? ("[" ~ namespace ~ " " ~ nsVersion ~ "](" ~ dubInfo["homepage"][0] ~ ")")
       : (namespace ~ " " ~ nsVersion)) ~ " library.\n\n";
 
     s ~= "## Information\n\n";
@@ -574,7 +574,7 @@ final class Repo : Base
 
     auto info = [
       ["Dub Package", "[gid:" ~ dubPackageName ~ "](https://code.dlang.org/packages/gid%3A" ~ dubPackageName ~ ")"],
-      ["Library Website", dubInfo.get("website", [null])[0]],
+      ["Library Homepage", dubInfo.get("homepage", [null])[0]],
       ["D API Reference", dubInfo.get("docs", [null])[0]],
       ["C API Reference", dubInfo.get("capi", [null])[0]],
     ];
@@ -1283,7 +1283,7 @@ final class Repo : Base
   NamespaceVersion mergeNsVer; /// Package namespace/version to merge this repo into
   Repo mergeRepo; /// Repo object to merge this repo into
   Repo[] mergedRepos; /// Repos which have been merged into this one
-  dstring[][string] dubInfo; /// Dub JSON file info (name, description, copyright, authors, license, website, docs, capi), only "authors" uses multiple values, docs and capi are website URLs for D and C API docs used in generated README.md files only
+  dstring[][string] dubInfo; /// Dub JSON file info (name, description, copyright, authors, license, homepage, docs, capi), only "authors" uses multiple values, docs and capi are URLs for D and C API docs used in generated README.md files only
 
   TypeNode[dstring] typeObjectHash; /// Hash of type objects by name (Alias, Func (callback), Constant, Enumeration, or Structure)
 

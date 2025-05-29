@@ -6,7 +6,7 @@ The intention of this project is to create high quality D language bindings for 
 The **gidgen** utility takes XML GObject Introspection Repository (GIR) files and generates D binding packages which can be used with [dub](https://dub.pm/).
 
 The [giD Package Repository](https://github.com/Kymorphia/gid/) hosts the current archive of generated D bindings.
-It currently includes bindings for Gtk4, Vte terminal library, GtkSource code viewer widget, Apache Arrow, and more.
+It currently includes bindings for Gtk4, Gtk3, GStreamer, libgda, WebKit, Vte terminal library, GtkSource code viewer widget, Apache Arrow, and more.
 
 Please consult the documentation there for more information on developing D applications with giD library bindings.
 
@@ -246,7 +246,7 @@ add <XmlSelect> <AttributeValue | Xml> - Add an XML attribute or node (Block)
 class <Class> [Pre|In|Post] - Current class/module and location (defaults to In) (Repo)
 del <XmlSelect> - Delete an XML attribute or node
 gir <GirName> - GIR file to load
-info <name> <value> - Set package info (name, description, copyright, authors, license, website, docs, capi),
+info <name> <value> - Set package info (name, description, copyright, authors, license, homepage, docs, capi),
 multiple authors values can be given
 inhibit [nothing imports init funcs] - Inhibit generation of certain module code (space separated flags) (Class)
 kind <TypeName> <TypeKind> - Override a type kind (Repo)
@@ -339,7 +339,7 @@ This specifies the current location to insert code into, either before, inside, 
 
 There are several commands which modify the behavior of binding generation. These are described in more detail below:
 * **info** - Used for defining values in dub.json package files. It takes a name, which is one of:
-  name, description, copyright, authors, license, website, docs, or capi.
+  name, description, copyright, authors, license, homepage, docs, or capi.
   The **docs** and **capi** values define URLs to the package D and C API reference respectively, and are only used in generated package README.md files.
   The second parameter is the value to assign. The **authors** info value can be assigned multiple times, to be used when there are multiple authors.
   Example: `//!info description "GObject introspection D binding repository"`
