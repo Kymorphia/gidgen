@@ -217,9 +217,9 @@ class FuncWriter
   {
     auto retVal = func.returnVal;
     auto elemType = retVal.elemTypes[0];
-    auto retType = elemType.dType == "char" ? "string " : (elemType.fullDType ~ "[] "); // Use string for char[] with length
+    auto retType = elemType.dType == "char" ? "string" : (elemType.fullDType ~ "[]"); // Use string for char[] with length
 
-    decl ~= retType;
+    decl ~= retType ~ " ";
     preCall ~= retVal.cType ~ " _cretval;\n";
     call ~= "_cretval = ";
     postCall ~= (elemType.dType == "char" ? "string" : (elemType.fullDType ~ "[]")) ~ " _retval;\n";
@@ -245,7 +245,7 @@ class FuncWriter
       assert(0, "Function '" ~ func.fullName.to!string ~ "' return array has indeterminate length"); // This should be prevented by defs.fixupRepos()
 
     if (elemType.kind.among(TypeKind.Basic, TypeKind.BasicAlias, TypeKind.Enum))
-      postCall ~= "_retval = cast(" ~ retType ~ ")_cretval[0 .. " ~ lengthStr ~ "];\n";
+      postCall ~= "_retval = cast(" ~ retType ~ ")_cretval[0 .. " ~ lengthStr ~ "].dup;\n";
     else
     {
       postCall ~= "_retval = new " ~ elemType.fullDType ~ "[" ~ lengthStr ~ "];\nforeach (i; 0 .. "
@@ -276,6 +276,9 @@ class FuncWriter
               .kind.to!string ~ ") for " ~ func.fullName.to!string);
       }
     }
+
+    if (retVal.ownership == Ownership.Container || retVal.ownership == Ownership.Full)
+      postCall ~= "gFree(cast(void*)_cretval);\n";
 
     postCall ~= "}\n";
   }
