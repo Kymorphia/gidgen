@@ -3,3 +3,4 @@ dub.selections.json
 gidgen
 *.o
 *.so
+source/version_info.d

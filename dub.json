@@ -5,5 +5,8 @@
   "authors": ["Element Green <element@kymorphia.com>"],
   "license": "MIT",
   "targetType": "executable",
-  "mainSourceFile": "source/gidgen.d"
+  "mainSourceFile": "source/gidgen.d",
+  "preGenerateCommands": [
+    "$DUB $PACKAGE_DIR/tools/generate_version.d"
+  ]
 }
