@@ -594,7 +594,7 @@ class FuncWriter
     dstring lengthStr;
 
     if (param.lengthParam) // Array has length parameter?
-    { // gidgen extention which allows another zero-terminated array to be used for the output array length
+    { // gidgen extension which allows another zero-terminated array to be used for the output array length
       if (param.lengthParam.containerType == ContainerType.Array)
         lengthStr = param.lengthParam.dName ~ ".length";
       else
@@ -628,8 +628,14 @@ class FuncWriter
           if (param.ownership != Ownership.None)
             postCall ~= "gFree(cast(void*)_" ~ param.dName ~ ");\n";
         }
-        else
+        else // Caller allocated array
+        { // If there is a length parameter and it is not another array (gidgen extension) - init count to array length
+          if (param.lengthParam && param.lengthParam.containerType != ContainerType.Array)
+            preCall ~= "_" ~ param.lengthParam.dName ~ " = cast(" ~ param.lengthParam.fullDType ~ ")"
+              ~ param.dName ~ ".length;\n";
+
           addCallParam(param.dName ~ ".ptr");
+        }
         break;
       case String:
         if (!param.callerAllocates)
