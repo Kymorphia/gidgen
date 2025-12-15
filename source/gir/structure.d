@@ -677,7 +677,10 @@ final class Structure : TypeNode
       final switch (f.kind) with (TypeKind)
       {
         case Basic, BasicAlias, Pointer:
-          lines ~= "return " ~ cPtr ~ "." ~ f.dName ~ ";";
+          if (f.dType == "bool")
+            lines ~= "return cast(bool)" ~ cPtr ~ "." ~ f.dName ~ ";";
+          else
+            lines ~= "return " ~ cPtr ~ "." ~ f.dName ~ ";";
           break;
         case Enum, Flags:
           lines ~= "return cast(" ~ f.fullDType ~ ")" ~ cPtr ~ "." ~ f.dName ~ ";";

@@ -138,7 +138,7 @@ class FuncWriter
       case Basic, BasicAlias:
         decl ~= retVal.fullDType ~ " ";
         preCall ~= retVal.fullDType ~ " _retval;\n";
-        call ~= "_retval = ";
+        call ~= retVal.dType == "bool" ? "_retval = cast(bool)" : "_retval = ";
         // postCall ~= retVal.dType ~ " _retval = cast(" ~ retVal.dType ~ ")_cretval;\n";
         break;
       case String:
@@ -244,37 +244,48 @@ class FuncWriter
     else
       assert(0, "Function '" ~ func.fullName.to!string ~ "' return array has indeterminate length"); // This should be prevented by defs.fixupRepos()
 
-    if (elemType.kind.among(TypeKind.Basic, TypeKind.BasicAlias, TypeKind.Enum))
-      postCall ~= "_retval = cast(" ~ retType ~ ")_cretval[0 .. " ~ lengthStr ~ "].dup;\n";
-    else
+    final switch (elemType.kind) with (TypeKind)
     {
-      postCall ~= "_retval = new " ~ elemType.fullDType ~ "[" ~ lengthStr ~ "];\nforeach (i; 0 .. "
-        ~ lengthStr ~ ")\n";
-
-      final switch (elemType.kind) with (TypeKind)
-      {
-        case String:
-          postCall ~= "_retval[i] = _cretval[i].fromCString(" ~ retVal.fullOwnerFlag ~ ".Free);\n";
-          break;
-        case Enum, Flags:
-          postCall ~= "_retval[i] = cast(" ~ elemType.fullDType ~ ")(_cretval[i]);\n";
-          break;
-        case Simple, Pointer:
-          postCall ~= "_retval[i] = _cretval[i];\n";
-          break;
-        case Opaque, Wrap, Boxed, Reffed:
-          postCall ~= "_retval[i] = new " ~ elemType.fullDType ~ "(cast(void*)" ~ (retVal.cType.countStars == 1 ? "&"d : "")
-            ~ "_cretval[i], " ~ retVal.fullOwnerFlag ~ ".Take);\n";
-          break;
-        case Object, Interface:
-          addImport("gobject.object");
-          postCall ~= "_retval[i] = gobject.object.ObjectWrap._getDObject!(" ~ elemType.fullDType ~ ")(_cretval[i], "
-            ~ retVal.fullOwnerFlag ~ ".Take);\n";
-          break;
-        case Basic, BasicAlias, Callback, Unknown, Container, Namespace:
-          assert(0, "Unsupported return value array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType
-              .kind.to!string ~ ") for " ~ func.fullName.to!string);
-      }
+      case TypeKind.Basic, TypeKind.BasicAlias:
+        if (elemType.dType == "bool")
+        {
+          postCall ~= "_retval = new bool[" ~ lengthStr ~ "];\nforeach (i; 0 .. " ~ lengthStr ~ ")\n";
+          postCall ~= "_retval[i] = cast(bool)_cretval[i];\n";
+        }
+        else // C and D types are compatible, copy array
+          postCall ~= "_retval = cast(" ~ retType ~ ")_cretval[0 .. " ~ lengthStr ~ "].dup;\n";
+        break;
+      case String:
+        postCall ~= "_retval = new " ~ elemType.fullDType ~ "[" ~ lengthStr ~ "];\nforeach (i; 0 .. "
+          ~ lengthStr ~ ")\n";
+        postCall ~= "_retval[i] = _cretval[i].fromCString(" ~ retVal.fullOwnerFlag ~ ".Free);\n";
+        break;
+      case Enum, Flags:
+        postCall ~= "_retval = new " ~ elemType.fullDType ~ "[" ~ lengthStr ~ "];\nforeach (i; 0 .. "
+          ~ lengthStr ~ ")\n";
+        postCall ~= "_retval[i] = cast(" ~ elemType.fullDType ~ ")(_cretval[i]);\n";
+        break;
+      case Simple, Pointer:
+        postCall ~= "_retval = new " ~ elemType.fullDType ~ "[" ~ lengthStr ~ "];\nforeach (i; 0 .. "
+          ~ lengthStr ~ ")\n";
+        postCall ~= "_retval[i] = _cretval[i];\n";
+        break;
+      case Opaque, Wrap, Boxed, Reffed:
+        postCall ~= "_retval = new " ~ elemType.fullDType ~ "[" ~ lengthStr ~ "];\nforeach (i; 0 .. "
+          ~ lengthStr ~ ")\n";
+        postCall ~= "_retval[i] = new " ~ elemType.fullDType ~ "(cast(void*)" ~ (retVal.cType.countStars == 1 ? "&"d : "")
+          ~ "_cretval[i], " ~ retVal.fullOwnerFlag ~ ".Take);\n";
+        break;
+      case Object, Interface:
+        postCall ~= "_retval = new " ~ elemType.fullDType ~ "[" ~ lengthStr ~ "];\nforeach (i; 0 .. "
+          ~ lengthStr ~ ")\n";
+        addImport("gobject.object");
+        postCall ~= "_retval[i] = gobject.object.ObjectWrap._getDObject!(" ~ elemType.fullDType ~ ")(_cretval[i], "
+          ~ retVal.fullOwnerFlag ~ ".Take);\n";
+        break;
+      case Callback, Unknown, Container, Namespace:
+        assert(0, "Unsupported return value array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType
+            .kind.to!string ~ ") for " ~ func.fullName.to!string);
     }
 
     if (retVal.ownership == Ownership.Container || retVal.ownership == Ownership.Full)
@@ -397,10 +408,20 @@ class FuncWriter
       case Basic, BasicAlias:
         addDeclParam(param.directionStr ~ param.fullDType ~ " " ~ param.dName);
 
-        if (param.direction == ParamDirection.In)
-          addCallParam(param.dName);
+        if (param.direction != ParamDirection.In)
+        {
+          if (param.dType == "bool")
+          {
+            preCall ~= "gboolean _" ~ param.dName 
+              ~ (param.direction == ParamDirection.InOut ? " = " ~ param.dName ~ ";\n" : ";\n");
+            addCallParam("&_" ~ param.dName);
+            postCall ~= param.dName ~ " = cast(bool)_" ~ param.dName ~ ";\n";
+          }
+          else
+            addCallParam("cast(" ~ param.cType ~ ")&" ~ param.dName);
+        }
         else
-          addCallParam("cast(" ~ param.cType ~ ")&" ~ param.dName);
+          addCallParam(param.dName);
         break;
       case Enum, Flags:
         addDeclParam(param.directionStr ~ param.fullDType ~ " " ~ param.dName);

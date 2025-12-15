@@ -168,30 +168,36 @@ class DelegWriter
     else
       postCall ~= "_retval = cast(" ~ retVal.cType ~ ")gMalloc(_dretval.length * (*_retval).sizeof);\n";
 
-    if (elemType.kind.among(TypeKind.Basic, TypeKind.BasicAlias, TypeKind.Enum))
-      postCall ~= "_retval[0 .. _dretval.length] = _dretval[0 .. _dretval.length];\n";
-    else
+    final switch (elemType.kind) with (TypeKind)
     {
-      postCall ~= "\nforeach (i; 0 .. _dretval.length)\n";
-
-      final switch (elemType.kind) with (TypeKind)
-      {
-        case String:
-          postCall ~= "_retval[i] = _dretval[i].toCString(Yes.Alloc);\n";
-          break;
-        case Enum, Flags:
-          postCall ~= "_retval[i] = cast(" ~ elemType.cType ~ ")_dretval[i];\n";
-          break;
-        case Simple, Pointer:
+      case TypeKind.Basic, TypeKind.BasicAlias:
+        if (elemType.dType == "bool") // Convert between bool and gboolean
+        {
+          postCall ~= "\nforeach (i; 0 .. _dretval.length)\n";
           postCall ~= "_retval[i] = _dretval[i];\n";
-          break;
-        case Opaque, Wrap, Boxed, Reffed, Object, Interface:
-          postCall ~= "_retval[i] = _dretval[i]._cPtr(" ~ retVal.fullOwnerFlag ~ ".Dup);\n";
-          break;
-        case Basic, BasicAlias, Callback, Unknown, Container, Namespace:
-          assert(0, "Unsupported delegate return value array type '" ~ elemType.fullDType.to!string
-            ~ "' (" ~ elemType.kind.to!string ~ ") for " ~ callback.fullName.to!string);
-      }
+        }
+        else // Data is compatible between D and C types, do array copy
+          postCall ~= "_retval[0 .. _dretval.length] = _dretval[0 .. _dretval.length];\n";
+        break;
+      case String:
+        postCall ~= "\nforeach (i; 0 .. _dretval.length)\n";
+        postCall ~= "_retval[i] = _dretval[i].toCString(Yes.Alloc);\n";
+        break;
+      case Enum, Flags:
+        postCall ~= "\nforeach (i; 0 .. _dretval.length)\n";
+        postCall ~= "_retval[i] = cast(" ~ elemType.cType ~ ")_dretval[i];\n";
+        break;
+      case Simple, Pointer:
+        postCall ~= "\nforeach (i; 0 .. _dretval.length)\n";
+        postCall ~= "_retval[i] = _dretval[i];\n";
+        break;
+      case Opaque, Wrap, Boxed, Reffed, Object, Interface:
+        postCall ~= "\nforeach (i; 0 .. _dretval.length)\n";
+        postCall ~= "_retval[i] = _dretval[i]._cPtr(" ~ retVal.fullOwnerFlag ~ ".Dup);\n";
+        break;
+      case Callback, Unknown, Container, Namespace:
+        assert(0, "Unsupported delegate return value array type '" ~ elemType.fullDType.to!string
+          ~ "' (" ~ elemType.kind.to!string ~ ") for " ~ callback.fullName.to!string);
     }
 
     postCall ~= "}\n\n";
@@ -265,7 +271,20 @@ class DelegWriter
     final switch (param.kind) with (TypeKind)
     {
       case Basic, BasicAlias, Enum, Flags, Pointer:
-        addCallParam(param.direction == ParamDirection.In ? param.dName : "*" ~ param.dName);
+        if (param.dType == "bool")
+        { // Bool parameters need to be converted between bool and gboolean
+          if (param.direction != ParamDirection.In)
+          {
+            preCall ~= "bool _" ~ param.dName
+              ~ (param.direction == ParamDirection.InOut ? " = cast(bool)" ~ param.dName ~ ";\n" : ";\n");
+            addCallParam("_" ~ param.dName); // Parameter is "out"
+            postCall ~= "*" ~ param.dName ~ " = _" ~  param.dName ~ ";\n";
+          }
+          else
+            addCallParam("cast(bool)" ~ param.dName);
+        }
+        else
+          addCallParam(param.direction == ParamDirection.In ? param.dName : "*" ~ param.dName);
         break;
       case String:
         if (param.direction == ParamDirection.In)
@@ -351,8 +370,12 @@ class DelegWriter
       final switch (elemType.kind) with (TypeKind)
       {
         case Basic, BasicAlias, Enum, Flags, Simple, Pointer:
-          preCall ~= "_" ~ param.dName ~ "[0 .. " ~ lengthStr ~ "] = " ~ param.dName
-            ~ "[0 .. " ~ lengthStr ~ "];\n";
+          if (param.dType == "bool") // Convert gboolean to bool
+            preCall ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n_" ~ param.dName ~ "[i] = cast(bool)"
+              ~ param.dName ~ "[i];\n";
+          else
+            preCall ~= "_" ~ param.dName ~ "[0 .. " ~ lengthStr ~ "] = " ~ param.dName
+              ~ "[0 .. " ~ lengthStr ~ "];\n";
           break;
         case String:
           preCall ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n_" ~ param.dName ~ "[i] = "
