@@ -569,6 +569,22 @@ class Defs
     return name;
   }
 
+  /**
+   * Dump JSON representation of object tree for troubleshooting and debugging purposes.
+   * Returns: JSONValue JSON object
+   */
+  JSONValue dumpJson(bool dumpDocs)
+  {
+    Base.dumpJsonDocs = dumpDocs;
+
+    JSONValue js = JSONValue.emptyObject;
+    js.jsonSetNonDefault("reservedWords", reservedWords.keys);
+    js.jsonSetNonDefault("cTypeSubs", cTypeSubs);
+    js.jsonSetNonDefault("dTypeSubs", dTypeSubs);
+    js.jsonSetNonDefault("repos", repos);
+    return js;
+  }
+
   bool[dstring] reservedWords; /// Reserved words (_ appended)
   dstring[dstring] cTypeSubs; /// Global C type substitutions
   dstring[dstring] dTypeSubs; /// Global D type substitutions

@@ -539,6 +539,43 @@ final class Func : TypeNode
     return null;
   }
 
+  override void toJson(ref JSONValue js)
+  {
+    super.toJson(js);
+
+    js["name"] = _name;
+    js["origName"] = origName;
+    js["funcType"] = funcType.to!string;
+    js["cName"] = cName;
+    js.jsonSetNonDefault("returnVal", returnVal);
+    js.jsonSetNonDefault("params", params);
+    js.jsonSetNonDefault("closureParam", closureParam);
+    js.jsonSetNonDefault("isCtor", isCtor);
+    if (shadowedByFunc) js["shadowedByFunc"] = shadowedByFunc.fullDName;
+    if (shadowsFunc) js["shadowsFunc"] = shadowsFunc.fullDName;
+    js.jsonSetNonDefault("nullable", nullable);
+    js.jsonSetNonDefault("version", version_);
+    js.jsonSetNonDefault("shadowedBy", shadowedBy);
+    js.jsonSetNonDefault("shadows", shadows);
+    js.jsonSetNonDefault("invoker", invoker);
+    js.jsonSetNonDefault("movedTo", movedTo);
+    js.jsonSetNonDefault("introspectable", introspectable);
+    js.jsonSetNonDefault("throws", throws);
+    js.jsonSetNonDefault("sigAction", action);
+    js.jsonSetNonDefault("sigDetailed", detailed);
+    js.jsonSetNonDefault("sigNoHooks", noHooks);
+    js.jsonSetNonDefault("sigNoRecurse", noRecurse);
+
+    if (deprecated_)
+    {
+      js["deprecated"] = true;
+      js.jsonSetNonDefault("deprecatedVersion", deprecatedVersion);
+    }
+
+    if (when != SignalWhen.Unknown)
+      js["sigWhen"] = when.to!string;
+  }
+
   private dstring _name; /// Name of function
   dstring origName; /// Original name
   FuncType funcType; /// Function type

@@ -1306,6 +1306,37 @@ final class Repo : Base
     return subType ~ "*"d.repeat(starCount).join; // Just a pointer type
   }
 
+  override void toJson(ref JSONValue js)
+  {
+    js["filename"] = filename;
+    js["packageName"] = packageName;
+    js["repoVersion"] = repoVersion;
+    js["namespace"] = namespace;
+    js["nsVersion"] = nsVersion;
+    js["sharedLibrary"] = sharedLibrary;
+    js["identifierPrefixes"] = identifierPrefixes;
+    js["symbolPrefixes"] = symbolPrefixes;
+    js["dubPackageName"] = dubPackageName;
+    js["packageNamespace"] = packageNamespace;
+    js.jsonSetNonDefault("aliases", aliases);
+    js.jsonSetNonDefault("constants", constants);
+    js.jsonSetNonDefault("enums", enums);
+    js.jsonSetNonDefault("callbacks", callbacks);
+    js.jsonSetNonDefault("structs", structs);
+    js.jsonSetNonDefault("includes", includes.map!(x => x.name ~ "=" ~ x.version_).array);
+    js.jsonSetNonDefault("cIncludes", cIncludes);
+    js.jsonSetNonDefault("docSections", docSections);
+
+    js.jsonSetNonDefault("patches", patches.map!(x => x.toString).array);
+    js.jsonSetNonDefault("cTypeSubs", cTypeSubs);
+    js.jsonSetNonDefault("dTypeSubs", dTypeSubs);
+    js.jsonSetNonDefault("kindSubs", kindSubs.byPair.map!(p => tuple(p.key.to!string, p.value)).assocArray);
+
+    js.jsonSetNonDefault("xmlns", xmlns);
+    js.jsonSetNonDefault("xmlnsC", xmlnsC);
+    js.jsonSetNonDefault("xmlnsGlib", xmlnsGlib);
+  }
+
   Defs defs; /// Defs loaded from def files
   string defsFilename; /// Defs filename responsible for loading this Repo object
 

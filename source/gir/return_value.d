@@ -45,6 +45,12 @@ final class ReturnValue : TypeNode
     }
   }
 
+  override void toJson(ref JSONValue js)
+  {
+    super.toJson(js);
+    js.jsonSetNonDefault("nullable", nullable);
+  }
+
   bool nullable; /// Pointer can be null
   Param[] lengthArrayParams; /// Array parameters which use return value as length
 }

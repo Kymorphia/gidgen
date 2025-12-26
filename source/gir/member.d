@@ -44,6 +44,18 @@ final class Member : TypeNode
     _dName = repo.defs.symbolName(_name.camelCase(true));
   }
 
+  override void toJson(ref JSONValue js)
+  {
+    super.toJson(js);
+
+    js["name"] = _name;
+    js["dName"] = _dName;
+    js["cName"] = cName;
+    js["value"] = value;
+    js["glibName"] = glibName;
+    js["glibNick"] = glibNick;
+  }
+
   private dstring _name; /// Name of the enumeration or bitfield member
   private dstring _dName; /// D enum/flags member identifier (TitleCase)
   dstring cName; /// C name (Gir "c:identifier")

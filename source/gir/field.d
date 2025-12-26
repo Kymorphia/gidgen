@@ -1,5 +1,7 @@
 module gir.field;
 
+import std.conv : to, ConvException;
+
 import defs;
 import gir.func;
 import gir.structure;
@@ -46,6 +48,11 @@ final class Field : TypeNode
     writable = node.get("writable", "0") == "1";
     introspectable = node.get("introspectable", "1") == "1";
     private_ = node.get("private") == "1";
+
+    try
+      bits = node.get("bits", "0").to!ubyte;
+    catch (ConvException e)
+      warnWithLoc(__FILE__, __LINE__, xmlLocation, "Invalid field bits value '" ~ node.get("bits").to!string ~ "'");
   }
 
   override void fixup()
@@ -125,6 +132,20 @@ final class Field : TypeNode
         f.verify;
   }
 
+  override void toJson(ref JSONValue js)
+  {
+    super.toJson(js);
+
+    js["name"] = _name;
+    js.jsonSetNonDefault("callback", callback);
+    js.jsonSetNonDefault("directStruct", directStruct);
+    js["readable"] = readable;
+    js["writable"] = writable;
+    js["introspectable"] = introspectable;
+    js["private"] = private_;
+    js.jsonSetNonDefault("bits", bits);
+  }
+
   private dstring _name; /// Field name
   Func callback; /// For callback fields (embedded callback type or alias reference)
   Structure directStruct; /// Directly embedded structure or union
@@ -132,4 +153,5 @@ final class Field : TypeNode
   bool writable; /// Writable field?
   bool introspectable = true; /// Is field introspectable?
   bool private_; /// Private field?
+  ubyte bits; /// For C bit fields, number of bits occupied for this field in integer type (or 0 if not a bit field)
 }

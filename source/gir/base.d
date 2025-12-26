@@ -1,5 +1,8 @@
 module gir.base;
 
+public import std.json : JSONValue;
+import std.string : lastIndexOf;
+
 import code_writer;
 public import gir.repo;
 import gir.structure;
@@ -101,6 +104,50 @@ abstract class Base
   }
 
   /**
+   * Get a JSONValue object representing the object's state
+   * Returns: JSONValue object
+   */
+  JSONValue jsObj()
+  {
+    auto typeName = typeid(this).name;
+    auto index = typeName.lastIndexOf('.');
+    typeName = typeName[index + 1 .. $]; // Gracefully handles -1 as well (not found)
+    JSONValue js = JSONValue(["type" : typeName]);
+    toJson(js);
+    return js;
+  }
+
+  /**
+   * Store object state to JSON for troubleshooting and diffing changes.
+   * Params:
+   *   js = JSON object to populate with object state
+   */
+  void toJson(ref JSONValue js)
+  {
+    js["repo"] = repo ? repo.dName : ""d;
+    js["parent"] = parent ? parent.fullDName : ""d;
+    js["active"] = active.to!string;
+
+    js.jsonSetNonDefault("attributes", attributes);
+
+    if (dumpJsonDocs && docContent.length > 0)
+    {
+      js["docContent"] = docContent;
+      js.jsonSetNonDefault("docFilename", docFilename);
+      js["docLine"] = docLine;
+    }
+
+    js.jsonSetNonDefault("docVersion", docVersion);
+    js.jsonSetNonDefault("docDeprecated", docDeprecated);
+
+    if (sourceFilename.length > 0)
+    {
+      js["sourceFilename"] = sourceFilename;
+      js["sourceLine"] = sourceLine;
+    }
+  }
+
+  /**
    * Get an XML selector for this node. Of the form ID[NAME].ID[NAME].. such as class[Widget].method[show]. registry.namespace is not included.
    * Returns: The XML selector or null if there is no XML node associated with the object.
    */
@@ -182,6 +229,8 @@ abstract class Base
   dstring sourceFilename; /// Source code filename
   uint sourceLine; /// Source code line number
   dstring docDeprecated; /// Deprecated note documentation
+
+  static bool dumpJsonDocs; /// Set to true to dump JSON docs in toJson
 }
 
 /// Indicates active state of an object
@@ -237,3 +286,39 @@ T baseParentFromXmlNodeWarn(T)(XmlNode node)
 
   return null;
 }
+
+/**
+ * Helper template to assign a value to a JSONValue object.
+ * Params:
+ *   T = The value type
+ *   js = The JSONValue object to assign to
+ *   key = The JSON object key string
+ *   value = The value to assign
+ */
+void jsonSet(T)(ref JSONValue js, string key, T value)
+{
+  static if (is(T : E[], E) && is(E : Object))
+    js[key] = value.map!(x => x.jsObj).array;
+  else static if (is(T : Object))
+    js[key] = value.jsObj;
+  else static if (is(T : dstring[E], E))
+    js[key] = value.byPair.map!(p => tuple(p.key.to!string, p.value)).assocArray;
+  else
+    js[key] = value;
+}
+
+/**
+ * Helper template to assign a value to a JSONValue object if it isn't a default value.
+ * Params:
+ *   key = The JSON object key string
+ *   T = The value type
+ *   js = The JSONValue object to assign to
+ *   value = The value to assign
+ *   def = The default value (defaults to T.init)
+ */
+void jsonSetNonDefault(T)(ref JSONValue js, string key, T value, T def = T.init)
+{
+  if (value != def)
+    jsonSet(js, key, value);
+}
+

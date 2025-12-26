@@ -51,6 +51,15 @@ final class Alias : TypeNode
       kind = TypeKind.BasicAlias;
   }
 
+  override void toJson(ref JSONValue js)
+  {
+    super.toJson(js);
+
+    js["name"] = _name;
+    js["origName"] = origName;
+    js["cName"] = cName;
+  }
+
   private dstring _name; /// D type name for the alias (Gir "name" attribute)
   dstring origName; /// Original alias name
   dstring cName; /// C type name for the alias (Gir "c:type" attribute)

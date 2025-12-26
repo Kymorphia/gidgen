@@ -942,6 +942,42 @@ final class Structure : TypeNode
     recurseStruct(this);
   }
 
+  override void toJson(ref JSONValue js)
+  {
+    super.toJson(js);
+
+    js["structType"] = structType.to!string;
+    js["cSymbolPrefix"] = cSymbolPrefix;
+    js.jsonSetNonDefault("parentType", parentType);
+    if (parentStruct) js["parentStruct"] = parentStruct.fullDType;
+    js.jsonSetNonDefault("implements", implements);
+    if (implementStructs.length > 0) js.jsonSet("implementStructs", implementStructs.map!(x => x.fullDType).array);
+    js.jsonSetNonDefault("prerequisites", prerequisites);
+    js.jsonSetNonDefault("functions", functions);
+    js.jsonSetNonDefault("signals", signals);
+    js.jsonSetNonDefault("fields", fields);
+    js.jsonSetNonDefault("properties", properties);
+    js.jsonSetNonDefault("moduleName", moduleName);
+    js.jsonSetNonDefault("errorQuarks", errorQuarks);
+    js.jsonSetNonDefault("abstract", abstract_);
+    js.jsonSetNonDefault("deprecated", deprecated_);
+    js.jsonSetNonDefault("opaque", opaque);
+    js.jsonSetNonDefault("pointer", pointer);
+    js.jsonSetNonDefault("version", version_);
+    js.jsonSetNonDefault("deprecatedVersion", deprecatedVersion);
+    js.jsonSetNonDefault("glibFundamental", glibFundamental);
+    js.jsonSetNonDefault("glibGetType", glibGetType);
+    js.jsonSetNonDefault("glibTypeName", glibTypeName);
+    js.jsonSetNonDefault("glibGetValueFunc", glibGetValueFunc);
+    js.jsonSetNonDefault("glibSetValueFunc", glibSetValueFunc);
+    js.jsonSetNonDefault("glibRefFunc", glibRefFunc);
+    js.jsonSetNonDefault("glibUnrefFunc", glibUnrefFunc);
+    js.jsonSetNonDefault("glibTypeStruct", glibTypeStruct);
+    js.jsonSetNonDefault("glibIsGtypeStructFor", glibIsGtypeStructFor);
+    js.jsonSetNonDefault("copyFunction", copyFunction);
+    js.jsonSetNonDefault("freeFunction", freeFunction);
+  }
+
   StructType structType; /// Type of structure
   dstring cSymbolPrefix; /// C symbol prefix
   dstring parentType; /// Parent type name (for derived types)

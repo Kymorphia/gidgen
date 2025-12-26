@@ -425,6 +425,16 @@ class XmlPatch
     return s;
   }
 
+  override string toString()
+  {
+    string s = op.to!string ~ selectorString.to!string;
+
+    if (strValue.length > 0)
+      s ~= " = " ~ strValue.to!string;
+
+    return s;
+  }
+
   XmlPatchOp op; /// Patch operation
   XmlSelector[] selectors; /// Selection path
   dstring selAttrId; /// The selected attribute of the node matched by selectors (null if selecting a node)

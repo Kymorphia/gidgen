@@ -174,6 +174,26 @@ final class Property : TypeNode
     return null;
   }
 
+  override void toJson(ref JSONValue js)
+  {
+    super.toJson(js);
+
+    js["name"] = _name;
+    js.jsonSetNonDefault("defaultValue", defaultValue);
+    js["readable"] = readable;
+    js["writable"] = writable;
+    js.jsonSetNonDefault("construct", construct);
+    js.jsonSetNonDefault("constructOnly", constructOnly);
+    js.jsonSetNonDefault("deprecated", deprecated_);
+    js.jsonSetNonDefault("introspectable", introspectable);
+    js.jsonSetNonDefault("version", version_);
+    js.jsonSetNonDefault("deprecatedVersion", deprecatedVersion);
+    js.jsonSetNonDefault("getter", getter);
+    js.jsonSetNonDefault("setter", setter);
+    js.jsonSetNonDefault("propGet", propGet);
+    js.jsonSetNonDefault("propSet", propSet);
+  }
+
   private dstring _name; /// Name of property
   dstring defaultValue; /// Default value
   bool readable; /// Property is readable

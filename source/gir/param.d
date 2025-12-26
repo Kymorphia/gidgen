@@ -366,6 +366,32 @@ final class Param : TypeNode
           ~ "' should have a closure parameter");
   }
 
+  override void toJson(ref JSONValue js)
+  {
+    super.toJson(js);
+
+    js["name"] = _name;
+    js.jsonSetNonDefault("isInstanceParam", isInstanceParam);
+    js.jsonSetNonDefault("isLengthReturnArray", isLengthReturnArray);
+    js.jsonSetNonDefault("lengthArrayParams", lengthArrayParams);
+    js.jsonSetNonDefault("isOptional", isOptional);
+
+    if (direction != ParamDirection.In)
+      js["direction"] = direction.to!string;
+
+    js.jsonSetNonDefault("nullable", nullable);
+    js.jsonSetNonDefault("optional", optional);
+    js.jsonSetNonDefault("allowNone", allowNone);
+    js.jsonSetNonDefault("callerAllocates", callerAllocates);
+    js.jsonSetNonDefault("varargs", varargs);
+    js.jsonSetNonDefault("isClosure", isClosure);
+    js.jsonSetNonDefault("isDestroy", isDestroy);
+    js.jsonSetNonDefault("closureIndex", closureIndex, NoClosure);
+    js.jsonSetNonDefault("destroyIndex", destroyIndex, NoDestroy);
+    js.jsonSetNonDefault("callbackIndex", callbackIndex, NoCallback);
+    if (scope_ != ParamScope.Unset) js["scope"] = scope_.to!string;
+  }
+
   private dstring _name; /// Name of parameter
   bool isInstanceParam; /// true if this parameter is the instance parameter
   bool isLengthReturnArray; /// true if this is a length parameter for a return array

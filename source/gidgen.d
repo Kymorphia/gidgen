@@ -18,6 +18,7 @@ import version_info;
 
 int main(string[] args)
 {
+  enum JsonDumpFilename = "gidgen-typeinfo.json";
   LogLevel logLevel = LogLevel.warning;
   string[] traps;
   arraySep = ","; // Allow comma separated values for array parameters (traps)
@@ -31,6 +32,8 @@ int main(string[] args)
   string reportFile;
   string reportOptions = "AllUnsupported";
   bool displayVersion;
+  bool dumpJson;
+  bool dumpJsonWithDocs;
 
   try
   {
@@ -54,6 +57,8 @@ int main(string[] args)
         "dump-kinds", "Dump the list of type kinds", &dumpKinds,
         "dump-matches", "Dump XML patch selector matches", &XmlPatch.dumpSelectorMatches,
         "dump-traps", "Dump code trap actions", &codeTrapsDump,
+        "j|dump-json", "Dump type object tree as JSON to " ~ JsonDumpFilename, &dumpJson,
+        "dump-json-docs", "Dump type object tree as JSON with docs to " ~ JsonDumpFilename, &dumpJsonWithDocs,
         "trap", "Add gdb breakpoint 'action:regex', action: domain (help to list), regex: pattern to match", &traps,
         "V|version", "Display version", &displayVersion,
     );
@@ -153,6 +158,13 @@ int main(string[] args)
   auto defs = new Defs();
   defs.loadDefFiles(defPaths);
   defs.loadRepos(girPaths);
+
+  if (dumpJson || dumpJsonWithDocs)
+  {
+    write(JsonDumpFilename, defs.dumpJson(dumpJsonWithDocs).toPrettyString);
+    return 0;
+  }
+
   defs.writePackages(pkgPath, subPkgPath);
 
   defs.repos.sort!((a, b) => a.namespace < b.namespace);

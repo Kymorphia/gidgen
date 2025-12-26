@@ -596,6 +596,42 @@ class TypeNode : Base
       writeln("//!set " ~ node.xmlSelector);
   }
 
+  override void toJson(ref JSONValue js)
+  {
+    super.toJson(js);
+
+    js["typeRepo"] = typeRepo ? typeRepo.dName : ""d;
+    js["dType"] = _dType;
+    js["cType"] = cType;
+    js["origDType"] = origDType;
+    js["origCType"] = origCType;
+    js["kind"] = _kind.to!string;
+
+    if (typeObject)
+      js["typeObject"] = typeObject.fullDType;
+
+    if (elemTypes.length > 0)
+      js["elemTypes"] = elemTypes.map!(x => x.fullDType).array;
+
+    js.jsonSetNonDefault("ownership", ownership.to!string, Ownership.Unset.to!string);
+
+    if (lengthParam)
+      js["lengthParam"] = lengthParam.fullDName;
+
+    if (lengthReturn)
+      js["lengthReturn"] = lengthReturn.fullDName;
+
+    js.jsonSetNonDefault("unresolvedFlags", cast(uint)unresolvedFlags);
+
+    if (containerType != ContainerType.None)
+    {
+      js["containerType"] = containerType.to!string;
+      js["zeroTerminated"] = zeroTerminated;
+      js.jsonSetNonDefault("fixedSize", fixedSize, ArrayNotFixed);
+      js.jsonSetNonDefault("lengthParamIndex", lengthParamIndex, ArrayLengthUnset);
+    }
+  }
+
   Repo typeRepo; /// Repo containing the dType (can be this.repo, will always be valid after fixup() is called)
   dstring _dType; /// D type (container type for containers, Gir "name"), is accessed directly by ImportManager
   dstring cType; /// C type (container type for containers)

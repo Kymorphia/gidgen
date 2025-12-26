@@ -33,6 +33,15 @@ final class Constant : TypeNode
     value = node.get("value");
   }
 
+  override void toJson(ref JSONValue js)
+  {
+    super.toJson(js);
+
+    js["name"] = _name;
+    js["cName"] = cName;
+    js["value"] = value;
+  }
+
   private dstring _name; /// Name of constant
   dstring cName; /// C name of constant
   dstring value; /// Value of constant

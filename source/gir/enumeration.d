@@ -207,6 +207,21 @@ final class Enumeration : TypeNode
     return output;
   }
 
+  override void toJson(ref JSONValue js)
+  {
+    super.toJson(js);
+
+    js["bitfield"] = bitfield;
+    js.jsonSetNonDefault("glibGetType", glibGetType);
+    js.jsonSetNonDefault("glibTypeName", glibTypeName);
+    js.jsonSetNonDefault("glibErrorDomain", glibErrorDomain);
+    js.jsonSetNonDefault("version", version_);
+    js.jsonSetNonDefault("moduleName", moduleName);
+    js.jsonSet("members", members);
+    js.jsonSetNonDefault("functions", functions);
+    js.jsonSetNonDefault("errorQuarks", errorQuarks);
+  }
+
   bool bitfield; /// true if flags bitfield, false for enum
   dstring glibGetType; /// GLib get_type function name
   dstring glibTypeName; /// GLib type name
