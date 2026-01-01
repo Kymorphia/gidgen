@@ -102,7 +102,7 @@ final class Param : TypeNode
     scope_ = cast(ParamScope)ParamScopeValues.countUntil(node.get("scope"));
   }
 
-  override void fixup()
+  protected override void fixup()
   {
     if (origDType == "...") // Skip variable args elipsis
       return;
@@ -191,7 +191,7 @@ final class Param : TypeNode
     }
   }
 
-  override void resolve()
+  protected override void resolve()
   {
     if (origDType == "...") // Skip variable args elipsis
       return;
@@ -199,7 +199,7 @@ final class Param : TypeNode
     super.resolve;
   }
 
-  override void verify()
+  protected override void verify()
   {
     super.verify;
 

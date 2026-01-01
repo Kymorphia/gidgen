@@ -38,7 +38,7 @@ final class Member : TypeNode
     glibNick = node.get("glib:nick");
   }
 
-  override void fixup()
+  protected override void fixup()
   {
     super.fixup;
     _dName = repo.defs.symbolName(_name.camelCase(true));

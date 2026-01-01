@@ -169,7 +169,7 @@ final class Structure : TypeNode
     return TypeKind.Unknown;
   }
 
-  override void fixup()
+  protected override void fixup()
   {
     import std.string : chomp;
 
@@ -193,18 +193,18 @@ final class Structure : TypeNode
 
     foreach (f; fields) // Fixup structure fields
     {
-      f.fixup;
+      f.doFixup;
 
       if (f.active == Active.Enabled && (opaque || pointer))
         f.active = Active.Unsupported;
     }
 
     foreach (p; properties) // Fixup object properties
-      p.fixup;
+      p.doFixup;
 
     foreach (fn; functions) // Fixup structure function/methods
     {
-      fn.fixup;
+      fn.doFixup;
 
       if (!fn.shadows.empty)
         fn.shadowsFunc = funcNameHash.get(fn.shadows, null);
@@ -225,25 +225,25 @@ final class Structure : TypeNode
       ctorFunc.isCtor = true;
 
     foreach (sg; signals) // Fixup structure signals
-      sg.fixup;
+      sg.doFixup;
   }
 
-  override void resolve()
+  protected override void resolve()
   {
     if (auto field = cast(Field)parent) // Structure as a field of another structure?
       return;
 
     foreach (f; fields) // Resolve structure fields
-      f.resolve;
+      f.doResolve;
 
     foreach (p; properties) // Resolve object properties
-      p.resolve;
+      p.doResolve;
 
     foreach (fn; functions) // Resolve structure function/methods
-      fn.resolve;
+      fn.doResolve;
 
     foreach (sg; signals) // Resolve structure signals
-      sg.resolve;
+      sg.doResolve;
 
     if (kind == TypeKind.Unknown)
       kind = calcKind;
@@ -272,7 +272,7 @@ final class Structure : TypeNode
     }
   }
 
-  override void verify()
+  protected override void verify()
   {
     if (active != Active.Enabled || cast(Field)parent) // Don't verify if structure is disabled or a field structure
       return;
@@ -308,7 +308,7 @@ final class Structure : TypeNode
         TypeNode.dumpSelectorOnWarning(fn);
       }
       else
-        fn.verify;
+        fn.doVerify;
     }
 
     foreach (sig; signals) // Verify structure signals
@@ -317,7 +317,7 @@ final class Structure : TypeNode
         continue;
 
       try
-        sig.verify;
+        sig.doVerify;
       catch (Exception e)
       {
         sig.active = Active.Unsupported;
@@ -335,7 +335,7 @@ final class Structure : TypeNode
         continue;
 
       try
-        f.verify;
+        f.doVerify;
       catch (Exception e)
       {
         f.active = Active.Unsupported;
@@ -351,7 +351,7 @@ final class Structure : TypeNode
 
       try
       {
-        p.verify;
+        p.doVerify;
         dMethodHash[p.dName] = p; // Add to method hash to detect conflicting method names
       }
       catch (Exception e)
@@ -935,7 +935,7 @@ final class Structure : TypeNode
 
       writer ~= ["}", ""];
 
-      if (st != this && typeName)
+      if (st !is this && typeName)
         writer ~= [typeName ~ " " ~ st.dType ~ ";"]; // dType is the field name
     }
 

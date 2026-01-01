@@ -55,42 +55,56 @@ final class Field : TypeNode
       warnWithLoc(__FILE__, __LINE__, xmlLocation, "Invalid field bits value '" ~ node.get("bits").to!string ~ "'");
   }
 
-  override void fixup()
+  protected override void fixup()
   {
-    super.fixup;
-
     if (private_ || !introspectable) // Ignore private or non-introspectable fields
       active = Active.Ignored;
+
+    if (directStruct) // Embedded structure?
+    {
+      directStruct.doFixup;
+      return;
+    }
+
+    super.fixup;
 
     if (callback) // Embedded callback type
     {
       cType = origCType = null;
       dType = origDType = null;
       kind = TypeKind.Callback;
-      callback.fixup;
+      callback.doFixup;
     }
     else if (kind == TypeKind.Callback)
       callback = cast(Func)typeObject;
-    else if (directStruct) // Embedded structure
-      foreach (f; directStruct.fields)
-        f.fixup;
   }
 
-  override void resolve()
+  protected override void resolve()
   {
+    if (directStruct) // Embedded structure?
+    {
+      directStruct.doResolve;
+      kind = directStruct.kind;
+      active = Active.Ignored; // Embedded structure properties not supported
+      return;
+    }
+
     super.resolve;
 
     if (callback) // Embedded callback type
-      callback.resolve;
-    else if (directStruct) // Embedded structure
-      foreach (f; directStruct.fields)
-        f.resolve;
+      callback.doResolve;
   }
 
-  override void verify()
+  protected override void verify()
   {
     if (active != Active.Enabled)
       return;
+
+    if (directStruct)
+    {
+      directStruct.doVerify;
+      return;
+    }
 
     super.verify;
 
@@ -115,21 +129,18 @@ final class Field : TypeNode
     with (TypeKind) if (writable && (kind.among(Opaque, Wrap) || (kind == Boxed && cType.countStars == 0))) // Non-pointer boxed types not currently supported (GValue for example)
     {
       writable = false;
-      warnWithLoc(__FILE__, __LINE__, xmlLocation, "Setting writable to false for field '" ~ fullName.to!string ~ "' with unhandled type '"
-          ~ dType.to!string ~ "' (" ~ kind.to!string ~ ")");
+      warnWithLoc(__FILE__, __LINE__, xmlLocation, "Setting writable to false for field '" ~ fullName.to!string
+        ~ "' with unhandled type '" ~ dType.to!string ~ "' (" ~ kind.to!string ~ ")");
       TypeNode.dumpSelectorOnWarning(this);
     }
 
     if (callback)
     {
       if (callback.active == Active.Enabled)
-        callback.verify;
+        callback.doVerify;
       else
         throw new Exception("Field callback type is disabled");
     }
-    else if (directStruct)
-      foreach (f; directStruct.fields)
-        f.verify;
   }
 
   override void toJson(ref JSONValue js)

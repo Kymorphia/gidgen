@@ -27,7 +27,7 @@ final class ReturnValue : TypeNode
     nullable = node.get("nullable") == "1";
   }
 
-  override void resolve()
+  protected override void resolve()
   {
     super.resolve;
 

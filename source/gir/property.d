@@ -67,7 +67,7 @@ final class Property : TypeNode
     }
   }
 
-  override void fixup()
+  protected override void fixup()
   {
     super.fixup;
 
@@ -75,7 +75,7 @@ final class Property : TypeNode
       active = Active.Disabled;
   }
 
-  override void verify()
+  protected override void verify()
   {
     if (active != Active.Enabled)
       return;

@@ -52,7 +52,7 @@ final class Enumeration : TypeNode
     funcNameHash[func.name] = func;
   }
 
-  override void fixup()
+  protected override void fixup()
   {
     kind = bitfield ? TypeKind.Flags : TypeKind.Enum;
     super.fixup;
@@ -61,7 +61,7 @@ final class Enumeration : TypeNode
 
     foreach (m; members)
     {
-      m.fixup;
+      m.doFixup;
 
       if (auto dup = m.dName in dupCheck)
       {
@@ -75,7 +75,7 @@ final class Enumeration : TypeNode
 
     foreach (fn; functions)
     {
-      fn.fixup;
+      fn.doFixup;
 
       if (!fn.shadows.empty)
         fn.shadowsFunc = funcNameHash.get(fn.shadows, null);
@@ -93,15 +93,15 @@ final class Enumeration : TypeNode
       moduleName = repo.defs.symbolName(origDType.snakeCase); // Module name if enum contains functions
   }
 
-  override void resolve()
+  protected override void resolve()
   {
     super.resolve;
 
     foreach (fn; functions) // Resolve enumeration functions
-      fn.resolve;
+      fn.doResolve;
   }
 
-  override void verify()
+  protected override void verify()
   {
     super.verify;
 
@@ -118,7 +118,7 @@ final class Enumeration : TypeNode
         TypeNode.dumpSelectorOnWarning(fn);
       }
       else
-        fn.verify;
+        fn.doVerify;
     }
   }
 

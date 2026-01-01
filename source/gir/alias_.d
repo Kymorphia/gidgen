@@ -38,7 +38,7 @@ final class Alias : TypeNode
     cName = node.get("c:type");
   }
 
-  override void resolve()
+  protected override void resolve()
   {
     super.resolve;
 

@@ -458,7 +458,7 @@ class Defs
       auto count = unresolvedTypes.length;
 
       foreach (typeNode; unresolvedTypes.keys)
-        typeNode.resolve;
+        typeNode.doResolve;
 
       if (count == unresolvedTypes.length)
         break;

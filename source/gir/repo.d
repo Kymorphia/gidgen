@@ -280,8 +280,8 @@ final class Repo : Base
 
     foreach (al; aliases) // Fixup aliases
     {
-      al.fixup;
-      al.resolve;
+      al.doFixup;
+      al.doResolve;
       typeObjectHash[al.name] = al;
       defs.cSymbolHash[al.origCType] = al;
 
@@ -291,16 +291,16 @@ final class Repo : Base
 
     foreach (con; constants) // Hash constants (can reference other types, which are fixed up in fixupDeps())
     {
-      con.fixup;
-      con.resolve;
+      con.doFixup;
+      con.doResolve;
       typeObjectHash[con.name] = con;
       defs.cSymbolHash[con.origCType] = con;
     }
 
     foreach (en; enums) // Hash enums
     {
-      en.fixup;
-      en.resolve;
+      en.doFixup;
+      en.doResolve;
       typeObjectHash[en.dType] = en;
       defs.cSymbolHash[en.origCType] = en;
 
@@ -318,8 +318,8 @@ final class Repo : Base
 
     foreach (cb; callbacks) // Hash callbacks
     {
-      cb.fixup;
-      cb.resolve;
+      cb.doFixup;
+      cb.doResolve;
       typeObjectHash[cb.name] = cb;
       defs.cSymbolHash[cb.origCType] = cb;
 
@@ -329,8 +329,8 @@ final class Repo : Base
 
     foreach (st; structs) // Fixup structures (base type only, not dependencies which are fixed up below)
     {
-      st.fixup;
-      st.resolve;
+      st.doFixup;
+      st.doResolve;
       typeObjectHash[st.dType] = st;
       defs.cSymbolHash[st.origCType] = st;
 
@@ -350,8 +350,8 @@ final class Repo : Base
         st.structType = StructType.Class;
         st._moduleName = modName;
         structs ~= st;
-        st.fixup;
-        st.resolve;
+        st.doFixup;
+        st.doResolve;
         typeObjectHash[st.name] = st;
         defs.cSymbolHash[st.origCType] = st;
       }
@@ -387,7 +387,7 @@ final class Repo : Base
         continue;
 
       try
-        al.verify;
+        al.doVerify;
       catch (Exception e)
       {
         al.active = Active.Unsupported;
@@ -402,7 +402,7 @@ final class Repo : Base
         continue;
 
       try
-        con.verify;
+        con.doVerify;
       catch (Exception e)
       {
         con.active = Active.Unsupported;
@@ -421,7 +421,7 @@ final class Repo : Base
         if (cb.funcType != FuncType.Callback)
           throw new Exception("Callback type '" ~ cb.funcType.to!string ~ "' not supported");
 
-        cb.verify;
+        cb.doVerify;
       }
       catch (Exception e)
       {
@@ -437,7 +437,7 @@ final class Repo : Base
         continue;
 
       try
-        st.verify;
+        st.doVerify;
       catch (Exception e)
       {
         st.active = Active.Unsupported;

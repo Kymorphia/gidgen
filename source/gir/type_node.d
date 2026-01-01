@@ -317,8 +317,15 @@ class TypeNode : Base
     }
   }
 
+  /// Just calls fixup with a code trap before
+  void doFixup()
+  {
+    codeTrap("type.fixup", fullName);
+    fixup;
+  }
+
   /// Fixup independent state (only called once)
-  void fixup()
+  protected void fixup()
   {
     dstring parseRepoType(dstring type, out Repo outRepo)
     {
@@ -337,8 +344,6 @@ class TypeNode : Base
       return type;
     }
 
-    codeTrap("type.fixup", fullName);
-
     // Regular <array> containers don't have dType set, use the first element's dType so that symbol substitutions below work correctly
     if (!origDType && containerType != ContainerType.None && elemTypes.length == 1)
       origDType = elemTypes[0].origDType;
@@ -352,7 +357,7 @@ class TypeNode : Base
     cType = typeRepo.subTypeStr(origCType, Yes.CType);
 
     foreach (typ; elemTypes) // Fixup container element types
-      typ.fixup;
+      typ.doFixup;
 
     if (_dType == "void*" && cType == "const(void)*") // If dType is void* and cType is const(void)*, make the dType const as well
       _dType = "const(void)*";
@@ -418,11 +423,16 @@ class TypeNode : Base
     }
   }
 
-  /// Resolve dependencies (may get called multiple times)
-  void resolve()
+  /// Just calls resolve with a code trap before
+  void doResolve()
   {
     codeTrap("type.resolve", fullName);
+    resolve;
+  }
 
+  /// Resolve dependencies (may get called multiple times)
+  protected void resolve()
+  {
     if (kind != TypeKind.Container)
     {
       if (!typeObject)
@@ -467,7 +477,7 @@ class TypeNode : Base
 
     foreach (tn; elemTypes) // Fixup container element types
     {
-      tn.resolve;
+      tn.doResolve;
       updateUnresolvedFlags(UnresolvedFlags.Element, tn.unresolvedFlags != cast(UnresolvedFlags)0);
     }
 
@@ -480,10 +490,16 @@ class TypeNode : Base
     }
   }
 
-  void verify()
+  /// Just calls verify with a code trap before
+  void doVerify()
   {
     codeTrap("type.verify", fullName);
+    verify;
+  }
 
+  /// Verify type state
+  protected void verify()
+  {
     if (unresolvedFlags)
       throw new Exception("Unresolved type '" ~ dType.to!string ~ "' (unresolvedFlags: " ~ unresolvedFlags.to!string ~ ")");
 

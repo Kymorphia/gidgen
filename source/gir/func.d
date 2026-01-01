@@ -184,7 +184,7 @@ final class Func : TypeNode
     return gdoc.replaceAll!(paramReplaceFunc)(paramRe); // Replace @cName with dName for parameters
   }
 
-  override void fixup()
+  protected override void fixup()
   {
     if (!cast(Field)parent)
     {
@@ -214,7 +214,7 @@ final class Func : TypeNode
         }
       }
 
-      returnVal.fixup; // Fixup return value
+      returnVal.doFixup; // Fixup return value
 
       if (funcType == FuncType.Constructor) // Return actual instance type for constructors, not a GTK convenience type (like GtkWidget)
       {
@@ -235,7 +235,7 @@ final class Func : TypeNode
 
     foreach (pa; params) // Fixup parameters
     {
-      pa.fixup;
+      pa.doFixup;
 
       if (pa.isClosure && funcType == FuncType.Callback)
         closureParam = pa;
@@ -255,18 +255,18 @@ final class Func : TypeNode
     }
   }
 
-  override void resolve()
+  protected override void resolve()
   {
     super.resolve;
 
     if (returnVal)
-      returnVal.resolve; // Resolve return value
+      returnVal.doResolve; // Resolve return value
 
     foreach (pa; params) // Resolve parameters
-      pa.resolve;
+      pa.doResolve;
   }
 
-  override void verify()
+  protected override void verify()
   {
     if (active != Active.Enabled)
       return;
@@ -288,7 +288,7 @@ final class Func : TypeNode
     if (returnVal)
     {
       try
-        returnVal.verify; // Verify the return type
+        returnVal.doVerify; // Verify the return type
       catch (Exception e)
       {
         disableFunc(e.file, e.line, "Return type error: " ~ e.msg, returnVal);
@@ -354,7 +354,7 @@ final class Func : TypeNode
         disableFunc(__FILE__, __LINE__, "multiple closure parameters", pa);
 
       try
-        pa.verify; // Verify parameter
+        pa.doVerify; // Verify parameter
       catch (Exception e)
         disableFunc(e.file, e.line, "Parameter '" ~ pa.name.to!string ~ "' error: " ~ e.msg, pa);
 
