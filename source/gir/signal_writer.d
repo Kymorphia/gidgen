@@ -7,6 +7,7 @@ import gir.param;
 import gir.structure;
 import gir.type_node;
 import import_manager;
+import line_tracker;
 import std_includes;
 import utils;
 
@@ -23,6 +24,8 @@ class SignalWriter
 
     addImport("gobject.dclosure");
 
+    preCall = new LineTracker;
+    inpProcess = new LineTracker;
     process();
   }
 
@@ -66,7 +69,8 @@ class SignalWriter
     assert(retVal.containerType == ContainerType.None, "No support for signal container return type '"
       ~ retVal.containerType.to!string ~ "'");
 
-    with (TypeKind) assert(!retVal.kind.among(Simple, Pointer, Callback, Opaque, Unknown, Container, Namespace),
+    with (TypeKind) assert(!retVal.kind.among(StructAlias, Struct, Pointer, Callback, Opaque, Unknown,
+        Container, Namespace),
       "Unsupported signal return value type '" ~ retVal.fullDType.to!string ~ "' (" ~ retVal.kind.to!string ~ ") for "
       ~ signal.fullName.to!string);
 
@@ -152,7 +156,7 @@ class SignalWriter
 
       final switch (elemType.kind) with (TypeKind)
       {
-        case Basic, BasicAlias, Enum, Flags, Simple, Pointer:
+        case Basic, BasicAlias, Enum, Flags, StructAlias, Struct, Pointer:
           inpProcess ~= "_dArray = cast(" ~ elemType.fullDType ~ "[])_cArray[0 .. " ~ lengthStr ~ "];";
           break;
         case String:
@@ -252,10 +256,10 @@ class SignalWriter
       "auto _dClosure = cast(DGClosure!T*)_closure;",
       "Tuple!(Parameters!T) _paramTuple;", ""]; // Create D type parameter tuple
 
-    if (!preCall.empty)
+    if (preCall.length > 0)
       writer ~= preCall;
 
-    if (!inpProcess.empty)
+    if (inpProcess.length > 0)
       writer ~= inpProcess;
 
     writer ~= call;
@@ -321,8 +325,8 @@ class SignalWriter
   Structure owningClass; /// The class which owns the signal (parent)
   CallbackType[] callbackTypes; /// Array of callback D types, first one is return type
   dstring callbackProto; /// Callback prototype (for docs)
-  dstring[] preCall; /// Pre-call code for call return variable, call output parameter variables, and input variable processing
-  dstring[] inpProcess; /// Input processing (after preCall variable assignments and before the delegate call)
   dstring call; /// The D delegate call
+  LineTracker preCall; /// Pre-call code for call return variable, call output parameter variables, and input variable processing
+  LineTracker inpProcess; /// Input processing (after preCall variable assignments and before the delegate call)
   dstring postCall; /// Post-call code for return value processing, output parameter processing, and input variable cleanup
 }

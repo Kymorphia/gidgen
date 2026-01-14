@@ -1,5 +1,6 @@
 module gidgen;
 
+import std.algorithm : cmp;
 import std.experimental.logger;
 import std.getopt;
 import std.path : absolutePath, asNormalizedPath;
@@ -12,6 +13,7 @@ import gir.enumeration;
 import gir.func;
 import gir.report;
 import gir.type_node;
+import line_tracker;
 import std_includes;
 import xml_patch;
 import version_info;
@@ -56,6 +58,7 @@ int main(string[] args)
         "dump-dtypes", "Dump all raw D types", &Repo.dumpDTypes,
         "dump-kinds", "Dump the list of type kinds", &dumpKinds,
         "dump-matches", "Dump XML patch selector matches", &XmlPatch.dumpSelectorMatches,
+        "dump-source-lines", "Dump generated file:lines grouped by gidgen code file:lines", &LineTracker.enable,
         "dump-traps", "Dump code trap actions", &codeTrapsDump,
         "j|dump-json", "Dump type object tree as JSON to " ~ JsonDumpFilename, &dumpJson,
         "dump-json-docs", "Dump type object tree as JSON with docs to " ~ JsonDumpFilename, &dumpJsonWithDocs,
@@ -206,6 +209,17 @@ int main(string[] args)
         foreach (sugg; suggList)
           writeln("//!" ~ sugg ~ "");
       }
+    }
+  }
+
+  if (LineTracker.enable)
+  {
+    foreach (ref source; CodeWriter.sourceLineMap.keys.sort)
+    {
+      writeln("Source ", source.file, ":", source.line);
+
+      foreach (ref info; CodeWriter.sourceLineMap[source].sort!((ref const a, ref const b) => (*a).opCmp(*b) < 0))
+        writeln(info.file, ":", info.line);
     }
   }
 

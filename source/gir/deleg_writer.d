@@ -7,6 +7,7 @@ import gir.param;
 import gir.structure;
 import gir.type_node;
 import import_manager;
+import line_tracker;
 import std_includes;
 import utils;
 
@@ -21,6 +22,9 @@ class DelegWriter
     assert(this.callback, "DelegWriter parameter " ~ delegParam.fullName.to!string ~ " has "
       ~ delegParam.typeObjectRoot.to!string ~ " typeObjectRoot");
 
+    preCall = new LineTracker;
+    postCall = new LineTracker;
+
     process(staticDelegatePtr);
   }
 
@@ -32,7 +36,7 @@ class DelegWriter
     decl ~= "extern(C) ";
 
     if (delegParam.scope_ == ParamScope.Async)
-      preCall ~= "ptrThawGC(" ~ callback.closureParam.dName ~ ");\n"; // If it is an asynchronous callback, delegate can be thawed immediately (will continue to exist so long as it is in use)
+      preCall ~= "ptrThawGC(" ~ callback.closureParam.dName ~ ");"; // If it is an asynchronous callback, delegate can be thawed immediately (will continue to exist so long as it is in use)
 
     processReturn();
 
@@ -40,7 +44,7 @@ class DelegWriter
 
     if (!staticDelegatePtr)
     {
-      preCall ~= "auto _dlg = cast(" ~ delegParam.fullDType ~ "*)" ~ callback.closureParam.dName ~ ";\n";
+      preCall ~= "auto _dlg = cast(" ~ delegParam.fullDType ~ "*)" ~ callback.closureParam.dName ~ ";";
       call ~= "(*_dlg)(";
     }
     else
@@ -101,38 +105,30 @@ class DelegWriter
 
     decl ~= retVal.cType ~ " ";
 
+    if (retVal.cType == retVal.fullDType)
+    {
+      call ~= retVal.cType ~ " _retval = ";
+      return;
+    }
+
+    preCall ~= retVal.fullDType ~ " _dretval;";
+    call ~= "_dretval = ";
+
     final switch (retVal.kind) with (TypeKind)
     {
-      case Basic, BasicAlias, Pointer:
-        call ~= retVal.cType ~ " _retval = ";
+      case Basic, BasicAlias, Enum, Flags, StructAlias, Struct, Pointer:
+        postCall ~= "auto _retval = cast(" ~ retVal.cType ~ ")_dretval;";
         break;
       case String:
-        preCall ~= retVal.fullDType ~ " _dretval;\n";
-        call ~= "_dretval = ";
-        postCall ~= retVal.cType ~ " _retval = _dretval.toCString("d ~ retVal.fullOwnerFlag ~ ".Alloc);\n";
-        break;
-      case Enum, Flags:
-        preCall ~= retVal.fullDType ~ " _dretval;\n";
-        call ~= "_dretval = ";
-        postCall ~= "auto _retval = cast(" ~ retVal.cType ~ ")_dretval;\n";
-        break;
-      case Simple:
-        preCall ~= retVal.fullDType ~ " _dretval;\n";
-        call ~= "_dretval = ";
-        postCall ~= retVal.cType ~ " _retval;\nif (_dretval)\n_retval = *_dretval;\n";
+        postCall ~= "auto _retval = _dretval.toCString(Yes.Alloc);";
         break;
       case Opaque, Wrap, Boxed, Reffed, Object:
-        preCall ~= retVal.fullDType ~ " _dretval;\n";
-        call ~= "_dretval = ";
-        postCall ~= retVal.cType ~ " _retval = cast(" ~ retVal.cTypeRemPtr ~ "*)_dretval._cPtr("
-          ~ retVal.fullOwnerFlag ~ ".Dup);\n";
+        postCall ~= "auto _retval = cast(" ~ retVal.cTypeRemPtr ~ "*)_dretval._cPtr(" ~ retVal.fullOwnerFlag ~ ".Dup);";
         break;
       case Interface:
         addImport("gobject.object");
-        preCall ~= retVal.fullDType ~ " _dretval;\n";
-        call ~= "_dretval = ";
-        postCall ~= retVal.cType ~ " _retval = cast(" ~ retVal.cTypeRemPtr
-          ~ "*)(cast(gobject.object.ObjectWrap)_dretval)._cPtr(" ~ retVal.fullOwnerFlag ~ ".Dup);\n";
+        postCall ~= "auto _retval = cast(" ~ retVal.cTypeRemPtr ~ "*)(cast(gobject.object.ObjectWrap)_dretval)._cPtr("
+          ~ retVal.fullOwnerFlag ~ ".Dup);";
         break;
       case Callback, Unknown, Container, Namespace:
         assert(0, "Unsupported delegate return value type '" ~ retVal.fullDType.to!string
@@ -151,59 +147,53 @@ class DelegWriter
     auto elemType = retVal.elemTypes[0];
 
     decl ~= retVal.cType ~ " ";
-    preCall ~= elemType.fullDType ~ "[] _dretval;\n";
+    preCall ~= elemType.fullDType ~ "[] _dretval;";
     call ~= "_dretval = ";
-    postCall ~= retVal.cType ~ " _retval;\n\nif (_dretval.length > 0)\n{\n";
+    postCall ~= [retVal.cType ~ " _retval;", ""];
 
     if (retVal.fixedSize != ArrayNotFixed) // Array is a fixed size? Add an array size assertion.
       postCall ~= "assert(!_dretval || _dretval.length == " ~ retVal.fixedSize.to!dstring
         ~ `, "Delegate '` ~ retVal.fullDType ~ `' should return array of size ` ~ retVal.fixedSize.to!dstring
-        ~ ` not " ~ _dretval.length.to!string);\n`;
+        ~ ` not " ~ _dretval.length.to!string);`;
+
+    postCall ~= ["if (_dretval.length > 0)", "{"];
 
     if (retVal.zeroTerminated)
     {
-      postCall ~= "_retval = cast(" ~ retVal.cType ~ ")gMalloc((_dretval.length + 1) * (*_retval).sizeof);\n";
-      postCall ~= "zero(cast(void*)&_retval[_dretval.length], (*_retval).sizeof);";
+      postCall ~= ["_retval = cast(" ~ retVal.cType ~ ")gMalloc((_dretval.length + 1) * (*_retval).sizeof);",
+        "zero(cast(void*)&_retval[_dretval.length], (*_retval).sizeof);"];
     }
     else
-      postCall ~= "_retval = cast(" ~ retVal.cType ~ ")gMalloc(_dretval.length * (*_retval).sizeof);\n";
+      postCall ~= "_retval = cast(" ~ retVal.cType ~ ")gMalloc(_dretval.length * (*_retval).sizeof);";
 
-    final switch (elemType.kind) with (TypeKind)
+    with (TypeKind) if (!elemType.kind.among(Basic, BasicAlias, Enum, Flags, StructAlias, Struct, Pointer) // Can array be directly copied?
+        || elemType.dType == "bool")
     {
-      case TypeKind.Basic, TypeKind.BasicAlias:
-        if (elemType.dType == "bool") // Convert between bool and gboolean
-        {
-          postCall ~= "\nforeach (i; 0 .. _dretval.length)\n";
-          postCall ~= "_retval[i] = _dretval[i];\n";
-        }
-        else // Data is compatible between D and C types, do array copy
-          postCall ~= "_retval[0 .. _dretval.length] = _dretval[0 .. _dretval.length];\n";
-        break;
-      case String:
-        postCall ~= "\nforeach (i; 0 .. _dretval.length)\n";
-        postCall ~= "_retval[i] = _dretval[i].toCString(Yes.Alloc);\n";
-        break;
-      case Enum, Flags:
-        postCall ~= "\nforeach (i; 0 .. _dretval.length)\n";
-        postCall ~= "_retval[i] = cast(" ~ elemType.cType ~ ")_dretval[i];\n";
-        break;
-      case Simple, Pointer:
-        postCall ~= "\nforeach (i; 0 .. _dretval.length)\n";
-        postCall ~= "_retval[i] = _dretval[i];\n";
-        break;
-      case Opaque, Wrap, Boxed, Reffed, Object, Interface:
-        postCall ~= "\nforeach (i; 0 .. _dretval.length)\n";
-        postCall ~= "_retval[i] = _dretval[i]._cPtr(" ~ retVal.fullOwnerFlag ~ ".Dup);\n";
-        break;
-      case Callback, Unknown, Container, Namespace:
-        assert(0, "Unsupported delegate return value array type '" ~ elemType.fullDType.to!string
-          ~ "' (" ~ elemType.kind.to!string ~ ") for " ~ callback.fullName.to!string);
-    }
+      postCall ~= ["", "foreach (i; 0 .. _dretval.length)"];
 
-    postCall ~= "}\n\n";
+      final switch (elemType.kind) with (TypeKind)
+      {
+        case Basic, BasicAlias:
+          postCall ~= "_retval[i] = _dretval[i];"; // Convert between bool and gboolean
+          break;
+        case String:
+          postCall ~= "_retval[i] = _dretval[i].toCString(Yes.Alloc);";
+          break;
+        case Opaque, Wrap, Boxed, Reffed, Object, Interface:
+          postCall ~= "_retval[i] = _dretval[i]._cPtr(" ~ retVal.fullOwnerFlag ~ ".Dup);";
+          break;
+        case Enum, Flags, StructAlias, Struct, Pointer, Callback, Unknown, Container, Namespace:
+          assert(0, "Unsupported delegate return value array type '" ~ elemType.fullDType.to!string
+            ~ "' (" ~ elemType.kind.to!string ~ ") for " ~ callback.fullName.to!string);
+      }
+    }
+    else // Data is compatible between D and C types, do array copy
+      postCall ~= "_retval[0 .. _dretval.length] = _dretval[];";
+
+    postCall ~= ["}", ""]; // Close of "if (_dretval.length > 0)" statement
 
     if (retVal.lengthParam) // Array has length parameter?
-      postCall ~= "*" ~ retVal.lengthParam.dName ~ " = cast(typeof(" ~ retVal.lengthParam.dName ~ "))_dretval.length;\n";
+      postCall ~= "*" ~ retVal.lengthParam.dName ~ " = cast(typeof(" ~ retVal.lengthParam.dName ~ "))_dretval.length;";
   }
 
   /// Process a return container (not Array)
@@ -232,7 +222,7 @@ class DelegWriter
 
     decl ~= retVal.cType ~ " ";
     call ~= "auto _dretval = ";
-    postCall = "auto _retval = g" ~ retVal.containerType.to!dstring ~ "FromD" ~ templateParams ~ "(_dretval);\n";
+    postCall ~= "auto _retval = g" ~ retVal.containerType.to!dstring ~ "FromD" ~ templateParams ~ "(_dretval);";
   }
 
   /// Process parameter
@@ -276,9 +266,9 @@ class DelegWriter
           if (param.direction != ParamDirection.In)
           {
             preCall ~= "bool _" ~ param.dName
-              ~ (param.direction == ParamDirection.InOut ? " = cast(bool)" ~ param.dName ~ ";\n" : ";\n");
+              ~ (param.direction == ParamDirection.InOut ? " = cast(bool)" ~ param.dName ~ ";" : ";");
             addCallParam("_" ~ param.dName); // Parameter is "out"
-            postCall ~= "*" ~ param.dName ~ " = _" ~  param.dName ~ ";\n";
+            postCall ~= "*" ~ param.dName ~ " = _" ~  param.dName ~ ";";
           }
           else
             addCallParam("cast(bool)" ~ param.dName);
@@ -289,20 +279,20 @@ class DelegWriter
       case String:
         if (param.direction == ParamDirection.In)
         {
-          preCall ~= "string _" ~ param.dName ~ " = " ~ param.dName ~ ".fromCString(" ~ param.fullOwnerFlag ~ ".Free);\n";
+          preCall ~= "string _" ~ param.dName ~ " = " ~ param.dName ~ ".fromCString(" ~ param.fullOwnerFlag ~ ".Free);";
           addCallParam("_" ~ param.dName);
         }
         else if (param.direction == ParamDirection.Out)
         {
-          preCall ~= "string _" ~ param.dName ~ ";\n";
+          preCall ~= "string _" ~ param.dName ~ ";";
           addCallParam("_" ~ param.dName);
-          postCall ~= "*" ~ param.dName ~ " = _" ~ param.dName ~ ".toCString(" ~ param.fullOwnerFlag ~ ".Alloc);\n";
+          postCall ~= "*" ~ param.dName ~ " = _" ~ param.dName ~ ".toCString(" ~ param.fullOwnerFlag ~ ".Alloc);";
         }
         else // InOut
           assert(0, "InOut string arguments not supported"); // FIXME - Does this even exist?
         break;
-      case Simple:
-        addCallParam("*"d ~ param.dName);
+      case StructAlias, Struct:
+        addCallParam("*cast(" ~ param.fullDType ~ "*)" ~ param.dName);
         break;
       case Opaque, Wrap, Boxed, Reffed, Object, Interface:
         if (param.direction == ParamDirection.In)
@@ -319,9 +309,9 @@ class DelegWriter
         }
         else if (param.direction == ParamDirection.Out)
         { // FIXME - Not sure if this will work for all cases, also could optimize by allowing C structure to be directly used in D object
-          preCall ~= "auto _" ~ param.dName ~ " = new " ~ param.fullDType ~ "(" ~ param.dName ~ ", No.Take);\n";
+          preCall ~= "auto _" ~ param.dName ~ " = new " ~ param.fullDType ~ "(" ~ param.dName ~ ", No.Take);";
           addCallParam("_" ~ param.dName);
-          postCall ~= "*" ~ param.dName ~ " = *cast(" ~ param.cType ~ ")_" ~ param.dName ~ "._cPtr;\n";
+          postCall ~= "*" ~ param.dName ~ " = *cast(" ~ param.cType ~ ")_" ~ param.dName ~ "._cPtr;";
         }
         else // InOut
           assert(0, "InOut arguments of type '" ~ param.kind.to!string ~ "' not supported"); // FIXME - Does this even exist?
@@ -343,7 +333,7 @@ class DelegWriter
     auto elemType = param.elemTypes[0];
 
     addDeclParam(param.cType ~ " " ~ param.dName);
-    preCall ~= elemType.fullDType ~ "[] _" ~ param.dName ~ ";\n";
+    preCall ~= elemType.fullDType ~ "[] _" ~ param.dName ~ ";";
     addCallParam("_" ~ param.dName);
 
     // Pre delegate call processing
@@ -357,39 +347,43 @@ class DelegWriter
         lengthStr = param.fixedSize.to!dstring;
       else if (param.zeroTerminated) // Array is zero terminated?
       {
-        preCall ~= "uint _len" ~ param.dName ~ ";\nif (" ~ param.dName ~ ")\nfor (; " ~ param.dName
-          ~ "[_len" ~ param.dName ~ "] " ~ (elemType.cType.endsWith("*") ? "!is null"d : "!= 0") ~ "; _len" ~ param.dName
-          ~ "++)\nbreak;\n";
+        preCall ~= ["uint _len" ~ param.dName ~ ";", "if (" ~ param.dName ~ ")", "for (; " ~ param.dName
+          ~ "[_len" ~ param.dName ~ "] " ~ (elemType.cType.endsWith("*") ? "!is null"d : "!= 0") ~ "; _len"
+          ~ param.dName ~ "++)", "break;"];
         lengthStr = "_len" ~ param.dName;
       }
       else
         assert(0); // This should be prevented by defs.fixupRepos()
 
-      preCall ~= "_" ~ param.dName ~ ".length = " ~ lengthStr ~ ";\n";
+      preCall ~= "_" ~ param.dName ~ ".length = " ~ lengthStr ~ ";";
 
       final switch (elemType.kind) with (TypeKind)
       {
-        case Basic, BasicAlias, Enum, Flags, Simple, Pointer:
+        case Basic, BasicAlias, Enum, Flags, StructAlias, Pointer:
           if (param.dType == "bool") // Convert gboolean to bool
-            preCall ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n_" ~ param.dName ~ "[i] = cast(bool)"
-              ~ param.dName ~ "[i];\n";
+            preCall ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_" ~ param.dName ~ "[i] = cast(bool)"
+              ~ param.dName ~ "[i];"];
           else
             preCall ~= "_" ~ param.dName ~ "[0 .. " ~ lengthStr ~ "] = " ~ param.dName
-              ~ "[0 .. " ~ lengthStr ~ "];\n";
+              ~ "[0 .. " ~ lengthStr ~ "];";
+          break;
+        case Struct:
+          preCall ~= "_" ~ param.dName ~ "[0 .. " ~ lengthStr ~ "] = cast(" ~ param.fullDType ~ "*)" ~ param.dName
+            ~ "[0 .. " ~ lengthStr ~ "];";
           break;
         case String:
-          preCall ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n_" ~ param.dName ~ "[i] = "
-            ~ param.dName ~ "[i].fromCString(" ~ param.fullOwnerFlag ~ ".Free);\n";
+          preCall ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_" ~ param.dName ~ "[i] = "
+            ~ param.dName ~ "[i].fromCString(" ~ param.fullOwnerFlag ~ ".Free);"];
           break;
         case Opaque, Boxed, Wrap, Reffed:
-          preCall ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n_" ~ param.dName ~ "[i] = "
+          preCall ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_" ~ param.dName ~ "[i] = "
             ~ "new " ~ elemType.fullDType ~ "(cast(" ~ elemType.cType.stripConst ~ "*)&" ~ param.dName ~ "[i], "
-            ~ param.fullOwnerFlag ~ ".Take);\n";
+            ~ param.fullOwnerFlag ~ ".Take);"];
           break;
         case Object, Interface:
           addImport("gobject.object");
-          preCall ~= "foreach (i; 0 .. " ~ lengthStr ~ ")\n_" ~ param.dName
-            ~ "[i] = gobject.object.ObjectWrap._getDObject(" ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);\n";
+          preCall ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_" ~ param.dName
+            ~ "[i] = gobject.object.ObjectWrap._getDObject(" ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);"];
           break;
         case Unknown, Callback, Container, Namespace:
           assert(0, "Unsupported parameter array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType.kind.to!string
@@ -401,13 +395,14 @@ class DelegWriter
     {
       if (param.lengthParam) // Array has length parameter?
         postCall ~= param.lengthParam.dName ~ " = cast(" ~ param.lengthParam.cType  ~ ")_" ~ param.dName ~ ".length"
-          ~ (param.zeroTerminated ? " - 1;\n"d : ";\n"d);
+          ~ (param.zeroTerminated ? " - 1;"d : ";"d);
 
       final switch (elemType.kind) with (TypeKind)
       {
-        case Basic, String, BasicAlias, Enum, Flags, Simple, Pointer, Opaque, Wrap, Boxed, Reffed, Object, Interface:
+        case Basic, String, BasicAlias, Enum, Flags, StructAlias, Struct, Pointer, Opaque, Wrap, Boxed, Reffed,
+            Object, Interface:
           postCall ~= param.dName ~ " = arrayDtoC!(" ~ elemType.fullDType ~ ", Yes.Alloc, "
-            ~ (param.zeroTerminated ? "Yes"d : "No"d) ~ ".ZeroTerm)(_" ~ param.dName ~ ");\n";
+            ~ (param.zeroTerminated ? "Yes"d : "No"d) ~ ".ZeroTerm)(_" ~ param.dName ~ ");";
           break;
         case Unknown, Callback, Container, Namespace:
           assert(0, "Unsupported parameter array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType.kind.to!string
@@ -441,39 +436,43 @@ class DelegWriter
     addDeclParam(param.cType ~ " " ~ param.dName);
     addCallParam("_" ~ param.dName);
     preCall ~= "auto _" ~ param.dName ~ " = g" ~ param.containerType.to!dstring ~ "ToD!(" ~ templateParams ~ ")("
-      ~ param.dName ~ ");\n";
+      ~ param.dName ~ ");";
   }
 
   /**
    * Generate the delegate C callback function code.
-   * Returns: The generated D code for the C callback delegate function marshaller
+   * Params:
+   *   tracker = Line tracker to write generated lines to of callback delegate
    */
-  dstring generate()
+  void generate(LineTracker tracker)
   {
-    dstring output = decl ~ "\n{\n";
+    tracker ~= [decl, "{"];
 
     if (preCall.length > 0)
-      output ~= preCall ~ "\n";
+    {
+      tracker ~= preCall;
+      tracker ~= "";
+    }
 
-    output ~= call ~ "\n";
+    tracker ~= call;
 
     if (postCall.length > 0)
-      output ~= postCall ~ "\n";
+    {
+      tracker ~= postCall;
+      tracker ~= "";
+    }
 
     if (callback.returnVal && callback.returnVal.origDType != "none")
-      output ~= "return _retval;\n";
+      tracker ~= "return _retval;";
 
-    output ~= "}\n";
-    output ~= "auto _" ~ delegParam.dName ~ "CB = " ~ delegParam.dName ~ " ? &_" ~ delegParam.dName
-      ~ "Callback : null;\n";
-
-    return output;
+    tracker ~= ["}", "auto _" ~ delegParam.dName ~ "CB = " ~ delegParam.dName ~ " ? &_" ~ delegParam.dName
+      ~ "Callback : null;"];
   }
 
   Param delegParam; /// The parameter of the callback delegate
   Func callback; /// The resolved callback delegate type of parameter
   dstring decl; /// Function declaration
-  dstring preCall; /// Pre-call code for call return variable, call output parameter variables, and input variable processing
   dstring call; /// The C function call
-  dstring postCall; /// Post-call code for return value processing, output parameter processing, and input variable cleanup
+  LineTracker preCall; /// Pre-call code for call return variable, call output parameter variables, and input variable processing
+  LineTracker postCall; /// Post-call code for return value processing, output parameter processing, and input variable cleanup
 }

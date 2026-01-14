@@ -123,7 +123,7 @@ class TypeNode : Base
   /// Check if this type is defined in the repository global module
   @property bool inGlobal()
   {
-    with (TypeKind) return kind.among(BasicAlias, Enum, Flags, Simple, Callback) != 0;
+    with (TypeKind) return kind.among(BasicAlias, Enum, Flags, StructAlias, Callback) != 0;
   }
 
   /**
@@ -692,10 +692,11 @@ enum TypeKind
   String, /// A string
   BasicAlias, /// An alias to a basic type
   Enum, /// Enumeration type
-  Flags, /// Bitfield flags type
+  Flags, /// Flags type
   Callback, /// Callback function type
   Container, /// A container type
-  Simple, /// Simple Record or Union with basic fields (Basic, Enum, Flags) and no methods (alias to C type)
+  StructAlias, /// Record or Union with basic fields (Basic, Enum, Flags) and no methods (alias to C type in types.d)
+  Struct, /// Record or Union with basic fields (Basic, Enum, Flags) and methods (module with identical C struct definition)
   Pointer, /// Opaque Record pointer type with no accessible fields or methods (alias to C type)
   Opaque, /// Opaque Record pointer wrapped by a D class with methods
   Wrap, /// Record or Union wrapped by a D class with defined fields and/or methods
@@ -704,6 +705,17 @@ enum TypeKind
   Object, /// A GObject Class
   Interface, /// Interface type
   Namespace, /// Namespace structure (no C type, global module for example)
+}
+
+/**
+ * Check if a TypeKind is a structured type.
+ * Params:
+ *   kind = The TypeKind enum to check
+ * Returns: true if kind is structured
+ */
+bool typeKindIsStructured(TypeKind kind)
+{
+  with (TypeKind) return kind.among(StructAlias, Struct, Pointer, Opaque, Wrap, Boxed, Reffed, Object, Interface) != 0;
 }
 
 /// Container type

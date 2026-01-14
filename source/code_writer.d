@@ -1,7 +1,10 @@
 module code_writer;
 
+import std.algorithm : cmp;
 import std.file : fileRead = read, fileWrite = write;
 import std_includes;
+
+import line_tracker;
 
 /**
  * Code writer object.
@@ -21,21 +24,47 @@ class CodeWriter
     this(fileName, content.splitLines);
   }
 
-  CodeWriter opOpAssign(string op)(dstring[] rhs) if (op == "~")
+  CodeWriter opOpAssign(string op)(dstring[] rhs, string file = __FILE__, size_t line = __LINE__) if (op == "~")
   {
     lines ~= rhs;
+
+    if (LineTracker.enable)
+    {
+      auto key = SourceInfo(file, cast(uint)line);
+      auto writeLine = new SourceInfo(fileName, cast(uint)lines.length);
+      sourceLineMap[key] ~= writeLine;
+      lineTrackerLines ~= writeLine; // Store pointer to output file info to update it on insert
+    }
+
     return this;
   }
 
-  CodeWriter opOpAssign(string op)(dstring rhs) if (op == "~")
+  CodeWriter opOpAssign(string op)(dstring rhs, string file = __FILE__, size_t line = __LINE__) if (op == "~")
   { // Remove end newline to have identical behavior of raw text append
     if (rhs.endsWith('\n'))
       rhs = rhs[0 .. $ - 1];
 
     if (rhs == "")
-      return this ~= [""];
+      return this.opOpAssign!"~"([""], file, line);
 
-    return this ~= rhs.splitLines;
+    return this.opOpAssign!"~"(rhs.splitLines, file, line);
+  }
+
+  CodeWriter opOpAssign(string op)(LineTracker tracker) if (op == "~")
+  {
+    foreach(info; tracker.lines)
+      this.opOpAssign!"~"(info.line, info.file, info.lineNumber);
+
+    return this;
+  }
+
+  /**
+   * Get the length (in lines) of the code writer data.
+   * Returns: Number of lines stored
+   */
+  uint length()
+  {
+    return cast(uint)lines.length;
   }
 
   /**
@@ -64,6 +93,20 @@ class CodeWriter
       lines = lines[0 .. pos] ~ ins ~ lines[pos .. $];
     else
       lines = lines[0 .. pos] ~ ins;
+
+    if (LineTracker.enable) // Update line tracker output lines if they come after the insert
+      foreach (pWriteLine; lineTrackerLines)
+        if (pWriteLine.line > pos)
+          pWriteLine.line += ins.length;
+  }
+
+  /**
+   * Return the contents of the last line.
+   * Returns: The last line or null if no lines have been added
+   */
+  dstring lastLine()
+  {
+    return lines.length > 0 ? lines[$ - 1] : null;
   }
 
   void write()
@@ -118,9 +161,24 @@ class CodeWriter
       fileWrite(fileName, strContent);
   }
 
-  dstring[] lines; // Array of lines
+  struct SourceInfo
+  {
+    string file;
+    uint line;
+
+    int opCmp(ref const SourceInfo other) const
+    {
+      auto fileCmp = cmp(file, other.file);
+      if (fileCmp != 0) return fileCmp;
+      return cast(int)(line - other.line);
+    }
+  }
+
+  static SourceInfo*[][SourceInfo] sourceLineMap; // Source {file, line} -> Written {fileName, index}[]
 
 private:
   string fileName; // Name of file the buffer will be written to
   bool inComment; // True if inside a multi-line comment
+  dstring[] lines; // Array of lines
+  SourceInfo*[] lineTrackerLines; // Pointer array of line tracker lines for this CodeWriter stored to sourceLineMap (to update lines on insert)
 }

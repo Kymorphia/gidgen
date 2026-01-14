@@ -251,8 +251,25 @@ final class Param : TypeNode
           ~ cType.to!string ~ "'");
     }
 
+    // Suggest Out for non-const Struct pointer params which aren't instance parameters
+    with (TypeKind) if (Repo.suggestDefCmds && containerType == ContainerType.None && kind.among(Struct, StructAlias)
+        && !isInstanceParam && direction == ParamDirection.In && cType.countStars > 0 && !cType.canFind("const"))
+      repo.suggestions["Set struct pointer parameters to out"] ~= "set " ~ xmlSelector.to!string ~ "[direction] out";
+
+    // Enable callerAllocates for parameters which are output pointers to Struct types
+    with (TypeKind) if (direction == ParamDirection.Out && kind.among(Struct, StructAlias)
+      && cType.countStars == 1 && !callerAllocates)
+    {
+      info("Enabling caller allocates for Out parameter '" ~ fullName.to!string ~ "' with a pointer to a struct type");
+      callerAllocates = true;
+    }
+
     if (direction == ParamDirection.InOut)
     {
+      if (kind == TypeKind.String)
+        throw new Exception("Unsupported string InOut parameter");
+
+      // Ownership other than None does not make sense for InOut parameters
       if (ownership != Ownership.None)
       {
         info("Changing InOut parameter '" ~ fullName.to!string ~ "' with ownership '" ~ ownership.to!string
@@ -260,8 +277,12 @@ final class Param : TypeNode
         ownership = Ownership.None;
       }
 
-      if (kind == TypeKind.String)
-        throw new Exception("Unsupported string InOut parameter");
+      // Identify incorrect caller-allocates=0 for structured types, warn, and set callerAllocates to true
+      with (TypeKind) if (!callerAllocates && cType.countStars == 1 && kind.typeKindIsStructured)
+      {
+        info("Changing InOut parameter '" ~ fullName.to!string ~ "' caller-allocates to true");
+        callerAllocates = true;
+      }
     }
 
     if (kind == TypeKind.Boxed && direction == ParamDirection.Out && cType.countStars != 2)

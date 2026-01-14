@@ -100,7 +100,7 @@ final class Repo : Base
           if (auto st = baseParentFromXmlNode!Structure(node))
           { // Embedded union or structure field
             st.fields ~= new Field(st, node);
-            st.fields[$-1].directStruct = new Structure(this, node);
+            st.fields[$-1].directStruct = new Structure(st.fields[$-1], node);
           }
           else
             structs ~= new Structure(this, node);
@@ -475,7 +475,10 @@ final class Repo : Base
       if (st.active == Active.Enabled && ((st.defCode && st.defCode.inClass) || st.inModule) && st !is globalStruct
         && st !is typesStruct)
       {
-        st.write(sourcePath, st.kind == TypeKind.Interface ? ModuleType.IfaceTemplate : ModuleType.Normal);
+        if (st.kind == TypeKind.Struct)
+          st.write(sourcePath, ModuleType.Struct);
+        else
+          st.write(sourcePath, st.kind == TypeKind.Interface ? ModuleType.IfaceTemplate : ModuleType.Normal);
 
         if (st.kind == TypeKind.Interface)
         {
@@ -624,7 +627,7 @@ final class Repo : Base
       {
         if (m.active == Active.Enabled)
         {
-          if (writer.lines[$ - 1] != "{")
+          if (writer.lastLine != "{")
             writer ~= "";
 
           writer ~= m.genDocs;
@@ -643,7 +646,7 @@ final class Repo : Base
         continue;
 
       if (st.fields.length > 0 && !st.opaque && !st.pointer) // Regular structure?
-        st.writeCStruct(writer);
+        st.writeStructDef(writer);
       else if (st.pointer)
       {
         writer ~= st.genDocs;
@@ -692,7 +695,7 @@ final class Repo : Base
     {
       auto preamble = ["", "// " ~ st.dType];
 
-      if (writer.lines[$ - 1] == "{")
+      if (writer.lastLine == "{")
         preamble = preamble[1 .. $];
 
       if (!st.glibGetType.empty)
@@ -715,7 +718,7 @@ final class Repo : Base
     {
       auto preamble = ["", "// " ~ en.dType];
 
-      if (writer.lines[$ - 1] == "{")
+      if (writer.lastLine == "{")
         preamble = preamble[1 .. $];
 
       foreach (f; en.functions)
@@ -771,7 +774,7 @@ final class Repo : Base
     {
       auto preamble = ["", "// " ~ st.name];
 
-      if (writer.lines[$ - 1] == "{")
+      if (writer.lastLine == "{")
         preamble = preamble[1 .. $];
 
       if (st && !st.glibGetType.empty)
@@ -806,7 +809,7 @@ final class Repo : Base
     {
       auto preamble = ["", "// " ~ en.name];
 
-      if (writer.lines[$ - 1] == "{")
+      if (writer.lastLine == "{")
         preamble = preamble[1 .. $];
 
       foreach (f; en.functions)

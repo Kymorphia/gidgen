@@ -114,7 +114,8 @@ final class Field : TypeNode
       throw new Exception("Array of strings not supported");
 
     with(TypeKind) if ((kind.among(Basic, BasicAlias, Enum, Flags, Callback) && starCount != 0)
-        || (kind.among(String, Simple, Pointer, Opaque, Wrap, Boxed, Reffed, Object, Interface) && starCount > 1))
+        || (kind.among(String, StructAlias, Struct, Pointer, Opaque, Wrap, Boxed, Reffed, Object, Interface)
+        && starCount > 1))
       throw new Exception("Unexpected number of pointer references for field " ~ fullName.to!string);
 
     if (directStruct)
@@ -126,7 +127,10 @@ final class Field : TypeNode
     if (kind.among(TypeKind.Unknown, TypeKind.Namespace))
       throw new Exception("Unhandled type '" ~ dType.to!string ~ "' (" ~ kind.to!string ~ ")");
 
-    with (TypeKind) if (writable && (kind.among(Opaque, Wrap) || (kind == Boxed && cType.countStars == 0))) // Non-pointer boxed types not currently supported (GValue for example)
+    with (TypeKind) if (writable
+      && ((kind.among(Struct, StructAlias) && starCount != 0)  // Writable structure pointer fields are not supported
+        || kind.among(Pointer, Opaque, Wrap) // Unsupported structure types (unknown memory allocation methods)
+        || (kind == Boxed && starCount == 0))) // Non-pointer boxed types not currently supported
     {
       writable = false;
       warnWithLoc(__FILE__, __LINE__, xmlLocation, "Setting writable to false for field '" ~ fullName.to!string

@@ -149,7 +149,7 @@ final class Enumeration : TypeNode
       importManager.add("glib.error");
     }
 
-    auto importLine = writer.lines.length; // Save position where imports should go, which are inserted later, to gather all dependencies
+    auto importLine = writer.length; // Save position where imports should go, which are inserted later, to gather all dependencies
 
     writer ~= ["/// Namespace for [" ~ dType ~ "] " ~ (bitfield ? "flags"d : "enum"d), "struct " ~ dType, "{",
       "alias Enum = " ~ fullDType ~ "; ///"];

@@ -305,7 +305,7 @@ final class Func : TypeNode
         return;
       }
 
-      with(TypeKind) if (returnVal.kind.among(Simple, Pointer, Callback, Opaque, Unknown, Namespace))
+      with(TypeKind) if (returnVal.kind.among(StructAlias, Struct, Pointer, Callback, Opaque, Unknown, Namespace))
       {
         disableFunc(__FILE__, __LINE__, "signal return type '" ~ returnVal.kind.to!string ~ "' is not supported", returnVal);
         return;
