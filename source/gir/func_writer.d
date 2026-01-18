@@ -232,8 +232,8 @@ class FuncWriter
       lengthStr = retVal.fixedSize.to!dstring;
     else if (retVal.zeroTerminated) // Array is zero terminated?
     {
-      postCall ~= ["uint _cretlength;", "for (; _cretval[_cretlength] "d ~ (elemType.cType.endsWith("*")
-        ? "!is null"d : "!= 0") ~ "; _cretlength++)", "break;"];
+      postCall ~= ["uint _cretlength;", "while (_cretval[_cretlength] "d ~ (elemType.cType.endsWith("*")
+        ? "!is null"d : "!= 0") ~ ")", "_cretlength++;"];
       lengthStr = "_cretlength";
     }
     else
@@ -252,8 +252,7 @@ class FuncWriter
         break;
       case String:
         postCall ~= ["_retval = new " ~ elemType.fullDType ~ "[" ~ lengthStr ~ "];", "foreach (i; 0 .. "
-          ~ lengthStr ~ ")"];
-        postCall ~= "_retval[i] = _cretval[i].fromCString(" ~ retVal.fullOwnerFlag ~ ".Free);";
+          ~ lengthStr ~ ")", "_retval[i] = _cretval[i].fromCString(" ~ retVal.fullOwnerFlag ~ ".Free);"];
         break;
       case Enum, Flags, Struct:
         postCall ~= ["_retval = new " ~ elemType.fullDType ~ "[" ~ lengthStr ~ "];", "foreach (i; 0 .. "

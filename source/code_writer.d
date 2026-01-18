@@ -26,15 +26,19 @@ class CodeWriter
 
   CodeWriter opOpAssign(string op)(dstring[] rhs, string file = __FILE__, size_t line = __LINE__) if (op == "~")
   {
-    lines ~= rhs;
-
     if (LineTracker.enable)
     {
       auto key = SourceInfo(file, cast(uint)line);
-      auto writeLine = new SourceInfo(fileName, cast(uint)lines.length);
-      sourceLineMap[key] ~= writeLine;
-      lineTrackerLines ~= writeLine; // Store pointer to output file info to update it on insert
+
+      foreach (i; 1 .. rhs.length + 1)
+      {
+        auto writeLine = new SourceInfo(fileName, cast(uint)(lines.length + i));
+        sourceLineMap[key] ~= writeLine;
+        lineTrackerLines ~= writeLine; // Store pointer to output file info to update it on insert
+      }
     }
+
+    lines ~= rhs;
 
     return this;
   }
