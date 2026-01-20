@@ -785,11 +785,11 @@ final class Structure : TypeNode
     }
 
     if (getter)
-      lines ~= ["/**"d, "    Get `"d ~ name ~ "` " ~ type ~ ".",
-        "    Returns: "d ~ repo.gdocToDDoc(node.docContent, "      ").stripLeft];
+      lines ~= ["/**"d, "    Get `"d ~ name ~ "` " ~ type ~ "."]
+        ~ ("    Returns: "d ~ repo.gdocToDDoc(node.docContent, "      ").stripLeft).splitLines;
     else
-      lines ~= ["/**"d, "    Set `"d ~ name ~ "` " ~ type ~ ".",
-      "    Params:", "      propval = "d ~ repo.gdocToDDoc(node.docContent, "        ").stripLeft];
+      lines ~= ["/**"d, "    Set `"d ~ name ~ "` " ~ type ~ ".", "    Params:"]
+      ~ ("      propval = "d ~ repo.gdocToDDoc(node.docContent, "        ").stripLeft).splitLines;
 
     if (!node.docVersion.empty || !node.docDeprecated.empty)
     {
@@ -799,7 +799,7 @@ final class Structure : TypeNode
         lines ~= "    Version: " ~ node.docVersion;
 
       if (!node.docDeprecated.empty)
-        lines ~= "    Deprecated: " ~ repo.gdocToDDoc(node.docDeprecated, "      ").stripLeft;
+        lines ~= ("    Deprecated: " ~ repo.gdocToDDoc(node.docDeprecated, "      ").stripLeft).splitLines;
     }
 
     return lines ~ "*/";

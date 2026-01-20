@@ -277,7 +277,7 @@ class SignalWriter
   {
     auto docs = ["/**", "    Connect to `" ~ signal.titleName ~ "` signal.", ""];
 
-    docs ~= "    " ~ signal.gdocToDDocFunc(signal.docContent, "      ").stripLeft;
+    docs ~= ("    " ~ signal.gdocToDDocFunc(signal.docContent, "      ").stripLeft).splitLines;
     docs ~= ["", "    Params:"];
 
     if (signal.detailed)
@@ -287,14 +287,15 @@ class SignalWriter
 
     docs ~= ["", "        $(D " ~ callbackProto ~ ")"];
 
-    docs ~= signal.params.filter!(pa => pa.isDParam).map!(pa => ["", "        `" ~ pa.dName ~ "` "
-      ~ signal.gdocToDDocFunc(pa.docContent, "          ").stripLeft ~ " (optional)"]).join.array;
+    docs ~= signal.params.filter!(pa => pa.isDParam).map!(pa => [""d] ~ ("        `" ~ pa.dName ~ "` "
+      ~ signal.gdocToDDocFunc(pa.docContent, "          ").stripLeft ~ " (optional)").splitLines).join.array;
 
     docs ~= ["", "        `" ~ signal.signalDelegInstanceParam ~ "`"
       ~ " the instance the signal is connected to (optional)", ""];
 
     if (signal.returnVal && signal.returnVal.origDType != "none" && signal.returnVal.lengthArrayParams.length == 0)
-      docs ~= "        `Returns` " ~ signal.gdocToDDocFunc(signal.returnVal.docContent, "          ").stripLeft;
+      docs ~= ("        `Returns` " ~ signal.gdocToDDocFunc(signal.returnVal.docContent, "          ").stripLeft)
+        .splitLines;
 
     docs ~= ["      after = Yes.After to execute callback after default handler, No.After to execute before (default)",
       "    Returns: Signal ID"];
@@ -307,7 +308,7 @@ class SignalWriter
         docs ~= "    Version: " ~ signal.docVersion;
 
       if (!signal.docDeprecated.empty)
-        docs ~= "    Deprecated: " ~ signal.gdocToDDocFunc(signal.docDeprecated, "      ").stripLeft;
+        docs ~= ("    Deprecated: " ~ signal.gdocToDDocFunc(signal.docDeprecated, "      ").stripLeft).splitLines;
     }
 
     return docs ~ "*/";

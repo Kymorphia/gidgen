@@ -16,7 +16,7 @@ class CodeWriter
   this(string fileName, dstring[] content = [])
   {
     this.fileName = fileName;
-    lines = content;
+    lines ~= content;
   }
 
   this(string fileName, dstring content)
@@ -79,7 +79,7 @@ class CodeWriter
    */
   void insert(int pos, dstring ins)
   {
-    insert(pos, [ins]);
+    insert(pos, ins.splitLines);
   }
 
   /**

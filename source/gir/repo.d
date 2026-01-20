@@ -608,7 +608,7 @@ final class Repo : Base
     writer ~= "/// C types for " ~ dubPackageName ~ " library";
     writer ~= ["module " ~ packageNamespace ~ ".c.types;", ""];
     writer ~= "public import gid.basictypes;"; // Imported for glong/gulong types which change size depending on Windows or not
-    writer ~= includes.map!(x => "public import " ~ x.name.toLower ~ ".c.types;\n").array;
+    writer ~= includes.map!(x => "public import " ~ x.name.toLower ~ ".c.types;").array;
     writer ~= "";
 
     foreach (a; aliases)
@@ -684,7 +684,7 @@ final class Repo : Base
     if (namespace == "GLib") // HACK - Add GObject to includes for GLib for GType
       importNames ~= "GObject";
 
-    writer ~= importNames.sort.map!(x => "public import " ~ x.toLower ~ ".c.types;\n").array;
+    writer ~= importNames.sort.map!(x => "public import " ~ x.toLower ~ ".c.types;").array;
     writer ~= "";
 
     writeSharedLibs(writer);
@@ -876,7 +876,7 @@ final class Repo : Base
     dstring[] callbackDecls;
 
     foreach (i, cb; callbacks.filter!(x => x.active == Active.Enabled).enumerate) // Generate callback prototypes (to populate imports), added to writer output below
-      callbackDecls ~= (i == 0 ? [""d, "// Callbacks"] : []) ~ ["", cb.genDocs, cb.getDelegPrototype];
+      callbackDecls ~= (i == 0 ? [""d, "// Callbacks", ""] : [""d]) ~ cb.genDocs.splitLines ~ [cb.getDelegPrototype];
 
     dstring[] aliasDecls;
 
