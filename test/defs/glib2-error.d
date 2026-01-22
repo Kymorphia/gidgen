@@ -1,0 +1,1 @@
+../../../defs/glib2-error.d

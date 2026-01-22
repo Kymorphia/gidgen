@@ -1,0 +1,10 @@
+/dub.json
+gir/GidgenTest-1.0.gir
+gidgen-test/dub.selections.json
+gidgen-test/gidgen-test
+gidgen-test/gidgen-test.c
+gidgen-test/gidgen-test.d
+gidgen-test/libgidgen-test.so.0
+gidgen-test-gen/dub.selections.json
+gidgen-test-gen/gidgen-test-gen
+packages

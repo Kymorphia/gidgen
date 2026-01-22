@@ -1,0 +1,1 @@
+../../../defs/gobject2-boxed.d

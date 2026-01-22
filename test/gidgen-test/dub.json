@@ -1,0 +1,14 @@
+{
+  "name": "gidgen-test",
+  "description": "Gidgen test suite",
+  "copyright": "Copyright © 2024-2026, Kymorphia, PBC",
+  "authors": ["Element Green <element@kymorphia.com>"],
+  "license": "MIT",
+  "targetType": "executable",
+  "targetName": "gidgen-test",
+  "sourceFiles": ["gidgen-test.d"],
+  "dependencies": {
+    "gidg:gidgentest1": { "path": "../packages"},
+    "gidg:glib2": { "path": "../packages"}
+  }
+}

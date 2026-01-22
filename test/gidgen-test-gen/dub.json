@@ -1,0 +1,15 @@
+{
+  "name": "gidgen-test-gen",
+  "description": "Gidgen test generator",
+  "copyright": "Copyright © 2024-2026, Kymorphia, PBC",
+  "authors": ["Element Green <element@kymorphia.com>"],
+  "license": "MIT",
+  "targetType": "executable",
+  "targetName": "gidgen-test-gen",
+  "sourceFiles": ["app.d"],
+  "sourcePaths": ["../../source"],
+  "excludedSourceFiles": ["../../source/gidgen.d"],
+  "dependencies": {
+    "dxml": "~>0.4.5"
+  }
+}

@@ -1,0 +1,1 @@
+../../../defs/glib2-variant_type.d
