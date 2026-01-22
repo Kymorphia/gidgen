@@ -17,7 +17,7 @@ generate-test-files: gidgen-test-gen/gidgen-test-gen
 	gidgen-test-gen/gidgen-test-gen
 
 packages/README.md: gir/GidgenTest-1.0.gir
-	dub run gidgen -- --defs defs --gir-path gir --pkg-path . --subpkg-path packages --log-level=error
+	dub --root .. run gidgen -- --defs defs --gir-path gir --pkg-path . --subpkg-path packages --log-level=error
 
 gidgen-test-gen/gidgen-test-gen: gidgen-test-gen/app.d
 	cd gidgen-test-gen && dub build --compiler=ldc2 --debug debug

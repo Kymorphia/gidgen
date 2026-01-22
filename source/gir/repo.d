@@ -553,7 +553,8 @@ final class Repo : Base
     if (!includeRepos.empty)
     {
       auto deps = includeRepos.map!(x => x.mergeRepo ? x.mergeRepo : x).assocArray(true.repeat).keys; // Consider merge repos and deduplicate
-      output ~= ",\n  \"dependencies\": {\n" ~ deps.map!(r => `    "gid:` // Construct package dependencies with any specified versions from `info` definition commands
+      output ~= ",\n  \"dependencies\": {\n" ~ deps.map!(r => `    "`
+        ~ defs.dubInfo.get("name", ["gid"])[0].to!string ~ `:` // Construct package dependencies with any specified versions from `info` definition commands
         ~ r.dubPackageName.to!string ~ `": "` ~ r.dubInfo.get("version", ["*"])[0].to!string
         ~ `"`).array.sort.join(",\n") ~ "\n  }";
     }

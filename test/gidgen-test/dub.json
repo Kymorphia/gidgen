@@ -8,7 +8,7 @@
   "targetName": "gidgen-test",
   "sourceFiles": ["gidgen-test.d"],
   "dependencies": {
-    "gidg:gidgentest1": { "path": "../packages"},
-    "gidg:glib2": { "path": "../packages"}
+    "gidg:gidgentest1": { "path": ".."},
+    "gidg:glib2": { "path": ".."}
   }
 }
