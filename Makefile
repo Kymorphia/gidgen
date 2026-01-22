@@ -14,3 +14,4 @@ gidgen-test:
 .PHONY: clean
 clean:
 	-rm -f gidgen
+	make -C test clean

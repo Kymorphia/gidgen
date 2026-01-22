@@ -24,5 +24,5 @@ gidgen-test-gen/gidgen-test-gen: gidgen-test-gen/app.d
 
 .PHONY: clean
 clean:
-	-rm -f gidgen-test/gidgen-test.* gidgen-test/libgidgen-test.so gir/GidgenTest-1.0.gir gidgen-test-gin/gidgen-test-gen gidgen-test/gidgen-test
+	-rm -f gidgen-test/gidgen-test.* gidgen-test/libgidgen-test.so.0 gir/GidgenTest-1.0.gir gidgen-test-gen/gidgen-test-gen gidgen-test/gidgen-test
 	-rm -rf packages
