@@ -8,6 +8,7 @@ public import gir.repo;
 import gir.structure;
 import std_includes;
 public import xml_tree;
+import gir.base_range;
 
 private static Base[XmlNode] xmlNodeBaseHash;
 
@@ -20,6 +21,12 @@ abstract class Base
   this(Base parent)
   {
     this.parent = parent;
+
+    if (parent)
+    {
+      childIndex = cast(uint)parent.children.length;
+      parent.children ~= this;
+    }
 
     this.repo = getParentByType!Repo;
     assert(this.repo !is null);
@@ -46,8 +53,12 @@ abstract class Base
     dstring full;
 
     for (auto b = this; b; b = b.parent)
-      if (auto s = b.name)
+    {
+      auto s = b.name;
+
+      if (s.length > 0)
         full = full.length > 0 ? s ~ "." ~ full : s;
+    }
 
     return full;
   }
@@ -58,8 +69,12 @@ abstract class Base
     dstring full;
 
     for (auto b = this; b; b = b.parent)
-      if (auto s = b.dName)
+    {
+      auto s = b.dName;
+
+      if (s.length > 0)
         full = full.length > 0 ? (s ~ "." ~ full) : s;
+    }
 
     return full;
   }
@@ -216,10 +231,39 @@ abstract class Base
     return null;
   }
 
+  /**
+   * Get next sibling object.
+   * Returns: Next sibling or null
+   */
+  Base next()
+  {
+    return (parent && childIndex + 1 < parent.children.length) ? parent.children[childIndex + 1] : null;
+  }
+
+  /**
+   * Get previous sibling object.
+   * Returns: Previous sibling or null
+   */
+  Base prev()
+  {
+    return (parent && childIndex > 0) ? parent.children[childIndex - 1] : null;
+  }
+
+  /**
+   * Return a range that can be used to traverse a Base object node tree.
+   * Returns: New forward range
+   */
+  BaseRange walk()
+  {
+    return BaseRange(this);
+  }
+
   private XmlNode _node; /// The XML node object was created from
 
   Repo repo; /// Parent repo
   Base parent; /// Parent base object
+  Base[] children; /// Children objects
+  uint childIndex; /// Index of a child in its parent (if parent is set)
   Active active; /// Indicates active or inactive state of an object
   dstring[dstring] attributes; /// Gir key/value attributes
   dstring docContent; /// Documentation content

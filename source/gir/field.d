@@ -116,7 +116,7 @@ final class Field : TypeNode
     with(TypeKind) if ((kind.among(Basic, BasicAlias, Enum, Flags, Callback) && starCount != 0)
         || (kind.among(String, StructAlias, Struct, Pointer, Opaque, Wrap, Boxed, Reffed, Object, Interface)
         && starCount > 1))
-      throw new Exception("Unexpected number of pointer references for field " ~ fullName.to!string);
+      throw new Exception("Unexpected number of pointer references for field " ~ fullDName.to!string);
 
     if (directStruct)
       throw new Exception("Embedded structure fields not supported");
@@ -133,7 +133,7 @@ final class Field : TypeNode
         || (kind == Boxed && starCount == 0))) // Non-pointer boxed types not currently supported
     {
       writable = false;
-      warnWithLoc(__FILE__, __LINE__, xmlLocation, "Setting writable to false for field '" ~ fullName.to!string
+      warnWithLoc(__FILE__, __LINE__, xmlLocation, "Setting writable to false for field '" ~ fullDName.to!string
         ~ "' with unhandled type '" ~ dType.to!string ~ "' (" ~ kind.to!string ~ ")");
       TypeNode.dumpSelectorOnWarning(this);
     }

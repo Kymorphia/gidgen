@@ -27,7 +27,7 @@ class FuncWriter
   // Process the function
   private void process()
   {
-    codeTrap("func.write", func.fullName);
+    codeTrap("func.write", func.fullDName);
 
     if (!func.isStatic) // Check for conflicting method in ancestor if not a static method
     {
@@ -114,7 +114,7 @@ class FuncWriter
   {
     auto retVal = func.returnVal;
 
-    if (!retVal || retVal.origDType == "none")
+    if (!retVal || retVal.origDType == "none" || retVal.active != Active.Enabled)
     {
       decl ~= "void ";
       return;
@@ -203,7 +203,7 @@ class FuncWriter
         break;
       case Unknown, Container, Namespace:
         assert(0, "Unsupported return value type '" ~ retVal.fullDType.to!string ~ "' (" ~ retVal.kind.to!string ~ ") for "
-            ~ func.fullName.to!string);
+            ~ func.fullDName.to!string);
     }
   }
 
@@ -237,7 +237,7 @@ class FuncWriter
       lengthStr = "_cretlength";
     }
     else
-      assert(0, "Function '" ~ func.fullName.to!string ~ "' return array has indeterminate length"); // This should be prevented by defs.fixupRepos()
+      assert(0, "Function '" ~ func.fullDName.to!string ~ "' return array has indeterminate length"); // This should be prevented by defs.fixupRepos()
 
     final switch (elemType.kind) with (TypeKind)
     {
@@ -275,7 +275,7 @@ class FuncWriter
         break;
       case Callback, Unknown, Container, Namespace:
         assert(0, "Unsupported return value array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType
-            .kind.to!string ~ ") for " ~ func.fullName.to!string);
+            .kind.to!string ~ ") for " ~ func.fullDName.to!string);
     }
 
     if (retVal.ownership == Ownership.Container || retVal.ownership == Ownership.Full)
@@ -307,6 +307,12 @@ class FuncWriter
   /// Process parameter
   private void processParam(Param param)
   {
+    if (param.active == Active.Ignored)
+    {
+      addCallParam(!param.cType.canFind("*") ? (param.cType ~ ".init") : "null");
+      return;
+    }
+
     if (param.isInstanceParam) // Instance parameter?
     { // cType pointer types have the "*" as part of the type
       if (moduleType == ModuleType.Struct)
@@ -344,21 +350,16 @@ class FuncWriter
 
       if (param.direction == ParamDirection.In)
         processArrayInParam(param);
-      else if (param.direction == ParamDirection.Out)
-        processArrayOutParam(param);
       else
-        assert(0); // Should be prevented by verify()
+        processArrayOutParam(param);
       return;
     }
     else if (param.containerType != ContainerType.None) // Other type of container?
     {
       if (param.direction == ParamDirection.In)
         processContainerInParam(param);
-      else if (param.direction == ParamDirection.Out)
-        processContainerOutParam(param);
       else
-        assert(0, "InOut container parameter not supported for " ~ param.fullName.to!string);
-
+        processContainerOutParam(param);
       return;
     }
     else if (param.isClosure) // Closure data?
@@ -515,7 +516,7 @@ class FuncWriter
         break;
       case Unknown, Container, Namespace:
         assert(0, "Unsupported parameter type '" ~ param.fullDType.to!string ~ "' (" ~ param.kind.to!string ~ ") for "
-            ~ param.fullName.to!string);
+            ~ param.fullDName.to!string);
     }
 
     if (param.isOptional) // If parameter is optional, set default value to null (FIXME - Can there be other non-pointer optional types?)
@@ -534,7 +535,7 @@ class FuncWriter
 
     addCallParam("_" ~ param.dName);
 
-    assert(param.ownership == Ownership.None, "Function array parameter " ~ param.fullName.to!string
+    assert(param.ownership == Ownership.None, "Function array parameter " ~ param.fullDName.to!string
         ~ " ownership not supported"); // FIXME - Support for ownership Full/Container
 
     if (param.fixedSize != ArrayNotFixed) // Add an array size assertion if fixed size does not match
@@ -600,14 +601,14 @@ class FuncWriter
         break;
       case Unknown, Callback, Container, Namespace:
         assert(0, "Unsupported parameter array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType.kind.to!string
-            ~ ") for " ~ param.fullName.to!string);
+            ~ ") for " ~ param.fullDName.to!string);
     }
 
     if (param.isOptional) // If parameter is optional, set default value to null
       decl ~= " = null";
   }
 
-  // Process an array output parameter
+  // Process an array output/inout parameter
   private void processArrayOutParam(Param param)
   {
     auto elemType = param.elemTypes[0];
@@ -634,7 +635,7 @@ class FuncWriter
         ~ param.dName ~ "++)", "{", "}", "}", ""];
       lengthStr = "_len" ~ param.dName;
     }
-    else
+    else if (param.lengthParamIndex != ArrayLengthCaller)
       assert(0); // This should be prevented by verify()
 
     final switch (elemType.kind) with (TypeKind)
@@ -730,7 +731,7 @@ class FuncWriter
         break;
       case Unknown, Callback, Container, Namespace:
         assert(0, "Unsupported parameter array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType.kind.to!string
-            ~ ") for " ~ param.fullName.to!string);
+            ~ ") for " ~ param.fullDName.to!string);
     }
   }
 
@@ -754,7 +755,7 @@ class FuncWriter
         break;
       case Array, None:
         assert(0, "Unsupported 'in' container type '" ~ param.containerType.to!string ~ "' for "
-          ~ param.fullName.to!string);
+          ~ param.fullDName.to!string);
     }
 
     addDeclParam(param.directionStr ~ param.fullDType ~ " " ~ param.dName);
@@ -772,32 +773,41 @@ class FuncWriter
       decl ~= " = null";
   }
 
-  // Process a container "out" parameter (except array)
+  // Process a container out/inout parameter (except array)
   private void processContainerOutParam(Param param)
   {
-    dstring templateParams;
+    bool isList = param.containerType == ContainerType.List || param.containerType == ContainerType.SList;
+    dstring ownershipStr = (param.callerAllocates ? Ownership.Full : param.ownership).to!dstring;
+    dstring toDParams;
 
     final switch (param.containerType) with(ContainerType)
     {
       case ByteArray:
-        templateParams = "GidOwnership." ~ param.ownership.to!dstring;
+        toDParams = "GidOwnership." ~ ownershipStr;
         break;
       case ArrayG, PtrArray, List, SList:
-        templateParams = param.elemTypes[0].fullDType  ~ ", " ~ "GidOwnership." ~ param.ownership.to!dstring;
+        toDParams = param.elemTypes[0].fullDType  ~ ", " ~ "GidOwnership." ~ ownershipStr;
         break;
       case HashTable:
-        templateParams = param.elemTypes[0].fullDType ~ ", " ~ param.elemTypes[1].fullDType ~ ", "
-          ~ "GidOwnership." ~ param.ownership.to!dstring;
+        toDParams = param.elemTypes[0].fullDType ~ ", " ~ param.elemTypes[1].fullDType ~ ", " ~ "GidOwnership."
+          ~ ownershipStr;
         break;
       case Array, None:
-        assert(0, "Unsupported 'out' container type '" ~ param.containerType.to!string ~ "' for "
-          ~ param.fullName.to!string);
+        assert(0, "Unsupported '" ~ param.direction.to!string ~ "' container type '" ~ param.containerType.to!string
+          ~ "' for " ~ param.fullDName.to!string);
     }
 
     addDeclParam(param.directionStr ~ param.fullDType ~ " " ~ param.dName);
-    preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";";
-    addCallParam("&_" ~ param.dName);
-    postCall ~= param.dName ~ " = g" ~ param.containerType.to!dstring ~ "ToD!(" ~ templateParams ~ ")(_"
+    addCallParam(((isList || !param.callerAllocates) ? "&_"d : "_"d) ~ param.dName);
+
+    if (param.callerAllocates)
+      preCall ~= ["auto _" ~ param.dName ~ " = g" ~ param.containerType.to!dstring ~ "FromD(" ~ param.dName ~ ");",
+        "scope(failure) containerFree!(" ~ (isList ? param.cTypeRemPtr : param.cType) ~ ", "
+        ~ param.elemTypes[0].fullDType ~ ", GidOwnership.None)(_" ~ param.dName ~ ");"]; // GidOwnership.None for containerFree frees container and elements
+    else
+      preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";";
+
+    postCall ~= param.dName ~ " = g" ~ param.containerType.to!dstring ~ "ToD!(" ~ toDParams ~ ")(_"
       ~ param.dName ~ ");";
   }
 
@@ -849,7 +859,7 @@ class FuncWriter
     if (postCall.length > 0)
       writer ~= postCall;
 
-    if (func.returnVal && func.returnVal.origDType != "none" && !func.isCtor
+    if (func.returnVal && func.returnVal.origDType != "none" && func.returnVal.active == Active.Enabled && !func.isCtor
         && func.returnVal.lengthArrayParams.length == 0) // Don't return a value for array length return values
       writer ~= "return _retval;";
 

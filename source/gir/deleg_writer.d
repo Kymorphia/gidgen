@@ -19,7 +19,7 @@ class DelegWriter
     this.delegParam = delegParam;
     callback = cast(Func)delegParam.typeObjectRoot;
 
-    assert(this.callback, "DelegWriter parameter " ~ delegParam.fullName.to!string ~ " has "
+    assert(this.callback, "DelegWriter parameter " ~ delegParam.fullDName.to!string ~ " has "
       ~ delegParam.typeObjectRoot.to!string ~ " typeObjectRoot");
 
     preCall = new LineTracker;
@@ -31,7 +31,7 @@ class DelegWriter
   // Process the delegate parameter
   private void process(bool staticDelegatePtr)
   {
-    codeTrap("deleg.write", delegParam.fullName);
+    codeTrap("deleg.write", delegParam.fullDName);
 
     decl ~= "extern(C) ";
 
@@ -132,7 +132,7 @@ class DelegWriter
         break;
       case Callback, Unknown, Container, Namespace:
         assert(0, "Unsupported delegate return value type '" ~ retVal.fullDType.to!string
-          ~ "' (" ~ retVal.kind.to!string ~ ") for " ~ callback.fullName.to!string);
+          ~ "' (" ~ retVal.kind.to!string ~ ") for " ~ callback.fullDName.to!string);
     }
   }
 
@@ -142,7 +142,7 @@ class DelegWriter
     auto retVal = callback.returnVal;
 
     assert(retVal.ownership == Ownership.Full, "Unsupported delegate return array ownership '"
-      ~ retVal.ownership.to!string ~ "' for " ~ callback.fullName.to!string);
+      ~ retVal.ownership.to!string ~ "' for " ~ callback.fullDName.to!string);
 
     auto elemType = retVal.elemTypes[0];
 
@@ -184,7 +184,7 @@ class DelegWriter
           break;
         case Enum, Flags, StructAlias, Struct, Pointer, Callback, Unknown, Container, Namespace:
           assert(0, "Unsupported delegate return value array type '" ~ elemType.fullDType.to!string
-            ~ "' (" ~ elemType.kind.to!string ~ ") for " ~ callback.fullName.to!string);
+            ~ "' (" ~ elemType.kind.to!string ~ ") for " ~ callback.fullDName.to!string);
       }
     }
     else // Data is compatible between D and C types, do array copy
@@ -217,7 +217,7 @@ class DelegWriter
         break;
       default:
         assert(0, "Unsupported delegate return container type '" ~ retVal.containerType.to!string ~ "' for "
-          ~ retVal.fullName.to!string);
+          ~ retVal.fullDName.to!string);
     }
 
     decl ~= retVal.cType ~ " ";
@@ -318,7 +318,7 @@ class DelegWriter
         break;
       case Callback, Unknown, Container, Namespace:
         assert(0, "Unsupported parameter type '" ~ param.fullDType.to!string ~ "' (" ~ param.kind.to!string ~ ") for "
-            ~ callback.fullName.to!string);
+            ~ callback.fullDName.to!string);
     }
   }
 
@@ -387,7 +387,7 @@ class DelegWriter
           break;
         case Unknown, Callback, Container, Namespace:
           assert(0, "Unsupported parameter array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType.kind.to!string
-              ~ ") for " ~ callback.fullName.to!string);
+              ~ ") for " ~ callback.fullDName.to!string);
       }
     }
 
@@ -406,7 +406,7 @@ class DelegWriter
           break;
         case Unknown, Callback, Container, Namespace:
           assert(0, "Unsupported parameter array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType.kind.to!string
-            ~ ") for " ~ callback.fullName.to!string);
+            ~ ") for " ~ callback.fullDName.to!string);
       }
     }
   }
@@ -430,7 +430,7 @@ class DelegWriter
         break;
       default:
         assert(0, "Unsupported 'in' container type '" ~ param.containerType.to!string ~ "' for "
-          ~ param.fullName.to!string);
+          ~ param.fullDName.to!string);
     }
 
     addDeclParam(param.cType ~ " " ~ param.dName);

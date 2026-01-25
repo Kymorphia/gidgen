@@ -5,6 +5,7 @@ import std.path : relativePath;
 
 import import_manager;
 import gir.alias_;
+import gir.base;
 import gir.constant;
 import gir.enumeration;
 import gir.func;
@@ -41,7 +42,7 @@ import xml_tree;
 enum DefsCmdPrefix = "//!"d; /// Prefix used for definition commands
 enum DefsCommentPrefix = "//#"d; /// Prefix used for definition comments (not included in content)
 
-class Defs
+class Defs : Base
 {
   this()
   {
@@ -54,6 +55,8 @@ class Defs
    */
   void loadDefFiles(string[] defPaths)
   {
+    this.defPaths = defPaths;
+
     string[] classFiles;
 
     foreach (path; defPaths)
@@ -585,6 +588,7 @@ class Defs
     return js;
   }
 
+  string[] defPaths; /// Paths that definition files were loaded from
   bool[dstring] reservedWords; /// Reserved words (_ appended)
   dstring[dstring] cTypeSubs; /// Global C type substitutions
   dstring[dstring] dTypeSubs; /// Global D type substitutions

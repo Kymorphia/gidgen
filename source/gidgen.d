@@ -12,6 +12,7 @@ import defs;
 import gir.enumeration;
 import gir.func;
 import gir.report;
+import gir.suggester;
 import gir.type_node;
 import line_tracker;
 import std_includes;
@@ -36,6 +37,7 @@ int main(string[] args)
   bool displayVersion;
   bool dumpJson;
   bool dumpJsonWithDocs;
+  bool suggest;
 
   try
   {
@@ -52,7 +54,7 @@ int main(string[] args)
         "report", "Output binding coverage statistics (defaults to --report-options AllUnsupported)", &enableReport,
         "report-file", "File to output report to (defaults to stdout if not specified)", &reportFile,
         "report-options", "Customize report output (logically OR'd flags with '|' character, 'help' for flag list)", &reportOptions,
-        "suggest", "Output definition file command suggestions", &Repo.suggestDefCmds,
+        "suggest", "Output definition file command suggestions", &suggest,
         "dump-selectors", "Dump XML selectors for warnings", &TypeNode.dumpSelectorWarnings,
         "dump-ctypes", "Dump all raw C types", &Repo.dumpCTypes,
         "dump-dtypes", "Dump all raw D types", &Repo.dumpDTypes,
@@ -193,21 +195,25 @@ int main(string[] args)
       .join.map!(typeNode => typeNode.fullDType ~ " " ~ typeNode.kind.to!dstring ~ " " ~ typeNode.active.to!dstring)
       .array.sort.uniq.join("\n"));
 
-  if (Repo.suggestDefCmds) // Display suggestions if enabled
+  if (suggest) // Display suggestions if enabled
   {
     writeln("\nDefinition suggestions:");
 
-    foreach (repo; defs.repos)
+    auto suggester = new Suggester(defs);
+
+    foreach (repo; suggester.suggestions.keys.sort!((a, b) => a.defsFilename < b.defsFilename))
     {
-      if (!repo.suggestions.empty)
+      auto repoSugs = suggester.suggestions[repo];
+
+      if (!repoSugs.empty)
         writeln("\nFile: " ~ repo.defsFilename);
 
-      foreach (suggTopic, suggList; repo.suggestions)
+      foreach (topicId, suggList; repoSugs)
       {
-        writeln("\n//# " ~ suggTopic ~ "");
+        writeln("\n//# " ~ topicId ~ " (" ~ SuggestionDescriptions[topicId] ~ ")");
 
         foreach (sugg; suggList)
-          writeln("//!" ~ sugg ~ "");
+          writeln(sugg);
       }
     }
   }

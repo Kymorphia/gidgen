@@ -119,27 +119,24 @@ final class Param : TypeNode
       elemTypes.length = 0;
     }
 
-    if (lengthParamIndex != ArrayLengthUnset) // Array has a length argument?
+    if (lengthParamIndex >= 0)
     {
-      if (lengthParamIndex >= 0)
-      {
-        if (func.hasInstanceParam) // Instance parameters don't count towards index
-          lengthParamIndex++;
+      if (func.hasInstanceParam) // Instance parameters don't count towards index
+        lengthParamIndex++;
 
-        if (lengthParamIndex < func.params.length)
-        {
-          lengthParam = func.params[lengthParamIndex];
-
-          // gidgen extension which allows other zero terminated arrays to be used for length, should not have lengthArrayParams assigned for the reference array
-          if (lengthParam.containerType != ContainerType.Array)
-            lengthParam.lengthArrayParams ~= this;
-        }
-      }
-      else if (lengthParamIndex == ArrayLengthReturn) // Array parameter uses return value as length
+      if (lengthParamIndex < func.params.length)
       {
-        lengthReturn = func.returnVal;
-        lengthReturn.lengthArrayParams ~= this;
+        lengthParam = func.params[lengthParamIndex];
+
+        // gidgen extension which allows other zero terminated arrays to be used for length, should not have lengthArrayParams assigned for the reference array
+        if (lengthParam.containerType != ContainerType.Array)
+          lengthParam.lengthArrayParams ~= this;
       }
+    }
+    else if (lengthParamIndex == ArrayLengthReturn) // Array parameter uses return value as length
+    {
+      lengthReturn = func.returnVal;
+      lengthReturn.lengthArrayParams ~= this;
     }
 
     if (closureIndex != NoClosure)
@@ -222,11 +219,11 @@ final class Param : TypeNode
     }
 
     if (kind == TypeKind.Unknown)
-      throw new Exception("Unresolved type for parameter '" ~ fullName.to!string ~ "'");
+      throw new Exception("Unresolved type for parameter '" ~ fullDName.to!string ~ "'");
 
     if (containerType != ContainerType.None)
     {
-      if ((direction == ParamDirection.In && ownership != Ownership.None) || direction == ParamDirection.InOut)
+      if ((direction == ParamDirection.In || direction == ParamDirection.InOut) && ownership != Ownership.None)
         throw new Exception("Container " ~ containerType.to!string ~ " parameter with direction "
           ~ direction.to!string ~ " ownership " ~ ownership.to!string ~ " not supported");
     }
@@ -234,13 +231,8 @@ final class Param : TypeNode
     with (TypeKind) if (containerType == ContainerType.None && kind.among(Basic, BasicAlias, Enum, Flags))
     {
       if (direction == ParamDirection.In && cType.countStars > 0 && cType != "void*" && cType != "const(void)*")
-      {
-        if (Repo.suggestDefCmds)
-          repo.suggestions["Set basic parameters to out"] ~= "set " ~ xmlSelector.to!string ~ "[direction] out";
-
         throw new Exception("Basic input parameter type '" ~ dType.to!string ~ "' has unexpected C type '"
           ~ cType.to!string ~ "'");
-      }
 
       if (direction == ParamDirection.Out && !callerAllocates && cType.countStars == 0)
         throw new Exception("Basic output parameter type '" ~ dType.to!string ~ "' has unexpected C type '"
@@ -251,16 +243,11 @@ final class Param : TypeNode
           ~ cType.to!string ~ "'");
     }
 
-    // Suggest Out for non-const Struct pointer params which aren't instance parameters
-    with (TypeKind) if (Repo.suggestDefCmds && containerType == ContainerType.None && kind.among(Struct, StructAlias)
-        && !isInstanceParam && direction == ParamDirection.In && cType.countStars > 0 && !cType.canFind("const"))
-      repo.suggestions["Set struct pointer parameters to out"] ~= "set " ~ xmlSelector.to!string ~ "[direction] out";
-
     // Enable callerAllocates for parameters which are output pointers to Struct types
     with (TypeKind) if (direction == ParamDirection.Out && kind.among(Struct, StructAlias)
       && cType.countStars == 1 && !callerAllocates)
     {
-      info("Enabling caller allocates for Out parameter '" ~ fullName.to!string ~ "' with a pointer to a struct type");
+      info("Enabling caller allocates for Out parameter '" ~ fullDName.to!string ~ "' with a pointer to a struct type");
       callerAllocates = true;
     }
 
@@ -272,7 +259,7 @@ final class Param : TypeNode
       // Ownership other than None does not make sense for InOut parameters
       if (ownership != Ownership.None)
       {
-        info("Changing InOut parameter '" ~ fullName.to!string ~ "' with ownership '" ~ ownership.to!string
+        info("Changing InOut parameter '" ~ fullDName.to!string ~ "' with ownership '" ~ ownership.to!string
           ~ "' to None");
         ownership = Ownership.None;
       }
@@ -280,7 +267,7 @@ final class Param : TypeNode
       // Identify incorrect caller-allocates=0 for structured types, warn, and set callerAllocates to true
       with (TypeKind) if (!callerAllocates && cType.countStars == 1 && kind.typeKindIsStructured)
       {
-        info("Changing InOut parameter '" ~ fullName.to!string ~ "' caller-allocates to true");
+        info("Changing InOut parameter '" ~ fullDName.to!string ~ "' caller-allocates to true");
         callerAllocates = true;
       }
     }
@@ -294,7 +281,7 @@ final class Param : TypeNode
           ~ "' requiring caller allocation of opaque structure");
     }
 
-    with (ParamDirection) if (containerType == ContainerType.Array)
+    if (containerType == ContainerType.Array) with (ParamDirection)
     {
       if (lengthParamIndex == ArrayLengthReturn && (!lengthReturn || lengthReturn.kind != TypeKind.Basic))
         throw new Exception("Invalid return value for array length");
@@ -346,7 +333,30 @@ final class Param : TypeNode
         }
       }
       else if (direction == InOut)
-        throw new Exception("InOut arrays not currently supported");
+      {
+        if (!callerAllocates)
+          throw new Exception("InOut arrays must be caller allocated");
+        else if (ownership != Ownership.None)
+          throw new Exception("InOut arrays cannot be ownership " ~ ownership.to!string);
+      }
+    }
+    else if (containerType != ContainerType.None)
+    {
+      auto stars = cType.countStars;
+      auto isList = containerType == ContainerType.List || containerType == ContainerType.SList;
+
+      // See docs/param_validation_table.md
+      if ((direction == ParamDirection.In && stars != 1)
+          || (direction == ParamDirection.Out && isList && stars != 2)
+          || (direction == ParamDirection.Out && !isList && callerAllocates && stars != 1)
+          || (direction == ParamDirection.Out && !isList && !callerAllocates && stars != 2)
+          || (direction == ParamDirection.InOut && ownership != Ownership.None)
+          || (direction == ParamDirection.InOut && !isList && !callerAllocates)
+          || (direction == ParamDirection.InOut && isList && stars != 2)
+          || (direction == ParamDirection.InOut && !isList && stars != 1))
+        throw new Exception("Invalid container param with type '" ~ containerType.to!string ~ "' direction '"
+          ~ direction.to!string ~ "' ownership '" ~ ownership.to!string ~ "' callerAllocates="
+          ~ callerAllocates.to!string ~ "' and C type '" ~ cType.to!string);
     }
 
     if (closureIndex != NoClosure)

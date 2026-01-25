@@ -135,7 +135,8 @@ final class Func : TypeNode
       s ~= paramDescrs.join("\n") ~ "\n";
     }
 
-    if (returnVal && returnVal.origDType != "none" && returnVal.lengthArrayParams.length == 0)
+    if (returnVal && returnVal.origDType != "none" && returnVal.active == Active.Enabled
+        && returnVal.lengthArrayParams.length == 0)
       s ~= "    Returns: " ~ gdocToDDocFunc(returnVal.docContent, "      ").stripLeft ~ "\n";
 
     if (throws)
@@ -198,7 +199,7 @@ final class Func : TypeNode
 
     if (!introspectable || !movedTo.empty || funcType == FuncType.VirtualMethod || funcType == FuncType.FuncMacro
         || !shadowedBy.empty)
-      active = Active.Disabled;
+      active = Active.Ignored;
 
     if (returnVal)
     {
@@ -223,7 +224,7 @@ final class Func : TypeNode
 
         if (!(retSt is parentSt || returnVal.dType == parentSt.dType))
         {
-          info("Changing return value for " ~ fullName.to!string ~ " from type " ~ returnVal.dType.to!string
+          info("Changing return value for " ~ fullDName.to!string ~ " from type " ~ returnVal.dType.to!string
             ~ " to " ~ parentSt.dType.to!string);
 
           returnVal.dType = parentSt.dType;
@@ -249,7 +250,7 @@ final class Func : TypeNode
         {
           pa.isClosure = true;
           closureParam = pa;
-          info("Designating parameter '" ~ pa.fullName.to!string ~ "' as closure");
+          info("Designating parameter '" ~ pa.fullDName.to!string ~ "' as closure");
         }
       }
     }
@@ -275,7 +276,7 @@ final class Func : TypeNode
     {
       active = Active.Unsupported;
       warnWithLoc(file, line, xmlLocation, "Disabling " ~ (funcType == FuncType.Signal ? "signal '" : "function '" )
-        ~ fullName.to!string ~ "': " ~ msg);
+        ~ fullDName.to!string ~ "': " ~ msg);
       TypeNode.dumpSelectorOnWarning(errorNode ? errorNode : this);
     }
 
@@ -329,7 +330,7 @@ final class Func : TypeNode
 
     if (returnVal)
     {
-      if (returnVal.lengthParamIndex != ArrayLengthUnset)
+      if (returnVal.lengthParamIndex >= 0)
       {
         if (!returnVal.lengthParam) // Return array has invalid length argument?
         {
@@ -371,7 +372,7 @@ final class Func : TypeNode
           break;
       }
 
-      if (pa.active != Active.Enabled)
+      if (pa.active != Active.Enabled && pa.active != Active.Ignored)
         disableFunc(__FILE__, __LINE__, "Parameter '" ~ pa.name.to!string ~ "' of type '" ~ pa.dType.to!string ~ "' is disabled", pa);
     }
 
@@ -472,7 +473,7 @@ final class Func : TypeNode
     auto st = getParentByType!Structure;
 
     if (!st)
-      throw new Exception("Cannot construct exception class from function " ~ fullName.to!string);
+      throw new Exception("Cannot construct exception class from function " ~ fullDName.to!string);
 
     if (!exceptionName.empty)
       exceptionName = st.origDType ~ exceptionName.stripRight("_").camelCase(true);

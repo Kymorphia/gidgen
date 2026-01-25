@@ -113,8 +113,8 @@ final class Enumeration : TypeNode
       if (!fn.funcType != FuncType.Function)
       {
         fn.active = Active.Unsupported;
-        warnWithLoc(__FILE__, __LINE__, fn.xmlLocation, "Disabling function '" ~ fn.fullName.to!string ~ "' of type '" ~ fn.funcType.to!string
-            ~ "' which is not supported");
+        warnWithLoc(__FILE__, __LINE__, fn.xmlLocation, "Disabling function '" ~ fn.fullDName.to!string ~ "' of type '"
+          ~ fn.funcType.to!string ~ "' which is not supported");
         TypeNode.dumpSelectorOnWarning(fn);
       }
       else

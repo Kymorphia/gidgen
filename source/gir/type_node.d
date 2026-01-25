@@ -240,7 +240,9 @@ class TypeNode : Base
         return "zero";
     }
 
-    if (lengthParamIndex != ArrayLengthUnset)
+    if (lengthParamIndex == ArrayLengthCaller)
+      return "caller";
+    else if (lengthParamIndex != ArrayLengthUnset)
       return "length";
     else if (fixedSize != ArrayNotFixed)
       return "fixed";
@@ -303,6 +305,8 @@ class TypeNode : Base
 
         if (auto pLength = "length" in arr.attrs)
           lengthParamIndex = (*pLength).to!int;
+        else if (arr.get("caller-length", "0") == "1")
+          lengthParamIndex = ArrayLengthCaller;
         else
           lengthParamIndex = ArrayLengthUnset;
       }
@@ -320,7 +324,7 @@ class TypeNode : Base
   /// Just calls fixup with a code trap before
   void doFixup()
   {
-    codeTrap("type.fixup", fullName);
+    codeTrap("type.fixup", fullDName);
     fixup;
   }
 
@@ -369,12 +373,12 @@ class TypeNode : Base
       {
         elemTypes[0].kind = TypeKind.Basic;
         elemTypes[0]._dType = "char";
-        info("'" ~ fullName.to!string ~ "' using string for char array with length");
+        info("'" ~ fullDName.to!string ~ "' using string for char array with length");
       }
       else if (lengthParamIndex != ArrayLengthUnset && !elemTypes.empty && elemTypes[0]._dType == "ubyte"
         && cType.stripConst.startsWith("char")) // If there is a length parameter, dType is "ubyte", and array type uses char - treat it as a ubyte array
       {
-        info("Changing array cType from " ~ cType.to!string ~ " to ubyte for " ~ fullName.to!string);
+        info("Changing array cType from " ~ cType.to!string ~ " to ubyte for " ~ fullDName.to!string);
         elemTypes[0].cType = "ubyte";
         cType = cType.replace("char", "ubyte");
       }
@@ -419,14 +423,14 @@ class TypeNode : Base
 
       info("Using member C type '" ~ elemTypes[0].cType.to!string ~ "' for D type '"
         ~ elemTypes[0]._dType.to!string ~ "' for an array with C type '" ~ cType.to!string ~ "' in "
-        ~ fullName.to!string);
+        ~ fullDName.to!string);
     }
   }
 
   /// Just calls resolve with a code trap before
   void doResolve()
   {
-    codeTrap("type.resolve", fullName);
+    codeTrap("type.resolve", fullDName);
     resolve;
   }
 
@@ -446,12 +450,12 @@ class TypeNode : Base
         if (kind == TypeKind.String)
         {
           cType = "char*";
-          info(fullName ~ ": Using char* for missing cType");
+          info(fullDName ~ ": Using char* for missing cType");
         }
         else if (typeObject && typeObject.cType)
         {
           cType = typeObject.cType;
-          info(fullName ~ ": Using " ~ cType ~ " for missing cType");
+          info(fullDName ~ ": Using " ~ cType ~ " for missing cType");
         }
       }
 
@@ -463,12 +467,12 @@ class TypeNode : Base
         if (cType == "void*" || cType == "const(void)*") // HACK? - Fix anonymous gpointer object parameters to have proper C types
         {
           cType = st.cType ~ "*";
-          info(fullName ~ ": Using '" ~ cType ~ "' for anonymous pointer cType");
+          info(fullDName ~ ": Using '" ~ cType ~ "' for anonymous pointer cType");
         }
         else if (cType.empty && !st.cType.empty) // HACK? - Use structure cType if cType is missing
         {
           cType = st.cType ~ "*";
-          info(fullName ~ ": Using '" ~ cType ~ "' for missing cType");
+          info(fullDName ~ ": Using '" ~ cType ~ "' for missing cType");
         }
       }
 
@@ -493,7 +497,7 @@ class TypeNode : Base
   /// Just calls verify with a code trap before
   void doVerify()
   {
-    codeTrap("type.verify", fullName);
+    codeTrap("type.verify", fullDName);
     verify;
   }
 
@@ -504,7 +508,7 @@ class TypeNode : Base
       throw new Exception("Unresolved type '" ~ dType.to!string ~ "' (unresolvedFlags: " ~ unresolvedFlags.to!string ~ ")");
 
     if (typeObject && typeObject.active != Active.Enabled)
-      throw new Exception("Resolved type '" ~ typeObject.fullName.to!string ~ "' is not active");
+      throw new Exception("Resolved type '" ~ typeObject.fullDName.to!string ~ "' is not active");
 
     foreach (typ; elemTypes)
       if (typ.containerType != ContainerType.None)
@@ -517,29 +521,20 @@ class TypeNode : Base
 
       if (lengthParamIndex == ArrayLengthUnset && fixedSize == ArrayNotFixed && !zeroTerminated)
       {
-        if (elemTypes[0].kind == TypeKind.String)
-        {
-          info("Setting string array to null terminated for '" ~ fullName.to!string ~ "'");
-          zeroTerminated = true;
-        }
-        else
-        {
-          if (Repo.suggestDefCmds)
-            repo.suggestions["Set arrays to be zero-terminated=1"] ~= "set " ~ xmlSelector.to!string ~ (cast(Func)this
-              ? ".return-value.array[][zero-terminated] 1" : ".array[][zero-terminated] 1");
-
+        if (elemTypes[0].kind != TypeKind.String)
           throw new Exception("Array of type '" ~ elemTypes[0]._dType.to!string ~ "' has indeterminate length");
-        }
+
+        info("Setting string array to null terminated for '" ~ fullDName.to!string ~ "'");
+        zeroTerminated = true;
       }
 
       if (elemTypes[0].cType.empty) // Missing array element C type?
         throw new Exception("Could not determine member type for array type '" ~ cType.to!string ~ "'");
 
       if (cType.empty && fixedSize == 0) // No array C type and not fixed size?
-      {
-        warnWithLoc(__FILE__, __LINE__, xmlLocation, "No array c:type for array of D type '" ~ _dType.to!string ~ "' in '"
-          ~ fullName.to!string ~ "'");
-        TypeNode.dumpSelectorOnWarning(this);
+      { // Just append a * on the element cType
+        cType = elemTypes[0].cType ~ "*";
+        info("Setting array c:type to '" ~ cType.to!string ~ "' in '" ~ fullDName.to!string ~ "'");
       }
 
       if (elemTypes[0]._dType == "ubyte" && cType.canFind("char"))
@@ -589,7 +584,7 @@ class TypeNode : Base
         auto parentTypeNode = cast(TypeNode)parent;
         if (!parentTypeNode || parentTypeNode.containerType != ContainerType.Array) // Warn if not an array container type (handled separately)
         {
-          warnWithLoc(__FILE__, __LINE__, xmlLocation, "No c:type for D type '" ~ _dType.to!string ~ "' in '" ~ fullName.to!string ~ "'");
+          warnWithLoc(__FILE__, __LINE__, xmlLocation, "No c:type for D type '" ~ _dType.to!string ~ "' in '" ~ fullDName.to!string ~ "'");
           dumpSelectorOnWarning(this);
         }
       }
@@ -600,7 +595,7 @@ class TypeNode : Base
 
       if (!elemTypes.empty)
       {
-        warnWithLoc(__FILE__, __LINE__, xmlLocation, "Unexpected element type in unrecognized container '" ~ fullName.to!string ~ "'");
+        warnWithLoc(__FILE__, __LINE__, xmlLocation, "Unexpected element type in unrecognized container '" ~ fullDName.to!string ~ "'");
         dumpSelectorOnWarning(this);
       }
     }
@@ -672,6 +667,7 @@ enum ArrayNotFixed = 0; /// Value for TypeNode.fixedSize which indicates size is
 
 enum ArrayLengthReturn = -1; /// Value used for TypeNode.lengthParamIndex which indicates no length parameter
 enum ArrayLengthUnset = -2; /// Value used for TypeNode.lengthParamIndex which indicates no length parameter
+enum ArrayLengthCaller = -3; /// Caller is responsible for defining the proper length (callerAllocates out/inout buffer)
 
 /// Ownership transfer of a type
 enum Ownership

@@ -26,6 +26,7 @@ final class Repo : Base
 {
   this(Defs defs)
   {
+    super(defs);
     this.defs = defs;
 
     // Add global namespace structure
@@ -295,6 +296,7 @@ final class Repo : Base
       con.doResolve;
       typeObjectHash[con.name] = con;
       defs.cSymbolHash[con.origCType] = con;
+//      defs.cSymbolHash[con.cName] = con;
     }
 
     foreach (en; enums) // Hash enums
@@ -361,18 +363,9 @@ final class Repo : Base
 
     structs.sort!((x, y) => x.name < y.name); // Sort structures by name
 
-    foreach (key, value; kindSubs) // Substitute type kinds
-    {
-      if (auto obj = typeObjectHash.get(key, null))
-      {
-        if (auto node = cast(TypeNode)obj)
-          node.kind = value;
-        else
-          warning("Type '" ~ name ~ "." ~ key ~ "' kind cannot be substituted");
-      }
-      else
+    foreach (key; kindSubs.byKey) // Warn of any remaining kind substitutions which did not match
+      if (key !in kindSubsApplied)
         warning("Type kind substitution '" ~ name ~ "." ~ key ~ "' not found");
-    }
   }
 
   /// Ensure consistent state of repo data
@@ -391,7 +384,7 @@ final class Repo : Base
       catch (Exception e)
       {
         al.active = Active.Unsupported;
-        warnWithLoc(e.file, e.line, al.xmlLocation, "Disabling alias '" ~ al.fullName.to!string ~ "': " ~ e.msg);
+        warnWithLoc(e.file, e.line, al.xmlLocation, "Disabling alias '" ~ al.fullDName.to!string ~ "': " ~ e.msg);
         TypeNode.dumpSelectorOnWarning(al);
       }
     }
@@ -406,7 +399,7 @@ final class Repo : Base
       catch (Exception e)
       {
         con.active = Active.Unsupported;
-        warnWithLoc(e.file, e.line, con.xmlLocation, "Disabling constant '" ~ con.fullName.to!string ~ "': " ~ e.msg);
+        warnWithLoc(e.file, e.line, con.xmlLocation, "Disabling constant '" ~ con.fullDName.to!string ~ "': " ~ e.msg);
         TypeNode.dumpSelectorOnWarning(con);
       }
     }
@@ -426,7 +419,7 @@ final class Repo : Base
       catch (Exception e)
       {
         cb.active = Active.Unsupported;
-        warnWithLoc(e.file, e.line, cb.xmlLocation, "Disabling callback '" ~ cb.fullName.to!string ~ "': " ~ e.msg);
+        warnWithLoc(e.file, e.line, cb.xmlLocation, "Disabling callback '" ~ cb.fullDName.to!string ~ "': " ~ e.msg);
         TypeNode.dumpSelectorOnWarning(cb);
       }
     }
@@ -441,7 +434,7 @@ final class Repo : Base
       catch (Exception e)
       {
         st.active = Active.Unsupported;
-        warnWithLoc(e.file, e.line, st.xmlLocation, "Disabling structure '" ~ st.fullName.to!string ~ "': " ~ e.msg);
+        warnWithLoc(e.file, e.line, st.xmlLocation, "Disabling structure '" ~ st.fullDName.to!string ~ "': " ~ e.msg);
         TypeNode.dumpSelectorOnWarning(st);
       }
     }
@@ -641,7 +634,7 @@ final class Repo : Base
 
     foreach (st; structs)
     {
-      codeTrap("ctypes.struct", st.fullName);
+      codeTrap("ctypes.struct", st.fullDName);
 
       if (st.kind == TypeKind.Namespace || st.cType.empty)
         continue;
@@ -1374,6 +1367,7 @@ final class Repo : Base
   dstring[dstring] cTypeSubs; /// C type substitutions defined in the definitions file
   dstring[dstring] dTypeSubs; /// D type substitutions defined in the definitions file
   TypeKind[dstring] kindSubs; /// Type kind substitutions defined in the definitions file
+  bool[dstring] kindSubsApplied; /// The kind substitutions which were applied
   DefCode[dstring] modDefCode; /// Code defined in definition file for classes (keyed by module name)
   NamespaceVersion mergeNsVer; /// Package namespace/version to merge this repo into
   Repo mergeRepo; /// Repo object to merge this repo into
@@ -1390,8 +1384,6 @@ final class Repo : Base
   static bool logCodeLoc; /// Log code locations in warnings
   static bool dumpCTypes; /// Set to true to dump C types
   static bool dumpDTypes; /// Set to true to dump D types
-  static bool suggestDefCmds; /// Output definition command suggestions
-  string[][string] suggestions; /// Suggested definitions (if suggestDefCmds is enabled), keyed by type of suggestion
 }
 
 /**

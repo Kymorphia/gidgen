@@ -126,7 +126,7 @@ final class Structure : TypeNode
       }
 
       auto retKind = TypeKind.Struct;
-      foreach (field; fields) // HACK: Check for field.callback since it is set before the kind is resolved (fixup dependency issue)
+      foreach (field; fields)
       {
         if (field.kind == TypeKind.Unknown)
           retKind = TypeKind.Unknown;
@@ -134,12 +134,12 @@ final class Structure : TypeNode
         {
           if (field.elemTypes.empty || field.elemTypes[0].kind == TypeKind.Unknown)
             retKind = TypeKind.Unknown;
-          else if (!field.elemTypes[0].kind.among(TypeKind.Basic, TypeKind.BasicAlias,
+          else if (field.cType.canFind("*") || !field.elemTypes[0].kind.among(TypeKind.Basic, TypeKind.BasicAlias,
               TypeKind.Callback, TypeKind.Enum, TypeKind.Flags))
             return glibGetType.empty ? TypeKind.Wrap : TypeKind.Boxed;
         }
-        else if (field.containerType != ContainerType.None || (!field.callback && !field.kind.among(TypeKind.Basic,
-            TypeKind.BasicAlias, TypeKind.Callback, TypeKind.Enum, TypeKind.Flags)))
+        else if (field.containerType != ContainerType.None || (!field.callback && (field.cType.canFind("*")
+            || !field.kind.among(TypeKind.Basic, TypeKind.BasicAlias, TypeKind.Callback, TypeKind.Enum, TypeKind.Flags))))
           return glibGetType.empty ? TypeKind.Wrap : TypeKind.Boxed;
       }
 
@@ -187,6 +187,12 @@ final class Structure : TypeNode
 
     if (cType.empty) // If cType is unset, set it to glibTypeName
       cType = glibTypeName;
+
+    if (dType in repo.kindSubs) // Substitute type kinds
+    {
+      kind = repo.kindSubs[dType];
+      repo.kindSubsApplied[dType] = true;
+    }
 
     foreach (f; fields) // Fixup structure fields
     {
@@ -245,7 +251,7 @@ final class Structure : TypeNode
     if (!cast(Field)parent) // Don't call super.resolve if this is a direct structure of a field
       super.resolve;
 
-    if (kind == TypeKind.Boxed && parentType.empty)
+    if (kind == TypeKind.Boxed && parentType.empty && dType != "Boxed") // Make sure not to set Boxed parent to Boxed
       parentType = "GObject.Boxed";
 
     if (!parentType.empty)
@@ -278,12 +284,12 @@ final class Structure : TypeNode
       throw new Exception("Failed to resolve parent type '" ~ parentType.to!string ~ "'");
  
     if (parentStruct && parentStruct.active != Active.Enabled)
-      throw new Exception("Structure parent type '" ~ parentStruct.fullName.to!string ~ "' is disabled");
+      throw new Exception("Structure parent type '" ~ parentStruct.fullDName.to!string ~ "' is disabled");
 
     foreach (ifaceName; implements)
       if (!cast(Structure)repo.findTypeObject(ifaceName))
       {
-        warnWithLoc(__FILE__, __LINE__, xmlLocation, "Unable to resolve structure " ~ fullName.to!string ~ " interface " ~ ifaceName.to!string);
+        warnWithLoc(__FILE__, __LINE__, xmlLocation, "Unable to resolve structure " ~ fullDName.to!string ~ " interface " ~ ifaceName.to!string);
         TypeNode.dumpSelectorOnWarning(this);
       }
 
@@ -298,7 +304,7 @@ final class Structure : TypeNode
       with(FuncType) if (!fn.funcType.among(Callback, Function, Constructor, Signal, Method))
       {
         fn.active = Active.Unsupported;
-        warnWithLoc(__FILE__, __LINE__, fn.xmlLocation, "Disabling function '" ~ fn.fullName.to!string ~ "' of type '" ~ fn.funcType.to!string
+        warnWithLoc(__FILE__, __LINE__, fn.xmlLocation, "Disabling function '" ~ fn.fullDName.to!string ~ "' of type '" ~ fn.funcType.to!string
             ~ "' which is not supported");
         TypeNode.dumpSelectorOnWarning(fn);
       }
@@ -316,7 +322,7 @@ final class Structure : TypeNode
       catch (Exception e)
       {
         sig.active = Active.Unsupported;
-        warnWithLoc(e.file, e.line, sig.xmlLocation, "Disabling signal '" ~ sig.fullName.to!string ~ "': " ~ e.msg);
+        warnWithLoc(e.file, e.line, sig.xmlLocation, "Disabling signal '" ~ sig.fullDName.to!string ~ "': " ~ e.msg);
         TypeNode.dumpSelectorOnWarning(sig);
       }
     }
@@ -335,7 +341,7 @@ final class Structure : TypeNode
       catch (Exception e)
       {
         f.active = Active.Unsupported;
-        warnWithLoc(e.file, e.line, f.xmlLocation, "Disabling field '" ~ f.fullName.to!string ~ "': " ~ e.msg);
+        warnWithLoc(e.file, e.line, f.xmlLocation, "Disabling field '" ~ f.fullDName.to!string ~ "': " ~ e.msg);
         TypeNode.dumpSelectorOnWarning(f);
       }
     }
@@ -353,7 +359,7 @@ final class Structure : TypeNode
       catch (Exception e)
       {
         p.active = Active.Unsupported;
-        warnWithLoc(e.file, e.line, p.xmlLocation, "Disabling property '" ~ p.fullName.to!string ~ "': " ~ e.msg);
+        warnWithLoc(e.file, e.line, p.xmlLocation, "Disabling property '" ~ p.fullDName.to!string ~ "': " ~ e.msg);
         TypeNode.dumpSelectorOnWarning(p);
       }
     }
@@ -367,7 +373,7 @@ final class Structure : TypeNode
    */
   void write(string path, ModuleType moduleType = ModuleType.Normal)
   {
-    codeTrap("struct.write", fullName);
+    codeTrap("struct.write", fullDName);
 
     auto isIfaceTemplate = kind == TypeKind.Interface && moduleType == ModuleType.IfaceTemplate;
     auto writer = new CodeWriter(buildPath(path, moduleName.to!string ~ (isIfaceTemplate ? "_mixin" : "") ~ ".d")); // Append T to type name for interface mixin template module
@@ -657,9 +663,9 @@ final class Structure : TypeNode
       if (f.active != Active.Enabled)
         continue;
 
-      assert(!f.directStruct, "Unsupported embedded structure field " ~ f.fullName.to!string);
+      assert(!f.directStruct, "Unsupported embedded structure field " ~ f.fullDName.to!string);
 
-      assert(f.containerType == ContainerType.None, "Unsupported structure field " ~ f.fullName.to!string
+      assert(f.containerType == ContainerType.None, "Unsupported structure field " ~ f.fullDName.to!string
           ~ " with container type " ~ f.containerType.to!string);
 
       if (f.kind == TypeKind.Callback && !f.typeObject) // Callback function type directly defined in field?

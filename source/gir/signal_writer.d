@@ -20,7 +20,7 @@ class SignalWriter
 
     owningClass = cast(Structure)signal.parent;
     assert(owningClass && owningClass != signal.repo.globalStruct,
-      "Signal '" ~ signal.fullName.to!string ~ "' does not have a valid class");
+      "Signal '" ~ signal.fullDName.to!string ~ "' does not have a valid class");
 
     addImport("gobject.dclosure");
 
@@ -32,7 +32,7 @@ class SignalWriter
   // Process the signal
   private void process()
   {
-    codeTrap("struct.signal", signal.fullName);
+    codeTrap("struct.signal", signal.fullDName);
 
     processReturn();
 
@@ -72,7 +72,7 @@ class SignalWriter
     with (TypeKind) assert(!retVal.kind.among(StructAlias, Struct, Pointer, Callback, Opaque, Unknown,
         Container, Namespace),
       "Unsupported signal return value type '" ~ retVal.fullDType.to!string ~ "' (" ~ retVal.kind.to!string ~ ") for "
-      ~ signal.fullName.to!string);
+      ~ signal.fullDName.to!string);
 
     with (TypeKind) callbackTypes ~= CallbackType(retVal.fullDType, retVal.kind.among(Object, Interface) != 0);
     call ~= "auto _retval = ";
@@ -106,7 +106,7 @@ class SignalWriter
 
     with (TypeKind) assert(!param.kind.among(Callback, Unknown, Container, Namespace),
       "Unsupported signal parameter type '" ~ param.fullDType.to!string ~ "' (" ~ param.kind.to!string ~ ") for "
-      ~ signal.fullName.to!string);
+      ~ signal.fullDName.to!string);
 
     auto cbIndex = cast(int)callbackTypes.length - 1;
     preCall ~= ["", "static if (Parameters!T.length > " ~ cbIndex.to!dstring ~ ")", // Only process parameters which are included in the callback
@@ -175,7 +175,7 @@ class SignalWriter
           break;
         case Unknown, Callback, Container, Namespace:
           assert(0, "Unsupported parameter array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType.kind.to!string
-              ~ ") for signal " ~ signal.fullName.to!string);
+              ~ ") for signal " ~ signal.fullDName.to!string);
       }
     }
 
@@ -212,7 +212,7 @@ class SignalWriter
         break;
       default:
         assert(0, "Unsupported 'in' container type '" ~ param.containerType.to!string ~ "' for "
-          ~ param.fullName.to!string);
+          ~ param.fullDName.to!string);
     }
 
     preCall ~= "_paramTuple[" ~ paramIndex.to!dstring ~ "] = g" ~ param.containerType.to!dstring ~ "ToD!("
