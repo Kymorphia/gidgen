@@ -295,8 +295,7 @@ final class Repo : Base
       con.doFixup;
       con.doResolve;
       typeObjectHash[con.name] = con;
-      defs.cSymbolHash[con.origCType] = con;
-//      defs.cSymbolHash[con.cName] = con;
+      defs.cSymbolHash[con.cName] = con;
     }
 
     foreach (en; enums) // Hash enums
