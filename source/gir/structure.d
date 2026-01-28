@@ -61,7 +61,7 @@ final class Structure : TypeNode
   {
     super.fromXml(node);
 
-    structType = cast(StructType)structTypeValues.countUntil(node.id);
+    structType = cast(StructType)StructTypeValues.countUntil(node.id);
     cSymbolPrefix = node.get("c:symbol-prefix");
     parentType = node.get("parent");
     version_ = node.get("version");
@@ -1048,7 +1048,7 @@ enum StructType
   Union, /// A union
 }
 
-immutable dstring[] structTypeValues = ["class", "interface", "record", "union"];
+immutable dstring[] StructTypeValues = ["class", "interface", "record", "union"];
 
 /// Module file type
 enum ModuleType
