@@ -23,7 +23,7 @@ final class ReturnValue : TypeNode
   {
     super.fromXml(node);
 
-    ownership = cast(Ownership)OwnershipValues.countUntil(node.get("transfer-ownership"));
+    ownership = cast(Ownership)ownershipValues.countUntil(node.get("transfer-ownership"));
     nullable = node.get("nullable") == "1";
   }
 

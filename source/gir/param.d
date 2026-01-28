@@ -81,8 +81,8 @@ final class Param : TypeNode
 
     _name = node.get("name");
     isInstanceParam = node.id == "instance-parameter";
-    direction = cast(ParamDirection)ParamDirectionValues.countUntil(node.get("direction"));
-    ownership = cast(Ownership)OwnershipValues.countUntil(node.get("transfer-ownership"));
+    direction = cast(ParamDirection)paramDirectionValues.countUntil(node.get("direction"));
+    ownership = cast(Ownership)ownershipValues.countUntil(node.get("transfer-ownership"));
     nullable = node.get("nullable") == "1";
     optional = node.get("optional") == "1";
     allowNone = node.get("allow-none") == "1";
@@ -99,7 +99,7 @@ final class Param : TypeNode
     else
       destroyIndex = NoDestroy;
 
-    scope_ = cast(ParamScope)ParamScopeValues.countUntil(node.get("scope"));
+    scope_ = cast(ParamScope)paramScopeValues.countUntil(node.get("scope"));
   }
 
   protected override void fixup()
@@ -450,7 +450,7 @@ enum ParamDirection
   InOut, /// Input and output direction
 }
 
-immutable dstring[] ParamDirectionValues = ["out", "inout"];
+immutable dstring[] paramDirectionValues = ["out", "inout"];
 
 /// Callback parameter closure data scope (how long it should remain frozen, so that it is not collected)
 enum ParamScope
@@ -462,7 +462,7 @@ enum ParamScope
   Forever, /// Should be allocated for the duration of the program
 }
 
-immutable dstring[] ParamScopeValues = ["call", "async", "notified", "forever"];
+immutable dstring[] paramScopeValues = ["call", "async", "notified", "forever"];
 
 enum NoClosure = -1;
 enum NoDestroy = -1;

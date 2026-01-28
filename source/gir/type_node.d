@@ -385,8 +385,8 @@ class TypeNode : Base
       else if (!elemTypes.empty && elemTypes[0].cType.empty) // Missing array element C type? Try and derive it from array C type
         deriveElemCTypeFromArrayType;
     }
-    else if (ContainerTypeValues.canFind(fullGirType) && !cast(Structure)this) // Not an array, check if it is another container type and not a structure (the type itself)
-      containerType = cast(ContainerType)ContainerTypeValues.countUntil(fullGirType);
+    else if (containerTypeValues.canFind(fullGirType) && !cast(Structure)this) // Not an array, check if it is another container type and not a structure (the type itself)
+      containerType = cast(ContainerType)containerTypeValues.countUntil(fullGirType);
 
     if (containerType != ContainerType.None)
     {
@@ -678,7 +678,7 @@ enum Ownership
   Full, /// Transfer container and values
 }
 
-immutable dstring[] OwnershipValues = ["none", "container", "full"];
+immutable dstring[] ownershipValues = ["none", "container", "full"];
 
 /// Kind of a type
 enum TypeKind
@@ -728,7 +728,7 @@ enum ContainerType
 }
 
 /// Container type string values matching ContainerType
-immutable dstring[] ContainerTypeValues =
+immutable dstring[] containerTypeValues =
   ["GLib.ByteArray", "GLib.Array", "GLib.PtrArray", "GLib.List", "GLib.SList", "GLib.HashTable"];
 
 long containerTypeElemCount(ContainerType container)
@@ -767,18 +767,18 @@ dstring containerTypeCType(ContainerType type)
 }
 
 /// Basic type names
-immutable string[] BasicTypeValues = [
+immutable string[] basicTypeValues = [
   "bool", "byte", "char", "dchar", "double", "float", "glong", "gulong", "int", "long", "ptrdiff_t", "real", "short", // glong/gulong are versioned alias types which change depending on if Windows or not
   "size_t", "ubyte", "uint", "ulong", "ushort", "void*", "void"
 ];
 
 /// Hash of basic type names to true values
-immutable bool[dstring] BasicTypeHash;
+immutable bool[dstring] basicTypeHash;
 
 shared static this()
 {
-  foreach (s; BasicTypeValues)
-    BasicTypeHash[s.to!dstring] = true;
+  foreach (s; basicTypeValues)
+    basicTypeHash[s.to!dstring] = true;
 }
 
 /**
@@ -789,7 +789,7 @@ shared static this()
  */
 bool isBasicType(dstring type)
 {
-  return BasicTypeHash.get(type.stripConstPtr, false);
+  return basicTypeHash.get(type.stripConstPtr, false);
 }
 
 /// Flags which indicate what type references are unresolved

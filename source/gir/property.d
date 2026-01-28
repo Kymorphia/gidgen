@@ -38,7 +38,7 @@ final class Property : TypeNode
 
     _name = node.get("name");
     defaultValue = node.get("default-value");
-    ownership = cast(Ownership)OwnershipValues.countUntil(node.get("ownership-transfer"));
+    ownership = cast(Ownership)ownershipValues.countUntil(node.get("transfer-ownership"));
     readable = node.get("readable", "1") == "1";
     writable = node.get("writable") == "1";
     construct = node.get("construct") == "1";
