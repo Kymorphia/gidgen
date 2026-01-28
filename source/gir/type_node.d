@@ -678,7 +678,7 @@ enum Ownership
   Full, /// Transfer container and values
 }
 
-immutable dstring[] foo OwnershipValues = ["none", "container", "full"];
+immutable dstring[] OwnershipValues = ["none", "container", "full"];
 
 /// Kind of a type
 enum TypeKind
