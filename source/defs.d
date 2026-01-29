@@ -77,8 +77,8 @@ class Defs : Base
   }
 
   /**
-   * Load a definition file. Filenames are of the form "Namespace.d" and "Namespace-Class.d",
-   * such as "GLib.d" and "GLib-Boxed.d".
+   * Load a definition file. Filenames are of the form "namespaceV.d" and "namespaceV-glass.d",
+   * such as "glib2.d" and "glib2-variant.d".
    *
    * Params:
    *   filename = The name of the definition file to load

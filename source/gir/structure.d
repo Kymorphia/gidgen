@@ -445,7 +445,7 @@ final class Structure : TypeNode
       writer ~= "{";
     }
 
-    if (moduleType != ModuleType.Struct && !(defCode.inhibitFlags & DefInhibitFlags.Init))
+    if (!(defCode.inhibitFlags & DefInhibitFlags.Init))
     {
       writeInitCode(writer, moduleType);
 
@@ -536,6 +536,9 @@ final class Structure : TypeNode
   // Write class init code
   private void writeInitCode(CodeWriter writer, ModuleType moduleType)
   {
+    if (kind == TypeKind.Struct && glibGetType.length == 0) // Struct without a glibGetType function is not a boxed type
+      return;
+
     if ((kind == TypeKind.Opaque && !pointer) || (kind == TypeKind.Reffed && !parentStruct))
       writer ~= [cTypeRemPtr ~ "* _cInstancePtr;"];
     else if (kind == TypeKind.Opaque && pointer)
@@ -583,18 +586,28 @@ final class Structure : TypeNode
       writer ~= ["", "/** */", "void* _cPtr(Flag!\"Dup\" dup = No.Dup)", "{", "if (dup)", glibRefFunc ~ "(_cInstancePtr);", "",
         "return _cInstancePtr;", "}"];
     else if (kind == TypeKind.Boxed)
-      writer ~= ["", "/** */", "void* _cPtr(Flag!\"Dup\" dup = No.Dup)", "{", "return dup ? copy_ : _cInstancePtr;", "}"];
+      writer ~= ["", "/** */", "void* _cPtr(Flag!\"Dup\" dup = No.Dup)", "{", "return dup ? boxCopy : _cInstancePtr;", "}"];
     else if (kind == TypeKind.Wrap)
       writer ~= ["", "/** */", "void* _cPtr()", "{", "return cast(void*)&_cInstance;", "}"];
 
-    if (kind.among(TypeKind.Boxed, TypeKind.Object) || (kind == TypeKind.Interface && moduleType == ModuleType.Iface))
+    if (kind.among(TypeKind.Struct, TypeKind.Boxed, TypeKind.Object)
+        || (kind == TypeKind.Interface && moduleType == ModuleType.Iface))
       writer ~= ["", "/** */", "static GType _getGType()", "{", "import gid.loader : gidSymbolNotFound;",
         "return cast(void function())" ~ glibGetType
         ~ " != &gidSymbolNotFound ? " ~ glibGetType ~ "() : cast(GType)0;", "}"]; // Return 0 if get_type() function was not resolved
 
+    auto overrideStr = (kind == TypeKind.Object || kind == TypeKind.Boxed) ? "override "d : ""d;
+
+    if (kind.among(TypeKind.Struct, TypeKind.Boxed, TypeKind.Object))
+      writer ~= ["", "/** */", overrideStr ~ "@property GType _gType()", "{", "return _getGType();", "}"];
+
     if (kind.among(TypeKind.Boxed, TypeKind.Object))
-      writer ~= ["", "/** */", "override @property GType _gType()", "{", "return _getGType();", "}", "",
-        "/** Returns `this`, for use in `with` statements. */", "override " ~ dType ~ " self()", "{", "return this;", "}"];
+      writer ~= ["", "/** Returns `this`, for use in `with` statements. */", overrideStr ~ dType ~ " self()", "{",
+        "return this;", "}"];
+
+    if (kind == TypeKind.Struct)
+      writer ~= ["", "void* boxCopy()", "{", "import gobject.c.functions : g_boxed_copy;", "return g_boxed_copy(_gType,
+        cast(void*)&this);", "}"];
   }
 
   // Write a Boxed type constructor with all fields as parameters with default values (optional)
