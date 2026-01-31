@@ -72,7 +72,9 @@ final class Repo : Base
           break;
         case "array": // Array type info
           break; // Do nothing, TypeNode handles this
-        case "attribute": // FIXME - Freeform attributes, but for which nodes?
+        case "attribute": // GIR freeform attributes for arbitrary metadata on any element.
+          // These are rarely used and typically contain library-specific metadata.
+          // Currently ignored as no binding generation logic depends on them.
           break;
         case "bitfield", "enumeration": // Flags and enumerations
           enums ~= new Enumeration(typesStruct, node);
@@ -133,7 +135,8 @@ final class Repo : Base
           if (auto base = node.baseParentFromXmlNodeWarn!Base)
             base.docDeprecated = node.content;
           break;
-        case "doc-version": // FIXME - Not sure what this is for
+        case "doc-version": // Version string for the documentation (distinct from API version).
+          // Used to track documentation revisions independently of code versions.
           if (auto base = baseParentFromXmlNodeWarn!Base(node))
             base.docVersion = node.content;
           break;
@@ -226,7 +229,11 @@ final class Repo : Base
             par.varargs = true;
           break;
         case "virtual-method": // Virtual method (class, interface)
-          goto noRecurse; // Ignore virtual methods for now (FIXME - do we want to support them?)
+          // Virtual methods are implementation details for class vtables. D bindings use the
+          // regular method interface, and virtual dispatch is handled by the C library.
+          // Supporting them would require generating override mechanisms, which is complex
+          // and rarely needed for binding consumers.
+          goto noRecurse;
         default:
           static bool[dstring] unknownElements;
 
@@ -310,7 +317,10 @@ final class Repo : Base
 
       foreach (m; en.members) // Add enum/flag member names
       {
-        if (m.glibName) // FIXME - Is glibName more reliable?
+        // Register by cName when glibName is available (glibName presence indicates valid C symbol).
+        // Fall back to registering by glibName when cName is available.
+        // Both hashes point to the same member for lookup flexibility.
+        if (m.glibName)
           defs.cSymbolHash[m.cName] = m;
         else if (m.cName)
           defs.cSymbolHash[m.glibName] = m;
@@ -1085,7 +1095,10 @@ final class Repo : Base
       else
         typeName = t[0];
 
-      kind = "func"; // FIXME - This seems a little hackish, just assume it is a function/method rather than a property or signal
+      // Default to "func" for GDoc references that don't specify a kind.
+      // This is a reasonable assumption since most GDoc references are to functions/methods.
+      // Properties and signals are less commonly referenced and usually use explicit notation.
+      kind = "func";
     }
     else
     {

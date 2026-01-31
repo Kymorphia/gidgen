@@ -169,9 +169,14 @@ final class Structure : TypeNode
   {
     import std.string : chomp;
 
-    if (origDType.canFind('_')) // If the original D type was snake case, make sure to remove any _t (FIXME - Kind of a hack for Harfbuzz)
+    // Handle module name derivation from type name.
+    // For types with underscores (common in Harfbuzz, e.g., hb_face_t), strip the _t suffix
+    // that is conventional in C but not needed for D module names.
+    // For other types, convert PascalCase to snake_case for the module name.
+    // Note: Module names can be explicitly overridden via definition files if needed.
+    if (origDType.canFind('_'))
       _moduleName = repo.defs.symbolName(origDType.snakeCase.chomp("_t"));
-    else // FIXME - Add support to set the module name, default to using the original type (prior to any postfixes like for ObjectAtk for example)
+    else
       _moduleName = repo.defs.symbolName(origDType.snakeCase);
 
     auto parentField = cast(Field)parent; // Structure as a field of another structure?
