@@ -455,7 +455,10 @@ immutable dstring[] ParamDirectionValues = ["out", "inout"];
 /// Callback parameter closure data scope (how long it should remain frozen, so that it is not collected)
 enum ParamScope
 {
-  Unset = -1, // FIXME - What should the default be?
+  /// Default when scope is not specified in GIR. Treated as Call scope for callbacks without
+  /// closure data, which means the callback is only valid during the function call.
+  /// For callbacks with closure data, Unset triggers a verification error requiring explicit scope.
+  Unset = -1,
   Call, /// For the duration of the function call
   Async, /// Until a single call to the callback function (possibly after the function returns)
   Notified, /// Until the destroy notify function is called
