@@ -291,7 +291,8 @@ class XmlPatch
     XmlNode[] nodes;
 
     // Check if a XML node matches a selector
-    bool matchSelector(XmlNode node, XmlSelector sel)
+    // isFinalSelector should be true only when matching the last selector in the path
+    bool matchSelector(XmlNode node, XmlSelector sel, bool isFinalSelector = false)
     {
       if (!sel.id.empty && node.id != sel.id) // Node ID is empty if wildcard
         return false;
@@ -307,8 +308,11 @@ class XmlPatch
           return false;
       }
 
-      // Match if selAttrSet is false, there is no selAttrId, or the attribute is set in the node
-      return !selAttrSet || selAttrId.empty || selAttrId in node.attrs;
+      // Only check selAttrId on the final selector node, not intermediate nodes
+      if (isFinalSelector)
+        return !selAttrSet || selAttrId.empty || selAttrId in node.attrs;
+      else
+        return true;
     }
 
     // Function to recurse XmlNode tree searching for matches to selector criteria
@@ -322,7 +326,8 @@ class XmlPatch
 
         foreach (child; node.children)
         {
-          if (!matchSelector(child, sel))
+          bool isFinal = (selArray.length == 1); // This is the final selector if only one remains
+          if (!matchSelector(child, sel, isFinal))
           {
             if (wildNode) // Recurse into non-matching nodes if we are within a wildcard node
               recurseTree(child, selArray, wildNode);
@@ -358,7 +363,8 @@ class XmlPatch
 
     if (!defaultRoot || selectors[0].id == tree.root.id) // No default root or selector matches root ID
     {
-      if (matchSelector(tree.root, selectors[0])) // Does root selector match?
+      bool isFinal = (selectors.length == 1); // Root is final if it's the only selector
+      if (matchSelector(tree.root, selectors[0], isFinal)) // Does root selector match?
       {
         if (selectors.length == 1)
           nodes ~= tree.root;
@@ -468,4 +474,16 @@ class XmlPatchError : Exception
   {
     super(msg);
   }
+}
+
+unittest
+{
+  auto tree = new XmlTree();
+  tree.parse("<root><child name=\"test\" old_attr=\"value\"/></root>"d);
+
+  auto patch = new XmlPatch();
+  patch.parseRenameCmd("root.child[test][old_attr]"d, "new_attr"d);
+
+  // This throws XmlPatchError: "XML patch selector 'root.child[test]' did not match"
+  patch.apply(tree, null);
 }
