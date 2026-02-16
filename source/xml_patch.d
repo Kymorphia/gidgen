@@ -335,7 +335,7 @@ class XmlPatch
             continue;
           }
 
-          if (selArray.length == 1) // Do we have a matching node?
+          if (isFinel) // Do we have a matching node?
           {
             nodes ~= child;
 
