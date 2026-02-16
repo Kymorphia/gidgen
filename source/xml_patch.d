@@ -658,7 +658,9 @@ unittest
   auto nodes = patch.select(tree, null, false);
   assert(nodes.length == 2);
 }
++/
 
+/+
 // Test wildcard in attribute value
 // TODO: Investigate wildcard matching in attributes
 unittest
