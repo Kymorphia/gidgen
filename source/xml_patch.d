@@ -536,11 +536,11 @@ unittest
 {
   auto tree = new XmlTree();
   tree.parse("<root><old/></root>"d);
-  
+
   auto patch = new XmlPatch();
   patch.parseSetCmd("root.old"d, "<new>content</new>"d);
   patch.apply(tree, null);
-  
+
   assert(tree.root.children[0].id == "new");
   assert(tree.root.children[0].content == "content");
 }
@@ -550,11 +550,11 @@ unittest
 {
   auto tree = new XmlTree();
   tree.parse("<root><node attr=\"old\"/></root>"d);
-  
+
   auto patch = new XmlPatch();
   patch.parseSetCmd("root.node[][attr]"d, "new"d);
   patch.apply(tree, null);
-  
+
   assert(tree.root.children[0]["attr"] == "new");
 }
 
@@ -563,11 +563,11 @@ unittest
 {
   auto tree = new XmlTree();
   tree.parse("<root><child1/><child2/></root>"d);
-  
+
   auto patch = new XmlPatch();
   patch.parseDeleteCmd("root.child1"d);
   patch.apply(tree, null);
-  
+
   assert(tree.root.children.length == 1);
   assert(tree.root.children[0].id == "child2");
 }
@@ -577,11 +577,11 @@ unittest
 {
   auto tree = new XmlTree();
   tree.parse("<root><node attr1=\"val1\" attr2=\"val2\"/></root>"d);
-  
+
   auto patch = new XmlPatch();
   patch.parseDeleteCmd("root.node[][attr1]"d);
   patch.apply(tree, null);
-  
+
   assert("attr1" !in tree.root.children[0].attrs);
   assert("attr2" in tree.root.children[0].attrs);
 }
@@ -591,11 +591,11 @@ unittest
 {
   auto tree = new XmlTree();
   tree.parse("<root/>"d);
-  
+
   auto patch = new XmlPatch();
   patch.parseAddCmd("root"d, "<child>content</child>"d);
   patch.apply(tree, null);
-  
+
   assert(tree.root.children.length == 1);
   assert(tree.root.children[0].id == "child");
   assert(tree.root.children[0].content == "content");
@@ -606,11 +606,11 @@ unittest
 {
   auto tree = new XmlTree();
   tree.parse("<root><old_name/></root>"d);
-  
+
   auto patch = new XmlPatch();
   patch.parseRenameCmd("root.old_name"d, "new_name"d);
   patch.apply(tree, null);
-  
+
   assert(tree.root.children[0].id == "new_name");
 }
 
@@ -619,11 +619,11 @@ unittest
 {
   auto tree = new XmlTree();
   tree.parse("<root><node old_attr=\"value\"/></root>"d);
-  
+
   auto patch = new XmlPatch();
   patch.parseRenameCmd("root.node[][old_attr]"d, "new_attr"d);
   patch.apply(tree, null);
-  
+
   assert("old_attr" !in tree.root.children[0].attrs);
   assert("new_attr" in tree.root.children[0].attrs);
   assert(tree.root.children[0]["new_attr"] == "value");
@@ -638,7 +638,7 @@ unittest
   auto patch = new XmlPatch();
   patch.parseRenameCmd("root.child[test][old_attr]"d, "new_attr"d);
   patch.apply(tree, null);
-  
+
   assert("old_attr" !in tree.root.children[0].attrs);
   assert("new_attr" in tree.root.children[0].attrs);
   assert(tree.root.children[0]["new_attr"] == "value");
@@ -651,10 +651,10 @@ unittest
 {
   auto tree = new XmlTree();
   tree.parse("<root><a><child/></a><b><child/></b></root>"d);
-  
+
   auto patch = new XmlPatch();
   patch.parseSelector("*.child"d);
-  
+
   auto nodes = patch.select(tree, null, false);
   assert(nodes.length == 2);
 }
@@ -667,10 +667,10 @@ unittest
 {
   auto tree = new XmlTree();
   tree.parse("<root><node name=\"test1\"/><node name=\"test2\"/><node name=\"other\"/></root>"d);
-  
+
   auto patch = new XmlPatch();
   patch.parseSelector("root.node[test*]"d);
-  
+
   auto nodes = patch.select(tree, null, false);
   assert(nodes.length == 2);
 }
@@ -680,18 +680,7 @@ unittest
 unittest
 {
   auto patch = new XmlPatch();
-  bool caught = false;
-  
-  try
-  {
-    patch.parseSelector("node[=value]"d);
-  }
-  catch (XmlPatchError e)
-  {
-    caught = true;
-  }
-  
-  assert(caught);
+  assertThrown!XmlPatchError(patch.parseSelector("node[=value]"d));
 }
 
 /+
@@ -701,10 +690,10 @@ unittest
 {
   auto tree = new XmlTree();
   tree.parse("<root><child/></root>"d);
-  
+
   auto patch = new XmlPatch();
   patch.parseDeleteCmd("root.nonexistent"d);
-  
+
   bool caught = false;
   try
   {
@@ -714,7 +703,7 @@ unittest
   {
     caught = true;
   }
-  
+
   assert(caught);
 }
 +/
@@ -723,35 +712,12 @@ unittest
 unittest
 {
   auto patch = new XmlPatch();
-  bool caught = false;
-  
-  try
-  {
-    patch.parseSetCmd("node"d, ""d);
-  }
-  catch (XmlPatchError e)
-  {
-    caught = true;
-  }
-  
-  assert(caught);
+  assertThrown!XmlPatchError(patch.parseSetCmd("node"d, ""d));
 }
 
 // Test error on empty XML value in add operation
 unittest
 {
   auto patch = new XmlPatch();
-  bool caught = false;
-  
-  try
-  {
-    patch.parseAddCmd("node"d, ""d);
-  }
-  catch (XmlPatchError e)
-  {
-    caught = true;
-  }
-  
-  assert(caught);
+  assertThrown!XmlPatchError(patch.parseAddCmd("node"d, ""d));
 }
-
