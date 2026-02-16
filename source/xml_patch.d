@@ -582,7 +582,7 @@ unittest
   patch.parseDeleteCmd("root.node[][attr1]"d);
   patch.apply(tree, null);
   
-  assert(!("attr1" in tree.root.children[0].attrs));
+  assert("attr1" !in tree.root.children[0].attrs);
   assert("attr2" in tree.root.children[0].attrs);
 }
 
@@ -624,7 +624,7 @@ unittest
   patch.parseRenameCmd("root.node[][old_attr]"d, "new_attr"d);
   patch.apply(tree, null);
   
-  assert(!("old_attr" in tree.root.children[0].attrs));
+  assert("old_attr" !in tree.root.children[0].attrs);
   assert("new_attr" in tree.root.children[0].attrs);
   assert(tree.root.children[0]["new_attr"] == "value");
 }
@@ -639,7 +639,7 @@ unittest
   patch.parseRenameCmd("root.child[test][old_attr]"d, "new_attr"d);
   patch.apply(tree, null);
   
-  assert(!("old_attr" in tree.root.children[0].attrs));
+  assert("old_attr" !in tree.root.children[0].attrs);
   assert("new_attr" in tree.root.children[0].attrs);
   assert(tree.root.children[0]["new_attr"] == "value");
 }
