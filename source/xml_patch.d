@@ -335,7 +335,7 @@ class XmlPatch
             continue;
           }
 
-          if (isFinel) // Do we have a matching node?
+          if (isFinal) // Do we have a matching node?
           {
             nodes ~= child;
 
