@@ -342,11 +342,11 @@ class XmlPatch
             if (dumpSelectorMatches)
               writeln("Selector '" ~ selectorString(0) ~ "' matched " ~ child.fullname);
 
-            if (!sel.isWild) // First match ends a non-wildcard search
+            if (!sel.isWild && !sel.hasWildAttrs) // First match ends a non-wildcard search
               return;
           }
 
-          if (!sel.isWild) // Not wildcard?
+          if (!sel.isWild && !sel.hasWildAttrs) // Not wildcard?
           { // Advance to next selector and descend into matching child
             selArray = selArray[1 .. $];
             node = child;
@@ -369,7 +369,7 @@ class XmlPatch
         if (selectors.length == 1)
           nodes ~= tree.root;
         else
-          recurseTree(tree.root, selectors[1 .. $]);
+          recurseTree(tree.root, selectors[1 .. $], selectors[0].isWild && selectors[0].id.empty);
       }
     }
     else
@@ -456,6 +456,15 @@ struct XmlSelector
   dstring id; /// Node id to match
   dstring[dstring] attrs; /// Attribute values to match (values can contain wildcard string characters)
   bool isWild; /// Wildcard ID
+
+  /// Returns true if any attribute value contains a wildcard character
+  bool hasWildAttrs() const
+  {
+    foreach (v; attrs.byValue)
+      if (v.canFind('*'))
+        return true;
+    return false;
+  }
 }
 
 /// XML patch operation
@@ -644,9 +653,7 @@ unittest
   assert(tree.root.children[0]["new_attr"] == "value");
 }
 
-/+
 // Test wildcard node selector
-// TODO: Investigate wildcard selector behavior
 unittest
 {
   auto tree = new XmlTree();
@@ -658,11 +665,8 @@ unittest
   auto nodes = patch.select(tree, null, false);
   assert(nodes.length == 2);
 }
-+/
 
-/+
 // Test wildcard in attribute value
-// TODO: Investigate wildcard matching in attributes
 unittest
 {
   auto tree = new XmlTree();
@@ -674,7 +678,6 @@ unittest
   auto nodes = patch.select(tree, null, false);
   assert(nodes.length == 2);
 }
-+/
 
 // Test error on invalid selector syntax
 unittest
@@ -683,9 +686,7 @@ unittest
   assertThrown!XmlPatchError(patch.parseSelector("node[=value]"d));
 }
 
-/+
 // Test error on non-matching selector
-// TODO: Investigate why this test fails - error not being thrown when selector doesn't match
 unittest
 {
   auto tree = new XmlTree();
@@ -706,7 +707,6 @@ unittest
 
   assert(caught);
 }
-+/
 
 // Test error on empty XML value in set operation
 unittest
