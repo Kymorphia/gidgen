@@ -695,17 +695,7 @@ unittest
   auto patch = new XmlPatch();
   patch.parseDeleteCmd("root.nonexistent"d);
 
-  bool caught = false;
-  try
-  {
-    patch.apply(tree, null);
-  }
-  catch (XmlPatchError e)
-  {
-    caught = true;
-  }
-
-  assert(caught);
+  assertThrown!XmlPatchError(patch.apply(tree, null));
 }
 
 // Test error on empty XML value in set operation
