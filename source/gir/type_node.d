@@ -800,3 +800,362 @@ enum UnresolvedFlags
   Implements = 1 << 2, /// Not all implementation interfaces are resolved
   Element = 1 << 3, /// A container element is unresolved
 }
+
+// Test fixture infrastructure - only compiled when running unit tests
+version (unittest)
+{
+  // Test fixture for creating TypeNode instances with proper Repo/Defs setup
+  struct TypeNodeFixture
+  {
+    Defs defs;
+    Repo repo;
+
+    // Static opCall is called when TypeNodeFixture() is used
+    static TypeNodeFixture opCall()
+    {
+      TypeNodeFixture fixture;
+      fixture.defs = new Defs();
+      fixture.repo = new Repo(fixture.defs);
+      return fixture;
+    }
+
+    // Create a TypeNode with proper parent hierarchy
+    TypeNode createNode()
+    {
+      return new TypeNode(repo);
+    }
+
+    // Create multiple TypeNode instances sharing the same Repo
+    TypeNode[] createNodes(size_t count)
+    {
+      TypeNode[] nodes;
+      foreach (_; 0 .. count)
+        nodes ~= createNode();
+      return nodes;
+    }
+  }
+}
+
+// Test typeKindIsStructured function with all structured type kinds
+unittest
+{
+  // Test structured types
+  assert(typeKindIsStructured(TypeKind.StructAlias));
+  assert(typeKindIsStructured(TypeKind.Struct));
+  assert(typeKindIsStructured(TypeKind.Pointer));
+  assert(typeKindIsStructured(TypeKind.Opaque));
+  assert(typeKindIsStructured(TypeKind.Wrap));
+  assert(typeKindIsStructured(TypeKind.Boxed));
+  assert(typeKindIsStructured(TypeKind.Reffed));
+  assert(typeKindIsStructured(TypeKind.Object));
+  assert(typeKindIsStructured(TypeKind.Interface));
+  
+  // Test non-structured types
+  assert(!typeKindIsStructured(TypeKind.Unknown));
+  assert(!typeKindIsStructured(TypeKind.Basic));
+  assert(!typeKindIsStructured(TypeKind.String));
+  assert(!typeKindIsStructured(TypeKind.BasicAlias));
+  assert(!typeKindIsStructured(TypeKind.Enum));
+  assert(!typeKindIsStructured(TypeKind.Flags));
+  assert(!typeKindIsStructured(TypeKind.Callback));
+  assert(!typeKindIsStructured(TypeKind.Container));
+  assert(!typeKindIsStructured(TypeKind.Namespace));
+}
+
+// Test containerTypeElemCount function for all container types
+unittest
+{
+  assert(containerTypeElemCount(ContainerType.None) == 0);
+  assert(containerTypeElemCount(ContainerType.HashTable) == 2);
+  assert(containerTypeElemCount(ContainerType.Array) == 1);
+  assert(containerTypeElemCount(ContainerType.ByteArray) == 1);
+  assert(containerTypeElemCount(ContainerType.ArrayG) == 1);
+  assert(containerTypeElemCount(ContainerType.PtrArray) == 1);
+  assert(containerTypeElemCount(ContainerType.List) == 1);
+  assert(containerTypeElemCount(ContainerType.SList) == 1);
+}
+
+// Test containerTypeCType function for all container types
+unittest
+{
+  assert(containerTypeCType(ContainerType.ArrayG) == "GArray");
+  assert(containerTypeCType(ContainerType.PtrArray) == "GPtrArray");
+  assert(containerTypeCType(ContainerType.List) == "GList");
+  assert(containerTypeCType(ContainerType.SList) == "GSList");
+  assert(containerTypeCType(ContainerType.HashTable) == "GHashTable");
+  assert(containerTypeCType(ContainerType.None) is null);
+  assert(containerTypeCType(ContainerType.Array) is null);
+  assert(containerTypeCType(ContainerType.ByteArray) is null);
+}
+
+// Test isBasicType function with various basic and non-basic types
+unittest
+{
+  // Test basic types
+  assert(isBasicType("int"));
+  assert(isBasicType("uint"));
+  assert(isBasicType("long"));
+  assert(isBasicType("ulong"));
+  assert(isBasicType("short"));
+  assert(isBasicType("ushort"));
+  assert(isBasicType("byte"));
+  assert(isBasicType("ubyte"));
+  assert(isBasicType("char"));
+  assert(isBasicType("double"));
+  assert(isBasicType("float"));
+  assert(isBasicType("bool"));
+  assert(isBasicType("void"));
+  assert(isBasicType("void*"));
+  assert(isBasicType("size_t"));
+  assert(isBasicType("ptrdiff_t"));
+  assert(isBasicType("dchar"));
+  assert(isBasicType("real"));
+  assert(isBasicType("glong"));
+  assert(isBasicType("gulong"));
+  
+  // Test with const prefix
+  assert(isBasicType("const(int)"));
+  assert(isBasicType("const(char)"));
+  assert(isBasicType("const(void*)"));
+  
+  // Test with pointer suffix
+  assert(isBasicType("int*"));
+  assert(isBasicType("char*"));
+  
+  // Test non-basic types
+  assert(!isBasicType("GtkWidget"));
+  assert(!isBasicType("gchar"));
+  assert(!isBasicType("MyCustomType"));
+  assert(!isBasicType("SomeStruct"));
+}
+
+// Test isBasicType with edge cases and const/pointer variations
+unittest
+{
+  // Test with various const and pointer combinations
+  assert(isBasicType("const(int*)"));
+  assert(isBasicType("const(char*)"));
+  assert(isBasicType("const(void)**"));
+  
+  // Test edge cases
+  assert(isBasicType("int"));
+  assert(!isBasicType(""));
+  assert(!isBasicType("nonexistent_type"));
+}
+
+// Test TypeNode.cTypeRemPtr method with various C type strings
+unittest
+{
+  // Create TypeNode with proper test fixture
+  auto fixture = TypeNodeFixture();
+  auto node = fixture.createNode();
+  
+  // Test: simple pointer removal
+  node.cType = "char*";
+  assert(node.cTypeRemPtr == "char");
+  
+  // Test: const pointer
+  node.cType = "const(char)*";
+  assert(node.cTypeRemPtr == "const(char)");
+  
+  // Test: GtkWidget pointer
+  node.cType = "GtkWidget*";
+  assert(node.cTypeRemPtr == "GtkWidget");
+  
+  // Test: const with parenthesis - moves * out
+  node.cType = "const(GtkWidget*)*";
+  assert(node.cTypeRemPtr == "const(GtkWidget)*");
+  
+  // Test: double pointer
+  node.cType = "char**";
+  assert(node.cTypeRemPtr == "char*");
+  
+  // Test: no pointer (returns as-is)
+  node.cType = "int";
+  assert(node.cTypeRemPtr == "int");
+  
+  // Test: triple pointer
+  node.cType = "void***";
+  assert(node.cTypeRemPtr == "void**");
+}
+
+// Test TypeNode.fullOwnerFlag method returns correct string representation
+unittest
+{
+  auto fixture = TypeNodeFixture();
+  auto node = fixture.createNode();
+  
+  // Test: Full ownership returns "Yes"
+  node.ownership = Ownership.Full;
+  assert(node.fullOwnerFlag == "Yes");
+  
+  // Test: None ownership returns "No"
+  node.ownership = Ownership.None;
+  assert(node.fullOwnerFlag == "No");
+  
+  // Test: Container ownership returns "No"
+  node.ownership = Ownership.Container;
+  assert(node.fullOwnerFlag == "No");
+  
+  // Test: Unset ownership returns "No"
+  node.ownership = Ownership.Unset;
+  assert(node.fullOwnerFlag == "No");
+}
+
+// Test TypeNode.arraySizeStr method with different array configurations
+unittest
+{
+  auto fixture = TypeNodeFixture();
+  auto node = fixture.createNode();
+  
+  // Test: non-array type returns null
+  node.containerType = ContainerType.None;
+  assert(node.arraySizeStr is null);
+  
+  // Test: array with length parameter
+  node.containerType = ContainerType.Array;
+  node.lengthParamIndex = 0;
+  node.zeroTerminated = false;
+  node.fixedSize = ArrayNotFixed;
+  assert(node.arraySizeStr == "length");
+  
+  // Test: fixed-size array
+  node.lengthParamIndex = ArrayLengthUnset;
+  node.fixedSize = 10;
+  assert(node.arraySizeStr == "fixed");
+  
+  // Test: zero-terminated array
+  node.fixedSize = ArrayNotFixed;
+  node.zeroTerminated = true;
+  assert(node.arraySizeStr == "zero");
+  
+  // Test: length + zero-terminated
+  node.lengthParamIndex = 1;
+  assert(node.arraySizeStr == "length-zero");
+  
+  // Test: fixed + zero-terminated
+  node.lengthParamIndex = ArrayLengthUnset;
+  node.fixedSize = 5;
+  assert(node.arraySizeStr == "fixed-zero");
+  
+  // Test: caller-length
+  node.fixedSize = ArrayNotFixed;
+  node.zeroTerminated = false;
+  node.lengthParamIndex = ArrayLengthCaller;
+  assert(node.arraySizeStr == "caller");
+  
+  // Test: unknown size
+  node.lengthParamIndex = ArrayLengthUnset;
+  assert(node.arraySizeStr == "unknown");
+}
+
+// Test TypeNode.typeEqual method for comparing type nodes
+unittest
+{
+  auto fixture = TypeNodeFixture();
+  auto nodes = fixture.createNodes(3);
+  auto node1 = nodes[0];
+  auto node2 = nodes[1];
+  auto node3 = nodes[2];
+  
+  // Test: both have no typeObject and same dType
+  node1._dType = "int";
+  node2._dType = "int";
+  assert(node1.typeEqual(node2));
+  
+  // Test: both have no typeObject but different dType
+  node3._dType = "char";
+  assert(!node1.typeEqual(node3));
+  
+  // Test: both have same typeObject
+  node1.typeObject = node1;
+  node2.typeObject = node1;
+  assert(node1.typeEqual(node2));
+  
+  // Test: different typeObject
+  node2.typeObject = node3;
+  assert(!node1.typeEqual(node2));
+  
+  // Test: one has typeObject, other doesn't
+  node2.typeObject = null;
+  assert(!node1.typeEqual(node2));
+  
+  // Test: both have null typeObject
+  node1.typeObject = null;
+  node2.typeObject = null;
+  node1._dType = "void*";
+  node2._dType = "void*";
+  assert(node1.typeEqual(node2));
+}
+
+// Test TypeKind enum values and their usage
+unittest
+{
+  // Verify TypeKind enum has all expected values
+  assert(TypeKind.Unknown == 0);
+  assert(TypeKind.Basic != TypeKind.Unknown);
+  assert(TypeKind.String != TypeKind.Basic);
+  
+  // Verify that among() works with TypeKind
+  with (TypeKind)
+  {
+    assert(Basic.among(Basic, String, Pointer) != 0);
+    assert(Basic.among(String, Pointer) == 0);
+    assert(Enum.among(Enum, Flags, StructAlias) != 0);
+  }
+}
+
+// Test ContainerType enum values and relationships
+unittest
+{
+  // Verify ContainerType enum ordering
+  assert(ContainerType.None == -2);
+  assert(ContainerType.Array == -1);
+  assert(ContainerType.ByteArray == 0);
+  
+  // Verify ContainerTypeValues array matches enum
+  assert(ContainerTypeValues.length == 6);
+  assert(ContainerTypeValues[0] == "GLib.ByteArray");
+  assert(ContainerTypeValues[$ - 1] == "GLib.HashTable");
+}
+
+// Test Ownership enum values and their usage
+unittest
+{
+  // Verify Ownership enum values
+  assert(Ownership.Unset == -1);
+  assert(Ownership.None == 0);
+  assert(Ownership.Container != Ownership.Full);
+  
+  // Verify OwnershipValues array
+  assert(OwnershipValues.length == 3);
+  assert(OwnershipValues[0] == "none");
+  assert(OwnershipValues[1] == "container");
+  assert(OwnershipValues[2] == "full");
+}
+
+// Test UnresolvedFlags enum bitmask operations
+unittest
+{
+  // Test that flags can be combined with bitwise OR
+  auto flags = UnresolvedFlags.Kind | UnresolvedFlags.Element;
+  assert((flags & UnresolvedFlags.Kind) != 0);
+  assert((flags & UnresolvedFlags.Element) != 0);
+  assert((flags & UnresolvedFlags.ParentStruct) == 0);
+  
+  // Test individual flags
+  assert(UnresolvedFlags.Kind == 1);
+  assert(UnresolvedFlags.ParentStruct == 2);
+  assert(UnresolvedFlags.Implements == 4);
+  assert(UnresolvedFlags.Element == 8);
+}
+
+// Test array-related constants
+unittest
+{
+  // Verify array constants
+  assert(ArrayNotFixed == 0);
+  assert(ArrayLengthReturn == -1);
+  assert(ArrayLengthUnset == -2);
+  assert(ArrayLengthCaller == -3);
+}
