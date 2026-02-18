@@ -801,6 +801,41 @@ enum UnresolvedFlags
   Element = 1 << 3, /// A container element is unresolved
 }
 
+// Test fixture infrastructure - only compiled when running unit tests
+version (unittest)
+{
+  // Test fixture for creating TypeNode instances with proper Repo/Defs setup
+  struct TypeNodeFixture
+  {
+    Defs defs;
+    Repo repo;
+
+    // Static opCall is called when TypeNodeFixture() is used
+    static TypeNodeFixture opCall()
+    {
+      TypeNodeFixture fixture;
+      fixture.defs = new Defs();
+      fixture.repo = new Repo(fixture.defs);
+      return fixture;
+    }
+
+    // Create a TypeNode with proper parent hierarchy
+    TypeNode createNode()
+    {
+      return new TypeNode(repo);
+    }
+
+    // Create multiple TypeNode instances sharing the same Repo
+    TypeNode[] createNodes(size_t count)
+    {
+      TypeNode[] nodes;
+      foreach (_; 0 .. count)
+        nodes ~= createNode();
+      return nodes;
+    }
+  }
+}
+
 // Test typeKindIsStructured function with all structured type kinds
 unittest
 {
@@ -911,8 +946,9 @@ unittest
 // Test TypeNode.cTypeRemPtr method with various C type strings
 unittest
 {
-  // Test helper: create TypeNode with minimal setup
-  auto node = new TypeNode(null);
+  // Create TypeNode with proper test fixture
+  auto fixture = TypeNodeFixture();
+  auto node = fixture.createNode();
   
   // Test: simple pointer removal
   node.cType = "char*";
@@ -946,7 +982,8 @@ unittest
 // Test TypeNode.fullOwnerFlag method returns correct string representation
 unittest
 {
-  auto node = new TypeNode(null);
+  auto fixture = TypeNodeFixture();
+  auto node = fixture.createNode();
   
   // Test: Full ownership returns "Yes"
   node.ownership = Ownership.Full;
@@ -968,7 +1005,8 @@ unittest
 // Test TypeNode.arraySizeStr method with different array configurations
 unittest
 {
-  auto node = new TypeNode(null);
+  auto fixture = TypeNodeFixture();
+  auto node = fixture.createNode();
   
   // Test: non-array type returns null
   node.containerType = ContainerType.None;
@@ -1014,9 +1052,11 @@ unittest
 // Test TypeNode.typeEqual method for comparing type nodes
 unittest
 {
-  auto node1 = new TypeNode(null);
-  auto node2 = new TypeNode(null);
-  auto node3 = new TypeNode(null);
+  auto fixture = TypeNodeFixture();
+  auto nodes = fixture.createNodes(3);
+  auto node1 = nodes[0];
+  auto node2 = nodes[1];
+  auto node3 = nodes[2];
   
   // Test: both have no typeObject and same dType
   node1._dType = "int";
