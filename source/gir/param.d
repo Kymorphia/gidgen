@@ -204,9 +204,6 @@ final class Param : TypeNode
 
     if (func.funcType == FuncType.Signal)
     {
-      if (direction != ParamDirection.In)
-        throw new Exception("Signal parameter direction '" ~ direction.to!string ~ "' not supported");
-
       with(TypeKind) if (containerType != ContainerType.None
           && elemTypes[0].kind.among(Unknown, Callback, Container, Namespace))
         throw new Exception("Signal container '" ~ containerType.to!string ~ "' parameter element kind '"

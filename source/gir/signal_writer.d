@@ -26,6 +26,7 @@ class SignalWriter
 
     preCall = new LineTracker;
     inpProcess = new LineTracker;
+    postCall = new LineTracker;
     process();
   }
 
@@ -43,9 +44,9 @@ class SignalWriter
 
     // Add instance parameter
     auto cbIndex = cast(int)callbackTypes.length - 1;
-    preCall ~= ["static if (Parameters!T.length > " ~ cbIndex.to!dstring ~ ")", // Only process parameters which are included in the callback
+    preCall ~= ["", "static if (Parameters!T.length > " ~ cbIndex.to!dstring ~ ")", // Only process parameters which are included in the callback
       "_paramTuple[" ~ cbIndex.to!dstring ~ "] = getVal!(Parameters!T[" ~ cbIndex.to!dstring
-      ~ "])(&_paramVals[0]);", ""]; // The instance type is the first value in the parameters passed to the C marshal, we make it last though
+      ~ "])(&_paramVals[0]);"]; // The instance type is the first value in the parameters passed to the C marshal, we make it last though
 
     callbackTypes ~= CallbackType(owningClass.fullDType, true); // Add the instance parameter type (last)
     callbackProto ~= (callbackProto[$ - 1] != '(' ? ", "d : "") ~ owningClass.fullDType ~ " "
@@ -76,26 +77,25 @@ class SignalWriter
 
     with (TypeKind) callbackTypes ~= CallbackType(retVal.fullDType, retVal.kind.among(Object, Interface) != 0);
     call ~= "auto _retval = ";
-    postCall ~= "setVal!(" ~ retVal.fullDType ~ ")(_returnValue, _retval);\n";
+    postCall ~= ["", "setVal!(" ~ retVal.fullDType ~ ")(_returnValue, _retval);"];
   }
 
   /// Process parameter
   private void processParam(Param param, ulong paramIndex)
-  {
-    if (param.containerType == ContainerType.Array) // Array container?
-    {
-      processArrayParam(param, paramIndex);
-      return;
+  { // Array container and not string[] (handled below)?
+    if (param.containerType == ContainerType.Array)
+    { // Arrays of strings are handled below
+      if (param.elemTypes[0].dType != "string"d)
+      {
+        processArrayParam(param, paramIndex);
+        return;
+      }
     }
-
-    if (param.containerType != ContainerType.None) // Other container type?
+    else if (param.containerType != ContainerType.None) // Other container type?
     {
       processContainerParam(param, paramIndex);
       return;
     }
-
-    assert(param.direction == ParamDirection.In, "No support for signal parameter direction '"
-      ~ param.direction.to!string ~ "'");
 
     if (param.isArrayLength) // Array length parameter?
     {
@@ -104,19 +104,37 @@ class SignalWriter
       return;
     }
 
-    with (TypeKind) assert(!param.kind.among(Callback, Unknown, Container, Namespace),
+    with (TypeKind) assert(!param.kind.among(Callback, Unknown, Namespace),
       "Unsupported signal parameter type '" ~ param.fullDType.to!string ~ "' (" ~ param.kind.to!string ~ ") for "
       ~ signal.fullDName.to!string);
 
     auto cbIndex = cast(int)callbackTypes.length - 1;
-    preCall ~= ["", "static if (Parameters!T.length > " ~ cbIndex.to!dstring ~ ")", // Only process parameters which are included in the callback
-      "_paramTuple[" ~ cbIndex.to!dstring ~ "] = getVal!(Parameters!T[" ~ cbIndex.to!dstring
-      ~ "])(&_paramVals[" ~ (paramIndex + 1).to!dstring ~ "]);", ""]; // The parameter index is +1 because the first one is the object instance
+
+    if (param.direction == ParamDirection.In)
+      preCall ~= ["", "static if (Parameters!T.length > " ~ cbIndex.to!dstring ~ ")", // Only process parameters which are included in the callback
+        "_paramTuple[" ~ cbIndex.to!dstring ~ "] = getVal!(Parameters!T[" ~ cbIndex.to!dstring
+        ~ "])(&_paramVals[" ~ (paramIndex + 1).to!dstring ~ "]);"]; // The parameter index is +1 because the first one is the object instance
+    else // Out or InOut parameter?
+    { // De-referenced value pointer (gpointer GValue)
+      auto pointerParam = "*getVal!(Parameters!T[" ~ cbIndex.to!dstring ~ "]*)(&_paramVals["
+        ~ (paramIndex + 1).to!dstring ~ "])";
+
+      // Create variable for Out or InOut direction to pass to delegate
+      preCall ~= ["", "Parameters!T[" ~ cbIndex.to!dstring ~ "] " ~ param.dName
+        ~ (param.direction == ParamDirection.InOut ? (" = " ~ pointerParam ~ ";") : ";")]; // Assign GValue to variable if InOut
+
+      preCall ~= ["", "static if (Parameters!T.length > " ~ cbIndex.to!dstring ~ ")", // Only process parameters which are included in the callback
+        "_paramTuple[" ~ cbIndex.to!dstring ~ "] = " ~ param.dName ~ ";"]; // The parameter index is +1 because the first one is the object instance
+
+      postCall ~= ["", "static if (Parameters!T.length > " ~ cbIndex.to!dstring ~ ")", pointerParam ~ " = "
+        ~ param.dName ~ ";"];
+    }
 
     with (TypeKind) callbackTypes ~= CallbackType(param.fullDType, param.kind.among(Object, Interface) != 0,
       param.direction);
 
-    callbackProto ~= (callbackProto[$ - 1] != '(' ? ", "d : "") ~ param.fullDType ~ " " ~ param.dName;
+    callbackProto ~= (callbackProto[$ - 1] != '(' ? ", "d : "") ~ param.directionStr ~ param.fullDType
+      ~ " " ~ param.dName;
   }
 
   /// Process array parameter
@@ -128,6 +146,22 @@ class SignalWriter
 
     auto elemType = param.elemTypes[0];
     auto cbIndex = cast(int)callbackTypes.length - 1;
+
+    if (elemType.dType == "char") // Handle char[] arrays specially (usually have an associated length parameter)
+    {
+      inpProcess ~= ["", "static if (Parameters!T.length > " ~ cbIndex.to!dstring ~ ")"]; // Only process parameters which are included in the callback
+
+      if (param.lengthParam) // Array has length parameter?
+        inpProcess ~= ["_paramTuple[" ~ cbIndex.to!dstring ~ "] = getStringWithLength(&_paramVals["
+          ~ (paramIndex + 1).to!dstring ~ "], " ~ param.lengthParam.dName ~");"]; // The parameter index is +1 because the first one is the object instance
+      else
+        inpProcess ~= ["_paramTuple[" ~ cbIndex.to!dstring ~ "] = getVal!(string)(&_paramVals["
+          ~ (paramIndex + 1).to!dstring ~ "]);"]; // The parameter index is +1 because the first one is the object instance
+
+      callbackTypes ~= CallbackType("string", false, param.direction);
+      callbackProto ~= (callbackProto[$ - 1] != '(' ? ", "d : "") ~ param.directionStr ~ "string " ~ param.dName;
+      return;
+    }
 
     inpProcess ~= ["", "static if (Parameters!T.length > " ~ cbIndex.to!dstring ~ ")", // Only process parameters which are included in the callback
       "{", "auto _cArray = getVal!(" ~ elemType.cTypeRemPtr ~ "**)(&_paramVals[" ~ (paramIndex + 1).to!dstring // The parameter index is +1 because the first one is the object instance
@@ -180,7 +214,8 @@ class SignalWriter
     }
 
     inpProcess ~= ["_paramTuple[" ~ paramIndex.to!dstring ~ "] = _dArray;", "}"];
-    callbackProto ~= (callbackProto[$ - 1] != '(' ? ", "d : "") ~ param.fullDType ~ " " ~ param.dName;
+    callbackProto ~= (callbackProto[$ - 1] != '(' ? ", "d : "") ~ param.directionStr ~ param.fullDType
+      ~ " " ~ param.dName;
   }
 
   // Process other container parameters (not arrays)
@@ -219,7 +254,8 @@ class SignalWriter
       ~ templateParams ~ ")(cast(" ~ param.containerType.containerTypeCType ~ "*)getVal!(void*)(&_paramVals["
       ~ (paramIndex + 1).to!dstring ~ "]));\n"; // The parameter index is +1 because the first one is the object instance
 
-    callbackProto ~= (callbackProto[$ - 1] != '(' ? ", "d : "") ~ param.fullDType ~ " " ~ param.dName;
+    callbackProto ~= (callbackProto[$ - 1] != '(' ? ", "d : "") ~ param.directionStr ~ param.fullDType
+      ~ " " ~ param.dName;
   }
 
   /**
@@ -254,7 +290,7 @@ class SignalWriter
       ~ " const(GValue)* _paramVals, void* _invocHint, void* _marshalData)", "{",
       "assert(_nParams == " ~ (signal.params.length + 1).to!dstring ~ ", \"Unexpected number of signal parameters\");", // assert C marshal receives expected number of parameters
       "auto _dClosure = cast(DGClosure!T*)_closure;",
-      "Tuple!(Parameters!T) _paramTuple;", ""]; // Create D type parameter tuple
+      "Tuple!(Parameters!T) _paramTuple;"]; // Create D type parameter tuple
 
     if (preCall.length > 0)
       writer ~= preCall;
@@ -262,7 +298,7 @@ class SignalWriter
     if (inpProcess.length > 0)
       writer ~= inpProcess;
 
-    writer ~= call;
+    writer ~= ["", call];
 
     if (postCall.length > 0)
       writer ~= postCall;
@@ -329,5 +365,5 @@ class SignalWriter
   dstring call; /// The D delegate call
   LineTracker preCall; /// Pre-call code for call return variable, call output parameter variables, and input variable processing
   LineTracker inpProcess; /// Input processing (after preCall variable assignments and before the delegate call)
-  dstring postCall; /// Post-call code for return value processing, output parameter processing, and input variable cleanup
+  LineTracker postCall; /// Post-call code for return value processing, output parameter processing, and input variable cleanup
 }
