@@ -6,8 +6,7 @@
   "license": "MIT",
   "targetType": "executable",
   "targetName": "gidgen-test-gen",
-  "sourceFiles": ["app.d"],
-  "sourcePaths": ["../../source"],
+  "sourcePaths": [".", "../../source"],
   "excludedSourceFiles": ["../../source/gidgen.d"],
   "dependencies": {
     "dxml": "~>0.4.5"

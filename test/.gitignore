@@ -1,7 +1,7 @@
 /dub.json
 gir/GidgenTest-1.0.gir
 gidgen-test/dub.selections.json
-gidgen-test/gidgen-test
+gidgen-test/gidgen-test-test-application
 gidgen-test/gidgen-test.c
 gidgen-test/gidgen-test.d
 gidgen-test/libgidgen-test.so.0

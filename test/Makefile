@@ -1,8 +1,6 @@
-.PHONY: gidgen-test
-gidgen-test: gidgen-test/gidgen-test
-
-gidgen-test/gidgen-test: gidgen-test/libgidgen-test.so.0 gidgen-test/gidgen-test.d packages/README.md
-	cd gidgen-test && dub build --compiler=ldc2 --debug debug --build=unittest
+.PHONY: run-test
+run-test: gidgen-test/gidgen-test.d gidgen-test/libgidgen-test.so.0 packages/README.md
+	cd gidgen-test && LD_LIBRARY_PATH="$$(pwd)" dub test -- -t 1
 
 TEST_CFLAGS = $(shell pkg-config --cflags glib-2.0)
 TEST_LDFLAGS = $(shell pkg-config --libs glib-2.0)
@@ -19,8 +17,8 @@ generate-test-files: gidgen-test-gen/gidgen-test-gen
 packages/README.md: gir/GidgenTest-1.0.gir
 	dub --root .. run gidgen -- --defs defs --gir-path gir --pkg-path . --subpkg-path packages --log-level=error
 
-gidgen-test-gen/gidgen-test-gen: gidgen-test-gen/app.d
-	cd gidgen-test-gen && dub build --compiler=ldc2 --debug debug
+gidgen-test-gen/gidgen-test-gen: gidgen-test-gen/*.d
+	cd gidgen-test-gen && dub build --debug debug
 
 .PHONY: clean
 clean:

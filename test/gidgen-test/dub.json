@@ -9,6 +9,7 @@
   "sourceFiles": ["gidgen-test.d"],
   "dependencies": {
     "gidg:gidgentest1": { "path": ".."},
-    "gidg:glib2": { "path": ".."}
+    "gidg:glib2": { "path": ".."},
+		"silly": "~>1.1.1"
   }
 }
