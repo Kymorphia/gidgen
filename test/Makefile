@@ -1,6 +1,6 @@
 .PHONY: run-test
 run-test: gidgen-test/gidgen-test.d gidgen-test/libgidgen-test.so.0 packages/README.md
-	cd gidgen-test && LD_LIBRARY_PATH="$$(pwd)" dub test -- -t 1
+	cd gidgen-test && LD_LIBRARY_PATH="$$(pwd)" dub test
 
 TEST_CFLAGS = $(shell pkg-config --cflags glib-2.0)
 TEST_LDFLAGS = $(shell pkg-config --libs glib-2.0)
