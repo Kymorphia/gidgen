@@ -831,7 +831,7 @@ final class Structure : TypeNode
 
     foreach (p; properties)
     {
-      if (p.active != Active.Enabled || p.constructOnly)
+      if (p.active != Active.Enabled)
         continue;
 
       if (p.readable)
@@ -868,7 +868,7 @@ final class Structure : TypeNode
           lines[$ - 1] ~= ";";
       }
 
-      if (!p.writable)
+      if (!p.writable || p.constructOnly)
         continue;
 
       bool outOverrideMethod;
