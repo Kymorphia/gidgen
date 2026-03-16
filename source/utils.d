@@ -28,10 +28,17 @@ class GidLogger : Logger
   }
 }
 
+/**
+ * Emit a debugger breakpoint signal.
+ * On POSIX systems, raises SIGTRAP. On Windows, calls DebugBreak.
+ * Useful for debugging binding generation when used with code traps.
+ */
 void breakpoint()
 {
-  version (Windows) // FIXME
+  version (Windows)
   {
+    import core.sys.windows.winbase : DebugBreak;
+    DebugBreak();
   }
   else
   {

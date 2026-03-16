@@ -289,7 +289,9 @@ class DelegWriter
           postCall ~= "*" ~ param.dName ~ " = _" ~ param.dName ~ ".toCString(" ~ param.fullOwnerFlag ~ ".Alloc);";
         }
         else // InOut
-          assert(0, "InOut string arguments not supported"); // FIXME - Does this even exist?
+          // InOut string parameters are rejected by Param.verify() so this should never be reached.
+          // GIR does not define InOut semantics for string ownership transfer.
+          assert(0, "InOut string arguments not supported");
         break;
       case StructAlias, Struct:
         addCallParam("*cast(" ~ param.fullDType ~ "*)" ~ param.dName);
@@ -308,13 +310,16 @@ class DelegWriter
               ~ param.fullOwnerFlag ~ ".Take) : null");
         }
         else if (param.direction == ParamDirection.Out)
-        { // FIXME - Not sure if this will work for all cases, also could optimize by allowing C structure to be directly used in D object
+        { // Creates a temporary D wrapper around the C pointer. For optimization, consider allowing
+          // direct use of C structure in D object when the lifetime is guaranteed.
           preCall ~= "auto _" ~ param.dName ~ " = new " ~ param.fullDType ~ "(" ~ param.dName ~ ", No.Take);";
           addCallParam("_" ~ param.dName);
           postCall ~= "*" ~ param.dName ~ " = *cast(" ~ param.cType ~ ")_" ~ param.dName ~ "._cPtr;";
         }
         else // InOut
-          assert(0, "InOut arguments of type '" ~ param.kind.to!string ~ "' not supported"); // FIXME - Does this even exist?
+          // InOut parameters for structured types (Opaque, Wrap, Boxed, Reffed, Object, Interface)
+          // are uncommon in GIR. If encountered, they would require bidirectional ownership handling.
+          assert(0, "InOut arguments of type '" ~ param.kind.to!string ~ "' not supported");
         break;
       case Callback, Unknown, Container, Namespace:
         assert(0, "Unsupported parameter type '" ~ param.fullDType.to!string ~ "' (" ~ param.kind.to!string ~ ") for "

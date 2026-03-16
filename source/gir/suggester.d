@@ -90,12 +90,23 @@ class Suggester
     }
 
     // Basic parameters direction=out
-  /* FIXME - Too many false positives
-    with (TypeKind) if (param.containerType == ContainerType.None
-        && param.kind.among(Basic, BasicAlias, Enum, Flags) && param.direction == ParamDirection.In
-        && param.cType.countStars > 0 && param.cType != "void*" && param.cType != "const(void)*")
-      addSug(param.repo, "basic-direction-out", "//!set " ~ param.xmlSelector.to!string ~ "[direction] out");
-  */
+    //
+    // DISABLED: This heuristic has too many false positives. The assumption that a pointer
+    // to a basic type (e.g., int*, uint*) with direction=in should be direction=out is often
+    // incorrect. Many C APIs legitimately pass pointers to basic types as input parameters
+    // (e.g., for efficiency or to pass optional values). Without more context from the GIR
+    // metadata or documentation, we cannot reliably distinguish between:
+    //   - True output parameters (caller allocates, callee fills)
+    //   - Input pointers to values (caller provides data)
+    //   - Arrays without proper array annotation
+    //
+    // To enable this suggestion for specific cases, users should manually add the appropriate
+    // //!set directives in their definition files.
+    //
+    // with (TypeKind) if (param.containerType == ContainerType.None
+    //     && param.kind.among(Basic, BasicAlias, Enum, Flags) && param.direction == ParamDirection.In
+    //     && param.cType.countStars > 0 && param.cType != "void*" && param.cType != "const(void)*")
+    //   addSug(param.repo, "basic-direction-out", "//!set " ~ param.xmlSelector.to!string ~ "[direction] out");
 
     // Caller allocated output array
     with (TypeKind) if (param.containerType == ContainerType.Array && param.direction == ParamDirection.Out

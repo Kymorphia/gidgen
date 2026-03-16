@@ -438,7 +438,9 @@ class FuncWriter
           postCall ~= param.dName ~ " = _" ~ param.dName ~ ".fromCString(" ~ param.fullOwnerFlag ~ ".Free);";
         }
         else // InOut
-          assert(0, "InOut string arguments not supported"); // FIXME - Does this even exist?
+          // InOut string parameters are rejected by Param.verify() so this should never be reached.
+          // GIR does not define InOut semantics for string ownership transfer.
+          assert(0, "InOut string arguments not supported");
 
         break;
       case StructAlias:
@@ -519,7 +521,10 @@ class FuncWriter
             ~ param.fullDName.to!string);
     }
 
-    if (param.isOptional) // If parameter is optional, set default value to null (FIXME - Can there be other non-pointer optional types?)
+    // Optional parameters get a default value of null. This works because Param.verify() ensures
+    // that optional parameters are only allowed for pointer/reference types (String, Callback,
+    // Container, Pointer, Opaque, Wrap, Boxed, Reffed, Object, Interface, or void*).
+    if (param.isOptional)
       decl ~= " = null";
   }
 
@@ -535,8 +540,11 @@ class FuncWriter
 
     addCallParam("_" ~ param.dName);
 
+    // Input array parameters with ownership transfer (Full/Container) would require copying the
+    // array data to GLib-allocated memory. This is not yet implemented - such parameters should
+    // be handled via definition file patches if encountered.
     assert(param.ownership == Ownership.None, "Function array parameter " ~ param.fullDName.to!string
-        ~ " ownership not supported"); // FIXME - Support for ownership Full/Container
+        ~ " ownership not supported");
 
     if (param.fixedSize != ArrayNotFixed) // Add an array size assertion if fixed size does not match
       preCall ~= "assert(!" ~ param.dName ~ " || " ~ param.dName ~ ".length == "
