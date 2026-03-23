@@ -342,6 +342,10 @@ final class Repo : Base
     foreach (modName, defCode; modDefCode) // Loop on structure definitions and assign to structs
     {
       auto className = !defCode.className.empty ? defCode.className : modName;
+
+      if (className.endsWith("GidBuilder") && className != "GidBuilder") // Builder classes are handled in Structure generation code
+        continue;
+
       auto st = cast(Structure)typeObjectHash.get(className, null);
 
       if (!st) // Create new class structures if non-existant, fixup base type, and hash

@@ -412,6 +412,9 @@ final class Structure : TypeNode
       importManager.add("glib.error");
     }
 
+    if (kind == TypeKind.Interface || kind == TypeKind.Object)
+      importManager.add("gobject.gid_builder");
+
     if (!(defCode.inhibitFlags & DefInhibitFlags.Imports) && kind == TypeKind.Interface)
       writer ~= "public import " ~ fullModuleName ~ "_iface_proxy;";
 
@@ -504,6 +507,9 @@ final class Structure : TypeNode
     }
 
     writer ~= "}";
+
+    if (kind == TypeKind.Interface || kind == TypeKind.Object)
+      writeBuilder(writer, moduleType);
 
     if (!isIfaceTemplate && !(defCode.inhibitFlags & DefInhibitFlags.Funcs))
     {
@@ -608,6 +614,10 @@ final class Structure : TypeNode
     if (kind == TypeKind.Struct)
       writer ~= ["", "void* boxCopy()", "{", "import gobject.c.functions : g_boxed_copy;", "return g_boxed_copy(_gType,
         cast(void*)&this);", "}"];
+
+    if (kind == TypeKind.Object)
+      writer ~= ["", "/**", "Get builder for [" ~ fullDType ~ "]", "Returns: New builder object", "*/",
+        "static " ~ dType ~ "GidBuilder builder()", "{", "return new " ~ dType ~ "GidBuilder;", "}"];
   }
 
   // Write a Boxed type constructor with all fields as parameters with default values (optional)
@@ -686,7 +696,7 @@ final class Structure : TypeNode
           "alias " ~ f.name.camelCase(true) ~ "FuncType = extern(C) "
           ~ f.callback.getCPrototype ~ ";"]; // Add a type alias, since extern(C) can't be used directly in arg definition
 
-      lines ~= genPropDocs(f, Yes.Getter);
+      lines ~= genPropDocs(f, PropMethodType.Getter);
 
       if (f.kind != TypeKind.Callback)
         lines ~= ["@property " ~ f.fullDType ~ " " ~ f.dName ~ "()", "{"];
@@ -739,7 +749,7 @@ final class Structure : TypeNode
       if (!f.writable)
         continue;
 
-      lines ~= genPropDocs(f, No.Getter);
+      lines ~= genPropDocs(f, PropMethodType.Setter);
 
       if (f.kind != TypeKind.Callback) // Callback setter declaration is specially handled below
         lines ~= ["@property void " ~ f.dName ~ "(" ~ f.fullDType ~ " propval)", "{"];
@@ -779,11 +789,19 @@ final class Structure : TypeNode
     return lines;
   }
 
+  /// Property type used with genPropDocs
+  enum PropMethodType
+  {
+    Getter, /// A getter property
+    Setter, /// A setter property
+    Builder, /// A builder construction property
+  }
+
   /**
    * Generate adrdox documentation for a field or property getter/setter
    * Returns: Lines of generated documentation
    */
-  private dstring[] genPropDocs(TypeNode node, Flag!"Getter" getter)
+  private dstring[] genPropDocs(TypeNode node, PropMethodType methodType)
   {
     if (node.docContent.length == 0)
       return ["", "/** */"]; // Add blank docs if none, so that it is still included in generated DDocs
@@ -803,12 +821,17 @@ final class Structure : TypeNode
       name = prop.dName;
     }
 
-    if (getter)
+    if (methodType == PropMethodType.Getter)
       lines ~= ["/**"d, "    Get `"d ~ name ~ "` " ~ type ~ "."]
         ~ ("    Returns: "d ~ repo.gdocToDDoc(node.docContent, "      ").stripLeft).splitLines;
     else
+    {
       lines ~= ["/**"d, "    Set `"d ~ name ~ "` " ~ type ~ ".", "    Params:"]
       ~ ("      propval = "d ~ repo.gdocToDDoc(node.docContent, "        ").stripLeft).splitLines;
+
+      if (methodType == PropMethodType.Builder)
+        lines ~= "    Returns: Builder instance for fluent chaining";
+    }
 
     if (!node.docVersion.empty || !node.docDeprecated.empty)
     {
@@ -843,7 +866,7 @@ final class Structure : TypeNode
             if (!outOverrideMethod)
               lines ~= ["", "alias "d ~ p.dName ~ " = " ~ conflictClass.fullDType ~ "." ~ p.dName ~ ";"]; // Add an alias for conflicting methods which don't conform
 
-        lines ~= genPropDocs(p, Yes.Getter);
+        lines ~= genPropDocs(p, PropMethodType.Getter);
         lines ~= (outOverrideMethod ? "override "d : ""d) ~ "@property " ~ p.fullDType ~ " " ~ p.dName ~ "()";
 
         if (moduleType != ModuleType.Iface)
@@ -878,7 +901,7 @@ final class Structure : TypeNode
           if (!outOverrideMethod)
             lines ~= ["", "alias "d ~ p.dName ~ " = " ~ conflictClass.fullDType ~ "." ~ p.dName ~ ";"]; // Add an alias for conflicting methods which don't conform
 
-      lines ~= genPropDocs(p, No.Getter);
+      lines ~= genPropDocs(p, PropMethodType.Setter);
       lines ~= (outOverrideMethod ? "override "d : ""d) ~ "@property void " ~ p.dName ~ "(" ~ p.fullDType ~ " propval)";
 
       if (moduleType != ModuleType.Iface)
@@ -896,14 +919,83 @@ final class Structure : TypeNode
         if (!setter)
           addImport("gobject.object");
 
-        lines ~= ["{", setter ? ("return " ~ setter.dName ~ "(propval);") : ("gobject.object.ObjectWrap.setProperty!("
-          ~ p.fullDType ~ ")(\"" ~ p.name ~ "\", propval);"), "}"];  // Use getProperty if no setter method
+        lines ~= ["{", setter ? (setter.dName ~ "(propval);") : ("gobject.object.ObjectWrap.setProperty!("
+          ~ p.fullDType ~ ")(\"" ~ p.name ~ "\", propval);"), "}"];  // Use setProperty if no setter method
       }
       else
         lines[$ - 1] ~= ";";
     }
 
     return lines;
+  }
+
+  /**
+   * Write a fluent builder sub class.
+   * Params:
+   *   writer = The code writer
+   */
+  void writeBuilder(CodeWriter writer, ModuleType moduleType)
+  {
+    Structure[] objIfaces;
+
+    if (kind == TypeKind.Interface)
+      writer ~= ["", moduleType == ModuleType.IfaceTemplate ? ("template " ~ dType ~ "GidBuilderT()")
+        : ("interface " ~ dType ~ "GidBuilderImpl(T)"), "{"];
+    else
+    {
+      objIfaces = implementStructs.filter!(x => !getIfaceAncestor(x)).array;
+      auto parentAndIfaces = ([parentStruct ? (parentStruct.fullDType ~ "GidBuilderImpl!T")
+        : "gobject.gid_builder.GidBuilder!T"] ~ objIfaces.map!(x => x.fullDType ~ "GidBuilderImpl!T").array).join(", ");
+
+      writer ~= ["", "class " ~ dType ~ "GidBuilderImpl(T) : " ~ parentAndIfaces, "{"];
+
+      if (implementStructs.length > 0)
+        writer ~= [""d] ~ objIfaces.map!(x => "mixin " ~ x.dType ~ "GidBuilderT!();").array;
+
+      // Is there def file code to insert into this Builder (keyed by module name)?
+      if (auto defCode = repo.modDefCode.get(_moduleName ~ "_gid_builder", null))
+        if (defCode.inClass.length > 0)
+          writer ~= defCode.inClass;
+    }
+
+    foreach (p; properties.filter!(p => p.active == Active.Enabled && p.writable)) // Loop over writable properties (also construct-only)
+    {
+      writer ~= genPropDocs(p, PropMethodType.Builder);
+      writer ~= (builderPropOverride(p) ? "override "d : "") ~ "T " ~ p.dName ~ "("
+        ~ p.fullDType ~ " propval)" ~ (moduleType == ModuleType.Iface ? ";"d : ""d);
+
+      if (moduleType != ModuleType.Iface)
+        writer ~= ["{", "return setProperty(\"" ~ p.name ~ "\", propval);", "}"];
+    }
+
+    writer ~= "}";
+
+    if (moduleType == ModuleType.Normal)
+    {
+      auto takeStr = ctorFunc ? ctorFunc.returnVal.fullOwnerFlag : "No";
+
+      writer ~= ["", "/// Fluent builder for [" ~ fullDType ~ "]", "final class " ~ dType ~ "GidBuilder : "
+        ~ dType ~ "GidBuilderImpl!" ~ dType ~ "GidBuilder", "{", dType ~ " build()", "{", "return new "
+        ~ dType ~ "(cast(void*)createGObject(" ~ dType ~ "._getGType), " ~ takeStr ~ ".Take);", "}", "}"];
+    }
+  }
+
+  // Check if a builder property should be overridden (duplicate write property in a parent class)
+  private bool builderPropOverride(Property prop)
+  {
+    for (auto klass = parentStruct; klass; klass = klass.parentStruct)
+    {
+      foreach (p; klass.properties.filter!(p => p.active == Active.Enabled && p.writable))
+        if (p.dName == prop.dName)
+          return true;
+
+      foreach (iface; klass.implementStructs)
+        foreach (ip; iface.properties.filter!(p => p.active == Active.Enabled && p.writable))
+          if (ip.dName == prop.dName)
+            return true;
+    }
+
+    return false;
   }
 
   /**

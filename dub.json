@@ -1,7 +1,7 @@
 {
   "name": "gidgen",
   "description": "GObject introspection D binding generator",
-  "copyright": "Copyright © 2024-2025, Kymorphia, PBC",
+  "copyright": "Copyright © 2024-2026, Kymorphia, PBC",
   "authors": ["Element Green <element@kymorphia.com>"],
   "license": "MIT",
   "targetType": "executable",
