@@ -267,7 +267,7 @@ class SignalWriter
   void write(CodeWriter writer, ModuleType moduleType = ModuleType.Normal)
   {
     writer ~= genDocs;
-    writer ~= "ulong connect" ~ signal.titleName ~ "(T)(" ~ (signal.detailed ? "string detail = null, "d : "")
+    writer ~= "gulong connect" ~ signal.titleName ~ "(T)(" ~ (signal.detailed ? "string detail = null, "d : "")
       ~ "T callback, Flag!\"After\" after = No.After)" ~ (moduleType == ModuleType.Iface ? ";"d : "");
 
     if (moduleType == ModuleType.Iface)
