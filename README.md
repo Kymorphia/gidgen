@@ -17,6 +17,7 @@ The remainder of this document describes how to use **gidgen** for creating and 
 Some of the features of **gidgen** include:
 
 * The goal is to automatically generate quality bindings based on GIR API definitions, with minimal custom code.
+* Cross platform support (Linux, MacOS, and Windows)
 * Types:
   * Handles C callbacks with data "closures" using delegates and intelligent delegate lifecycle management.
   * Supports optional function/method parameters
@@ -32,6 +33,7 @@ Some of the features of **gidgen** include:
   * Throws D exceptions for GErrors.
   * Native C library functions can be called directly if desired and are loaded dynamically at runtime.
 * GObject:
+  * Fluent object builder with construct-only properties support: `auto box = Box.builder.orientation(Orientation.Vertical).spacing(4).margin(10).cssName("container").build;`.
   * Wrapping of C GObject and Interface instances.
   * Uses interface proxy objects for interfaces when the GObject type is unknown to D.
   * GObject properties are provided as getter/setter D `@property` methods.
