@@ -616,7 +616,7 @@ final class Structure : TypeNode
         cast(void*)&this);", "}"];
 
     if (kind == TypeKind.Object)
-      writer ~= ["", "/**", "Get builder for [" ~ fullDType ~ "]", "Returns: New builder object", "*/",
+      writer ~= ["", "/**", "    Get builder for [" ~ fullDType ~ "]", "    Returns: New builder object", "*/",
         "static " ~ dType ~ "GidBuilder builder()", "{", "return new " ~ dType ~ "GidBuilder;", "}"];
   }
 
@@ -938,8 +938,10 @@ final class Structure : TypeNode
   {
     Structure[] objIfaces;
 
+    writer ~= ["", "/// Fluent builder implementation template for [" ~ fullDType ~ "]"];
+
     if (kind == TypeKind.Interface)
-      writer ~= ["", moduleType == ModuleType.IfaceTemplate ? ("template " ~ dType ~ "GidBuilderT()")
+      writer ~= [moduleType == ModuleType.IfaceTemplate ? ("template " ~ dType ~ "GidBuilderT()")
         : ("interface " ~ dType ~ "GidBuilderImpl(T)"), "{"];
     else
     {
@@ -947,7 +949,7 @@ final class Structure : TypeNode
       auto parentAndIfaces = ([parentStruct ? (parentStruct.fullDType ~ "GidBuilderImpl!T")
         : "gobject.gid_builder.GidBuilder!T"] ~ objIfaces.map!(x => x.fullDType ~ "GidBuilderImpl!T").array).join(", ");
 
-      writer ~= ["", "class " ~ dType ~ "GidBuilderImpl(T) : " ~ parentAndIfaces, "{"];
+      writer ~= ["class " ~ dType ~ "GidBuilderImpl(T) : " ~ parentAndIfaces, "{"];
 
       if (implementStructs.length > 0)
         writer ~= [""d] ~ objIfaces.map!(x => "mixin " ~ x.dType ~ "GidBuilderT!();").array;
@@ -975,7 +977,8 @@ final class Structure : TypeNode
       auto takeStr = ctorFunc ? ctorFunc.returnVal.fullOwnerFlag : "No";
 
       writer ~= ["", "/// Fluent builder for [" ~ fullDType ~ "]", "final class " ~ dType ~ "GidBuilder : "
-        ~ dType ~ "GidBuilderImpl!" ~ dType ~ "GidBuilder", "{", dType ~ " build()", "{", "return new "
+        ~ dType ~ "GidBuilderImpl!" ~ dType ~ "GidBuilder", "{", "/**", "    Create object from builder.",
+        "    Returns: New object", "*/", dType ~ " build()", "{", "return new "
         ~ dType ~ "(cast(void*)createGObject(" ~ dType ~ "._getGType), " ~ takeStr ~ ".Take);", "}", "}"];
     }
   }
