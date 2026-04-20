@@ -392,8 +392,11 @@ final class Func : TypeNode
             infoWithLoc(__FILE__, __LINE__, pa.xmlLocation, "Optional not supported for parameter '"
               ~ pa.fullDName.to!string ~ "' with output direction");
           }
+          // Note: void* is currently classified as Basic kind due to how GIR represents it.
+          // Ideally it should be Pointer kind, but changing this requires broader refactoring.
+          // For now, we explicitly check for void* as a special case for optional parameters.
           else with (TypeKind) if (!pa.kind.among(String, Callback, Container, Pointer, Opaque, Wrap, Boxed, Reffed,
-            Object, Interface) && !(pa.kind == Basic && pa.dType.among("void*"d, "const(void)*"d))) // FIXME - void* shouldn't be a Basic kind
+            Object, Interface) && !(pa.kind == Basic && pa.dType.among("void*"d, "const(void)*"d)))
           {
             optionalNotOk = true;
             infoWithLoc(__FILE__, __LINE__, pa.xmlLocation, "Optional not supported for parameter '"
@@ -598,10 +601,16 @@ final class Func : TypeNode
 
   bool introspectable = true; /// Introspectable?
   bool throws; /// Throws exception?
-  bool action; /// Signal action (FIXME)
+  /// Signal action flag. When true, the signal can be triggered via g_signal_emit() and
+  /// represents a user-activatable action (e.g., button clicks, menu selections).
+  bool action;
   bool detailed; /// Signal detailed (indicates the signal accepts a detail string)
-  bool noHooks; /// Signal no hooks (FIXME)
-  bool noRecurse; /// Signal no recurse (FIXME)
+  /// Signal no-hooks flag. When true, emission hooks cannot be installed for this signal.
+  /// Emission hooks allow monitoring all emissions of a signal.
+  bool noHooks;
+  /// Signal no-recurse flag. When true, prevents recursive signal emission.
+  /// If the signal is emitted while already being processed, the new emission is queued.
+  bool noRecurse;
 
   bool deprecated_; /// Deprecated
   dstring deprecatedVersion; /// Deprecated version
