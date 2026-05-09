@@ -32,9 +32,14 @@ final class ReturnValue : TypeNode
     super.resolve;
 
     // Return pointers to basic types which aren't arrays should be treated as pointers
+    // Return value pointers to basic types need special handling. When a function returns
+    // a pointer to a basic type (e.g., int*, guint*), it's typically returning a reference
+    // to data, not a single value. We reclassify these as Pointer kind to generate correct
+    // D bindings. A more generic solution would be to handle this at the TypeNode level,
+    // but that requires broader refactoring of the type resolution system.
     with(TypeKind) if (containerType == ContainerType.None && cType.countStars > 0
       && kind.among(Basic, BasicAlias, Enum, Flags))
-    { // FIXME - There is a more generic way to turn a basic type pointer to a Pointer kind
+    {
       info("Changing " ~ fullDName.to!string ~ " with C type " ~ cType.to!string ~ " from " ~ kind.to!string ~ " to pointer");
       kind = TypeKind.Pointer;
 
