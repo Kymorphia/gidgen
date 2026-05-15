@@ -321,7 +321,7 @@ class SignalWriter
 
     docs ~= "      callback = signal callback delegate or function to connect";
 
-    docs ~= ["", "        $(D " ~ callbackProto ~ ")"];
+    docs ~= ["", "        `" ~ callbackProto ~ "`"];
 
     docs ~= signal.params.filter!(pa => pa.isDParam).map!(pa => [""d] ~ ("        `" ~ pa.dName ~ "` "
       ~ signal.gdocToDDocFunc(pa.docContent, "          ").stripLeft ~ " (optional)").splitLines).join.array;

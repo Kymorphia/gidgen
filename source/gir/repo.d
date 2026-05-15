@@ -1206,7 +1206,6 @@ final class Repo : Base
     }
 
     s = replaceAll!codeBlockReplace(s, oldCodeBlockRe); // replace old code blocks with triple backticks
-    s = s.markdownListToDDoc; // Replace markdown lists with adrdox lists
 
     auto lines = s.split("\n");
     bool inCodeBlock;
