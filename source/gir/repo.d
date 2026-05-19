@@ -1078,8 +1078,8 @@ final class Repo : Base
    */
   TypeNode findTypeObjectByGDocRef(dstring refStr)
   {
-    auto refRe = ctRegex!(`^(?P<kind>[a-z]+)@(?P<Namespace>[A-Za-z]+)\.(?P<TypeName>[A-Za-z0-9_]+)`d
-      ~ `(?:\.|::|:)?(?P<SubTypeName>[A-Za-z0-9_]*)`d);
+    auto refRe = ctRegex!(`^(?P<kind>[a-z]+)@((?P<Namespace>[A-Za-z]+)\.)?(?P<TypeName>[A-Za-z0-9_]+)`d
+      ~ `(?:\.|::|:)?(?P<SubTypeName>[A-Za-z0-9_-]*)`d);
     auto c = refStr.matchFirst(refRe);
 
     dstring kind, nameSpace, typeName, subTypeName;
@@ -1141,7 +1141,8 @@ final class Repo : Base
           return st.properties.find!(x => x.name == subTypeName).frontIfNotEmpty(cast(Property)null);
         case "signal":
           return st.signals.find!(x => x.name == subTypeName).frontIfNotEmpty(cast(Func)null);
-        default: // Includes "vfunc"
+        case "alias","callback","class","enum","flags","id","iface","struct","vfunc": // Many of these get handled above, just listing for completeness
+        default:
           return null;
       }
     }

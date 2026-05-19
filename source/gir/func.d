@@ -158,8 +158,8 @@ final class Func : TypeNode
 
   /**
   * Format a GTK doc string to be a DDoc string.
-  * Newlines are formatted with a prefix to match the indendation for the comment block.
-  * Parameter references are convered to D names and set to bold.
+  * Newlines are formatted with a prefix to match the indentation for the comment block.
+  * Parameter references are converted to D names and set to bold.
   * Function references func() are changed to the D function/method name and set to bold.
   *
   * Params:
@@ -182,7 +182,7 @@ final class Func : TypeNode
       return m[1];
     }
 
-    return gdoc.replaceAll!(paramReplaceFunc)(paramRe); // Replace @cName with dName for parameters
+    return gdoc.replaceAll!(paramReplaceFunc)(paramRe); // Replace @cName with `dName` for parameters
   }
 
   protected override void fixup()
