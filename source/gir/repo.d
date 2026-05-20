@@ -1206,6 +1206,19 @@ final class Repo : Base
         return "`" ~ m[1] ~ "`";
     }
 
+    dstring constReplaceNotInBackticks(dstring line) // Replace %CONST symbols except within backticks
+    {
+      if (!line.canFind('`'))
+        return replaceAll!constReplace(line, constRe);
+
+      auto parts = line.split('`'); // Even parts are normal text, odd is in backticks
+
+      for (size_t i = 0; i < parts.length; i += 2)
+        parts[i] = replaceAll!constReplace(parts[i], constRe);
+
+      return parts.join("`");               // re-join with backticks
+    }
+
     s = replaceAll!codeBlockReplace(s, oldCodeBlockRe); // replace old code blocks with triple backticks
 
     auto lines = s.split("\n");
@@ -1221,7 +1234,7 @@ final class Repo : Base
         line = replaceAll!refReplace(line, refRe);
         line = replaceAll!funcOrBacktickReplace(line, funcRe);
         line = replaceAll!funcOrBacktickReplace(line, backtickRe);
-        line = replaceAll!constReplace(line, constRe);
+        line = constReplaceNotInBackticks(line);
       }
 
       line = prefix ~ line;
