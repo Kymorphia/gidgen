@@ -334,3 +334,76 @@ auto frontIfNotEmpty(R, T)(R r, T def)
   else
     return r.front;
 }
+
+unittest // snakeCase: convert camelCase/TitleCase to snake_case
+{
+  assert("camelCase"d.snakeCase.equal("camel_case"d));
+  assert("TitleCase"d.snakeCase.equal("title_case"d));
+  assert("simpleword"d.snakeCase.equal("simpleword"d));
+  assert("XMLParser"d.snakeCase.equal("xmlparser"d));
+  assert("getHTTPResponse"d.snakeCase.equal("get_httpresponse"d));
+}
+
+unittest // stripConst: strip "const" and parenthesis from type strings
+{
+  assert("const(char*)"d.stripConst.equal("char*"d));
+  assert("const char*"d.stripConst.equal("char*"d));
+  assert("char*"d.stripConst.equal("char*"d));
+  assert("const(int)"d.stripConst.equal("int"d));
+}
+
+unittest // stripConstPtr: strip "const", parenthesis, and pointer stars
+{
+  assert("const(char*)"d.stripConstPtr.equal("char"d));
+  assert("const char**"d.stripConstPtr.equal("char"d));
+  assert("char*"d.stripConstPtr.equal("char"d));
+}
+
+unittest // countStars: count trailing stars in type string
+{
+  assert("char**"d.countStars == 2);
+  assert("char*"d.countStars == 1);
+  assert("char"d.countStars == 0);
+  assert("int***"d.countStars == 3);
+  assert("const(char**)"d.countStars == 2);
+}
+
+unittest // normalizeDTypeName: remove trailing _t and convert to PascalCase
+{
+  assert("size_t"d.normalizeDTypeName.equal("Size"d));
+  assert("uint32_t"d.normalizeDTypeName.equal("Uint32"d));
+  assert("gchar"d.normalizeDTypeName.equal("Gchar"d));
+  assert("int"d.normalizeDTypeName.equal("Int"d));
+}
+
+unittest // frontIfNotEmpty: get front of range or default value
+{
+  assert([1, 2, 3].frontIfNotEmpty(0) == 1);
+  { auto emptyRange = filter!(x => false)([1]); assert(emptyRange.frontIfNotEmpty(0) == 0); }
+  assert(["hello"d].frontIfNotEmpty("default"d).equal("hello"d));
+}
+
+unittest // isWhite: whitespace detection
+{
+  assert(' '.isWhite);
+  assert('\t'.isWhite);
+  assert('\n'.isWhite);
+  assert('\r'.isWhite);
+  assert(!'a'.isWhite);
+}
+
+unittest // isValidElemStartChar / isValidElemChar: valid XML element characters
+{
+  import xml_tree : isValidElemStartChar, isValidElemChar;
+  assert(isValidElemStartChar('A'));
+  assert(isValidElemStartChar('z'));
+  assert(isValidElemStartChar(':'));
+  assert(isValidElemStartChar('_'));
+  assert(!isValidElemStartChar('0'));
+  assert(!isValidElemStartChar('-'));
+  assert(isValidElemChar('A'));
+  assert(isValidElemChar('0'));
+  assert(isValidElemChar('-'));
+  assert(isValidElemChar('.'));
+  assert(!isValidElemChar(' '));
+}

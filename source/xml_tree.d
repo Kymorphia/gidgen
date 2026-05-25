@@ -576,3 +576,158 @@ The %G_DATE_BAD_DAY value represents an invalid day of the month.</doc>
   tree = new XmlTree();
   assertThrown(tree.parse(noAttrEqual));
 }
+
+// findChild - find child by name, return null for missing
+unittest
+{
+  auto parent = new XmlNode("root"d);
+  auto c1 = new XmlNode("alpha"d);
+  auto c2 = new XmlNode("beta"d);
+  parent.addChild(c1);
+  parent.addChild(c2);
+
+  assert(parent.findChild("alpha"d) is c1);
+  assert(parent.findChild("beta"d) is c2);
+  assert(parent.findChild("missing"d) is null);
+}
+
+// requireChild - return found child, throw XmlChildNotFoundError for missing
+unittest
+{
+  auto parent = new XmlNode("root"d);
+  auto child = new XmlNode("item"d);
+  parent.addChild(child);
+
+  assert(parent.requireChild("item"d) is child);
+  assertThrown!XmlChildNotFoundError(parent.requireChild("nope"d));
+}
+
+// addChild - add child to node, verify parent and children updated
+unittest
+{
+  auto parent = new XmlNode("root"d);
+  auto child = new XmlNode("leaf"d);
+  assert(child.parent is null);
+  assert(parent.children.length == 0);
+
+  parent.addChild(child);
+  assert(parent.children.length == 1);
+  assert(parent.children[0] is child);
+  assert(child.parent is parent);
+}
+
+// unlink - remove child from parent
+unittest
+{
+  auto parent = new XmlNode("root"d);
+  auto c1 = new XmlNode("a"d);
+  auto c2 = new XmlNode("b"d);
+  parent.addChild(c1);
+  parent.addChild(c2);
+
+  c1.unlink;
+  assert(c1.parent is null);
+  assert(parent.children.length == 1);
+  assert(parent.children[0] is c2);
+}
+
+// replace - replace child node with new one
+unittest
+{
+  auto parent = new XmlNode("root"d);
+  auto old = new XmlNode("old"d);
+  auto replacement = new XmlNode("new"d);
+  parent.addChild(old);
+
+  old.replace(replacement);
+  assert(old.parent is null);
+  assert(replacement.parent is parent);
+  assert(parent.children.length == 1);
+  assert(parent.children[0] is replacement);
+}
+
+// deepcopy - deep copy is independent of original
+unittest
+{
+  auto root = new XmlNode("root"d);
+  auto child = new XmlNode("child"d);
+  child.attrs["key"d] = "val"d;
+  root.addChild(child);
+
+  auto copy = root.deepcopy;
+  assert(copy.id == "root"d);
+  assert(copy.children.length == 1);
+  assert(copy.children[0].attrs["key"d] == "val"d);
+
+  // Modify original; copy should be unaffected
+  child.attrs["key"d] = "changed"d;
+  assert(copy.children[0].attrs["key"d] == "val"d);
+}
+
+// fullname - test fullname with nested nodes and name attributes
+unittest
+{
+  auto a = new XmlNode("a"d);
+  auto b = new XmlNode("b"d);
+  b.attrs["name"d] = "myname"d;
+  auto c = new XmlNode("c"d);
+  a.addChild(b);
+  b.addChild(c);
+
+  assert(a.fullname == "a"d);
+  assert(b.fullname == "a.b[myname]"d);
+  assert(c.fullname == "a.b[myname].c"d);
+}
+
+// opIndex - attribute access, throw XmlAttrError for missing
+unittest
+{
+  auto node = new XmlNode("elem"d);
+  node.attrs["x"d] = "42"d;
+
+  assert(node["x"d] == "42"d);
+  assertThrown!XmlAttrError(node["missing"d]);
+}
+
+// get - get with default value for missing keys
+unittest
+{
+  auto node = new XmlNode("elem"d);
+  node.attrs["x"d] = "1"d;
+
+  assert(node.get("x"d) == "1"d);
+  assert(node.get("missing"d) is null);
+  assert(node.get("missing"d, "default"d) == "default"d);
+}
+
+// XML comment parsing - comments are skipped
+unittest
+{
+  auto tree = new XmlTree(`<root><!-- a comment --><child/></root>`d);
+  assert(tree.root.id == "root"d);
+  assert(tree.root.children.length == 1);
+  assert(tree.root.children[0].id == "child"d);
+}
+
+// XML self-closing elements
+unittest
+{
+  auto tree = new XmlTree(`<root><elem attr="val"/></root>`d);
+  assert(tree.root.children[0].id == "elem"d);
+  assert(tree.root.children[0].attrs["attr"d] == "val"d);
+  assert(tree.root.children[0].children.length == 0);
+}
+
+// XML entity parsing - &amp; &lt; &gt; &apos; &quot;
+unittest
+{
+  auto tree = new XmlTree(`<root>&amp; &lt; &gt; &apos; &quot;</root>`d);
+  assert(tree.root.content == `& < > ' "`d);
+}
+
+// XmlParseError - malformed XML throws
+unittest
+{
+  assertThrown!XmlParseError(new XmlTree("<root><unclosed>"d));
+  assertThrown!XmlParseError(new XmlTree("<root>"d));
+}

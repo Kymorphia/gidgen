@@ -186,3 +186,95 @@ private:
   dstring[] lines; // Array of lines
   SourceInfo*[] lineTrackerLines; // Pointer array of line tracker lines for this CodeWriter stored to sourceLineMap (to update lines on insert)
 }
+
+// Constructor and length
+unittest
+{
+  auto w = new CodeWriter("test.d", ["line1"d, "line2"d, "line3"d]);
+  assert(w.length == 3);
+
+  // Empty constructor
+  auto w2 = new CodeWriter("test.d");
+  assert(w2.length == 0);
+
+  // Single string constructor splits on newlines
+  auto w3 = new CodeWriter("test.d", "alpha\nbeta\ngamma"d);
+  assert(w3.length == 3);
+}
+
+// lastLine
+unittest
+{
+  auto w = new CodeWriter("test.d");
+  // Empty writer returns null
+  assert(w.lastLine() is null);
+
+  w ~= "first"d;
+  assert(w.lastLine() == "first"d);
+
+  w ~= "second"d;
+  assert(w.lastLine() == "second"d);
+
+  // With initial content
+  auto w2 = new CodeWriter("test.d", ["a"d, "b"d, "c"d]);
+  assert(w2.lastLine() == "c"d);
+}
+
+// opOpAssign (append)
+unittest
+{
+  // Append single string line
+  auto w = new CodeWriter("test.d");
+  w ~= "hello"d;
+  assert(w.length == 1);
+  assert(w.lastLine() == "hello"d);
+
+  // Append array of lines
+  w ~= ["line1"d, "line2"d];
+  assert(w.length == 3);
+  assert(w.lastLine() == "line2"d);
+
+  // Append multi-line string (split on \n)
+  auto w2 = new CodeWriter("test.d");
+  w2 ~= "alpha\nbeta"d;
+  assert(w2.length == 2);
+  assert(w2.lastLine() == "beta"d);
+
+  // Trailing newline is stripped before split
+  auto w3 = new CodeWriter("test.d");
+  w3 ~= "foo\n"d;
+  assert(w3.length == 1);
+  assert(w3.lastLine() == "foo"d);
+}
+
+// insert
+unittest
+{
+  // Insert at specific position
+  auto w = new CodeWriter("test.d", ["a"d, "b"d, "d"d]);
+  w.insert(2, "c"d);
+  assert(w.length == 4);
+
+  // Insert at position 0 (beginning)
+  auto w2 = new CodeWriter("test.d", ["second"d, "third"d]);
+  w2.insert(0, "first"d);
+  assert(w2.length == 3);
+  assert(w2.lastLine() == "third"d);
+
+  // Insert beyond end appends
+  auto w3 = new CodeWriter("test.d", ["a"d]);
+  w3.insert(99, "b"d);
+  assert(w3.length == 2);
+  assert(w3.lastLine() == "b"d);
+
+  // Insert at negative position appends
+  auto w4 = new CodeWriter("test.d", ["x"d]);
+  w4.insert(-1, "y"d);
+  assert(w4.length == 2);
+  assert(w4.lastLine() == "y"d);
+
+  // Insert array of lines
+  auto w5 = new CodeWriter("test.d", ["a"d, "e"d]);
+  w5.insert(1, ["b"d, "c"d, "d"d]);
+  assert(w5.length == 5);
+}
