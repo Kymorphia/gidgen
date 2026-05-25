@@ -1078,8 +1078,8 @@ final class Repo : Base
    */
   TypeNode findTypeObjectByGDocRef(dstring refStr)
   {
-    auto refRe = ctRegex!(`^(?P<kind>[a-z]+)@(?P<Namespace>[A-Za-z]+)\.(?P<TypeName>[A-Za-z0-9_]+)`d
-      ~ `(?:\.|::|:)?(?P<SubTypeName>[A-Za-z0-9_]*)`d);
+    auto refRe = ctRegex!(`^(?P<kind>[a-z]+)@((?P<Namespace>[A-Za-z]+)\.)?(?P<TypeName>[A-Za-z0-9_]+)`d
+      ~ `(?:\.|::|:)?(?P<SubTypeName>[A-Za-z0-9_-]*)`d);
     auto c = refStr.matchFirst(refRe);
 
     dstring kind, nameSpace, typeName, subTypeName;
@@ -1141,7 +1141,8 @@ final class Repo : Base
           return st.properties.find!(x => x.name == subTypeName).frontIfNotEmpty(cast(Property)null);
         case "signal":
           return st.signals.find!(x => x.name == subTypeName).frontIfNotEmpty(cast(Func)null);
-        default: // Includes "vfunc"
+        case "alias","callback","class","enum","flags","id","iface","struct","vfunc": // Many of these get handled above, just listing for completeness
+        default:
           return null;
       }
     }
@@ -1205,8 +1206,20 @@ final class Repo : Base
         return "`" ~ m[1] ~ "`";
     }
 
+    dstring constReplaceNotInBackticks(dstring line) // Replace %CONST symbols except within backticks
+    {
+      if (!line.canFind('`'))
+        return replaceAll!constReplace(line, constRe);
+
+      auto parts = line.split('`'); // Even parts are normal text, odd is in backticks
+
+      for (size_t i = 0; i < parts.length; i += 2)
+        parts[i] = replaceAll!constReplace(parts[i], constRe);
+
+      return parts.join("`");               // re-join with backticks
+    }
+
     s = replaceAll!codeBlockReplace(s, oldCodeBlockRe); // replace old code blocks with triple backticks
-    s = s.markdownListToDDoc; // Replace markdown lists with adrdox lists
 
     auto lines = s.split("\n");
     bool inCodeBlock;
@@ -1221,7 +1234,7 @@ final class Repo : Base
         line = replaceAll!refReplace(line, refRe);
         line = replaceAll!funcOrBacktickReplace(line, funcRe);
         line = replaceAll!funcOrBacktickReplace(line, backtickRe);
-        line = replaceAll!constReplace(line, constRe);
+        line = constReplaceNotInBackticks(line);
       }
 
       line = prefix ~ line;

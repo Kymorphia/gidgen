@@ -402,6 +402,9 @@ final class Structure : TypeNode
     beginImports(this);
     scope(exit) endImports;
 
+    if (fullModuleName != "gid.basictypes")
+      writer ~= "public import gid.basictypes;";
+
     if (parentStruct)
       importManager.add(parentStruct.fullModuleName); // Add parent to imports
 
