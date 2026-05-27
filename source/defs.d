@@ -41,6 +41,7 @@ import xml_tree;
 
 enum DefsCmdPrefix = "//!"d; /// Prefix used for definition commands
 enum DefsCommentPrefix = "//#"d; /// Prefix used for definition comments (not included in content)
+enum DefaultGirPath = "/usr/share/gir-1.0"; /// Default path to search for GIR files
 
 class Defs : Base
 {
@@ -372,7 +373,7 @@ class Defs : Base
    * Params:
    *   girPaths = Array of paths to search for Gir files
    */
-  void loadRepos(string[] girPaths = ["/usr/share/gir-1.0"])
+  void loadRepos(string[] girPaths = [DefaultGirPath])
   {
     repos = repos.sort!((x, y) => x.namespace < y.namespace).array;
 
