@@ -202,3 +202,132 @@ private:
   bool[dstring][dstring] importHash; /// moduleName => (Symbol => true)
   dstring defaultNamespace; /// Default namespace to use if not provided when adding imports
 }
+
+unittest
+{
+  // add with namespace: namespace prepended when module has no dot
+  auto im = new ImportManager("Test.Module"d, "Gtk"d);
+  im.add("Widget"d);
+  assert(im.generate() == ["import Gtk.Widget;"d]);
+}
+
+unittest
+{
+  // add with full module: stored as-is when module contains dot
+  auto im = new ImportManager("Test.Module"d);
+  im.add("Gtk.Widget.Button"d);
+  assert(im.generate() == ["import Gtk.Widget.Button;"d]);
+}
+
+unittest
+{
+  // add symbols: generate produces selective import statement
+  auto im = new ImportManager("Test.Module"d, "Gtk"d);
+  im.add("Widget"d, ["Button"d, "Label"d]);
+  auto lines = im.generate();
+  assert(lines.length == 1);
+  assert(lines[0].canFind("Button") && lines[0].canFind("Label"));
+  assert(lines[0].startsWith("import Gtk.Widget : "));
+  assert(lines[0].endsWith(";"));
+}
+
+unittest
+{
+  // add wildcard: wildcard import first, then specific symbols, wildcard wins
+  auto im = new ImportManager("Test.Module"d, "Gtk"d);
+  im.add("Widget"d);
+  im.add("Widget"d, "Button"d);
+  assert(im.generate() == ["import Gtk.Widget;"d]);
+}
+
+unittest
+{
+  // remove module: add then remove, verify gone; remove non-existent returns false
+  auto im = new ImportManager("Test.Module"d, "Gtk"d);
+  im.add("Widget"d);
+  assert(im.remove("Gtk.Widget"d) == true);
+  assert(im.generate().empty);
+  assert(im.remove("Gtk.NonExistent"d) == false);
+}
+
+unittest
+{
+  // remove symbol: add module with symbols, remove one, verify it's gone
+  auto im = new ImportManager("Test.Module"d, "Gtk"d);
+  im.add("Widget"d, ["Button"d, "Label"d]);
+  assert(im.remove("Gtk.Widget"d, "Button"d) == true);
+  assert(im.remove("Gtk.Widget"d, "Button"d) == false);
+  auto lines = im.generate();
+  assert(lines.length == 1);
+  assert(lines[0].canFind("Label") && !lines[0].canFind("Button"));
+}
+
+unittest
+{
+  // merge: merge two ImportManagers, verify combined imports
+  auto im1 = new ImportManager("Test.Module"d, "Gtk"d);
+  im1.add("Widget"d, "Button"d);
+  auto im2 = new ImportManager("Test.Module"d, "Gtk"d);
+  im2.add("Window"d);
+  im2.add("Widget"d, "Label"d);
+  im1.merge(im2);
+  auto lines = im1.generate();
+  assert(lines.length == 2);
+  // Widget has merged symbols from both
+  auto widgetLine = lines[0].canFind("Widget") ? lines[0] : lines[1];
+  assert(widgetLine.canFind("Button") && widgetLine.canFind("Label"));
+  // Window is wildcard
+  assert(lines[0].canFind("Window") || lines[1].canFind("Window"));
+}
+
+unittest
+{
+  // generate: produces sorted import statements with and without symbols
+  auto im = new ImportManager("Test.Module"d);
+  im.add("std.stdio"d, "writeln"d);
+  im.add("std.conv"d);
+  im.add("std.array"d, ["array"d, "appender"d]);
+  auto lines = im.generate();
+  assert(lines.length == 3);
+  assert(lines[0].canFind("std.array"));
+  assert(lines[1].canFind("std.conv"));
+  assert(lines[2].canFind("std.stdio"));
+}
+
+unittest
+{
+  // parseImport: parse basic import statement
+  auto im = new ImportManager("Test.Module"d);
+  im.parseImport("import std.stdio;"d);
+  assert(im.generate() == ["import std.stdio;"d]);
+}
+
+unittest
+{
+  // parseImport with selective: parse selective import statement
+  auto im = new ImportManager("Test.Module"d);
+  im.parseImport("import std.stdio : writeln, writef;"d);
+  auto lines = im.generate();
+  assert(lines.length == 1);
+  assert(lines[0].canFind("writeln") && lines[0].canFind("writef"));
+}
+
+unittest
+{
+  // self-import prevention: adding own module is ignored
+  auto im = new ImportManager("Gtk.Widget"d, "Gtk"d);
+  im.add("Widget"d);
+  assert(im.generate().empty);
+}
+
+unittest
+{
+  // invalid parseImport: exception thrown for invalid import statement
+  auto im = new ImportManager("Test.Module"d);
+  bool threw = false;
+  try
+    im.parseImport("not an import"d);
+  catch (Exception e)
+    threw = true;
+  assert(threw);
+}
