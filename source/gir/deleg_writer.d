@@ -59,7 +59,7 @@ class DelegWriter
       addCallParam("_err");
     }
 
-    decl ~= ")";
+    decl ~= ") nothrow";
     call ~= ");";
   }
 
@@ -107,7 +107,8 @@ class DelegWriter
 
     if (retVal.cType == retVal.fullDType)
     {
-      call ~= retVal.cType ~ " _retval = ";
+      preCall ~= retVal.cType ~ " _retval;";
+      call ~= "_retval = ";
       return;
     }
 
@@ -221,7 +222,8 @@ class DelegWriter
     }
 
     decl ~= retVal.cType ~ " ";
-    call ~= "auto _dretval = ";
+    preCall ~= retVal.dType ~ " _dretval;";
+    call ~= "_dretval = ";
     postCall ~= "auto _retval = g" ~ retVal.containerType.to!dstring ~ "FromD" ~ templateParams ~ "(_dretval);";
   }
 
@@ -459,7 +461,8 @@ class DelegWriter
       tracker ~= "";
     }
 
-    tracker ~= call;
+    tracker ~= ["try", "{", call, "}", "catch (Exception e)", "{", // Handle exceptions from D callback
+      `gidInvokeCallbackExceptionHandler(e, "` ~ callback.fullDName ~ `");`, "}"];
 
     if (postCall.length > 0)
     {

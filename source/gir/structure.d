@@ -431,7 +431,7 @@ final class Structure : TypeNode
     if (defCode.preClass.length > 0)
       writer ~= defCode.preClass;
 
-    if (moduleType != ModuleType.Struct) // Struct type docs are handled in writeStructDef
+    if (moduleType != ModuleType.Struct && kind != TypeKind.Namespace) // Struct type docs are handled in writeStructDef
       writer ~= genDocs;
 
     Structure[] objIfaces;
@@ -442,7 +442,7 @@ final class Structure : TypeNode
         writer ~= [isIfaceTemplate ? ("template " ~ dType ~ "T()") : ("interface " ~ dType), "{"];
       else if (moduleType == ModuleType.Struct) // Struct module?
         writeStructDef(writer, true);  // Write structure definition using D types
-      else
+      else if (kind != TypeKind.Namespace)
       { // Create range of parent type and implemented interface types, but filter out interfaces already implemented by ancestors
         objIfaces = implementStructs.filter!(x => !getIfaceAncestor(x)).array;
         auto parentAndIfaces = (parentStruct ? [parentStruct] : []) ~ objIfaces;
@@ -514,7 +514,8 @@ final class Structure : TypeNode
       }
     }
 
-    writer ~= "}";
+    if (kind != TypeKind.Namespace)
+      writer ~= "}";
 
     if (kind == TypeKind.Interface || kind == TypeKind.Object)
       writeBuilder(writer, moduleType);
@@ -568,13 +569,11 @@ final class Structure : TypeNode
       writer ~= writeBoxedCtor;
 
     if (kind == TypeKind.Opaque)
-      writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take)", "{",
-        "if (!ptr)", "throw new GidConstructException(\"Null instance pointer for " ~ fullDName ~ "\");", ""];
+      writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take) nothrow", "{"];
     else if (kind == TypeKind.Wrap || kind == TypeKind.Reffed)
-      writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take)", "{",
-        "if (!ptr)", "throw new GidConstructException(\"Null instance pointer for " ~ fullDName ~ "\");", ""];
+      writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take) nothrow", "{"];
     else if (kind == TypeKind.Boxed || kind == TypeKind.Object)
-      writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take)", "{",
+      writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take) nothrow", "{",
         "super(cast(void*)ptr, take);", "}"];
 
     if (kind == TypeKind.Opaque && !pointer)
@@ -584,48 +583,50 @@ final class Structure : TypeNode
     else if (kind == TypeKind.Wrap)
       writer ~= ["_cInstance = *cast(" ~ cTypeRemPtr ~ "*)ptr;", "", "if (take)", "gFree(ptr);", "}"];
     else if (kind == TypeKind.Reffed && !parentStruct)
-      writer ~= ["_cInstancePtr = cast(" ~ cTypeRemPtr ~ "*)ptr;", "", "if (!take)", glibRefFunc
-        ~ "(_cInstancePtr);", "}", "", "~this()", "{", glibUnrefFunc ~ "(_cInstancePtr);", "}", ""];
+      writer ~= ["_cInstancePtr = cast(" ~ cTypeRemPtr ~ "*)ptr;", "", "if (!take && ptr)", glibRefFunc
+        ~ "(_cInstancePtr);", "}", "", "~this() nothrow", "{", "if (_cInstancePtr)", glibUnrefFunc ~ "(_cInstancePtr);",
+        "}", ""];
     else if (kind == TypeKind.Reffed && parentStruct)
       writer ~= ["super(cast(" ~ parentStruct.cType ~ "*)ptr, take);", "}"];
 
     if (kind == TypeKind.Opaque && freeFunction)
-      writer ~= ["", "~this()", "{", "if (owned)", freeFunction ~ "(_cInstancePtr);", "}"];
+      writer ~= ["", "~this() nothrow", "{", "if (owned && _cInstancePtr)", freeFunction ~ "(_cInstancePtr);", "}"];
     else if (kind == TypeKind.Wrap && freeFunction)
-      writer ~= ["", "~this()", "{", freeFunction ~ "(&_cInstance);", "}"];
+      writer ~= ["", "~this() nothrow", "{", freeFunction ~ "(&_cInstance);", "}"];
 
     if (kind == TypeKind.Opaque)
-      writer ~= ["", "/** */", "void* _cPtr()", "{", "return cast(void*)_cInstancePtr;", "}"];
+      writer ~= ["", "/** */", "void* _cPtr() nothrow", "{", "return cast(void*)_cInstancePtr;", "}"];
     else if (kind == TypeKind.Reffed && !parentStruct)
-      writer ~= ["", "/** */", "void* _cPtr(Flag!\"Dup\" dup = No.Dup)", "{", "if (dup)", glibRefFunc ~ "(_cInstancePtr);", "",
-        "return _cInstancePtr;", "}"];
+      writer ~= ["", "/** */", "void* _cPtr(Flag!\"Dup\" dup = No.Dup) nothrow", "{", "if (dup)", glibRefFunc
+        ~ "(_cInstancePtr);", "", "return _cInstancePtr;", "}"];
     else if (kind == TypeKind.Boxed)
-      writer ~= ["", "/** */", "void* _cPtr(Flag!\"Dup\" dup = No.Dup)", "{", "return dup ? boxCopy : _cInstancePtr;", "}"];
+      writer ~= ["", "/** */", "void* _cPtr(Flag!\"Dup\" dup = No.Dup) nothrow", "{",
+        "return dup ? boxCopy : _cInstancePtr;", "}"];
     else if (kind == TypeKind.Wrap)
-      writer ~= ["", "/** */", "void* _cPtr()", "{", "return cast(void*)&_cInstance;", "}"];
+      writer ~= ["", "/** */", "void* _cPtr() nothrow", "{", "return cast(void*)&_cInstance;", "}"];
 
     if (kind.among(TypeKind.Struct, TypeKind.Boxed, TypeKind.Object)
         || (kind == TypeKind.Interface && moduleType == ModuleType.Iface))
-      writer ~= ["", "/** */", "static GType _getGType()", "{", "import gid.loader : gidSymbolNotFound;",
+      writer ~= ["", "/** */", "static GType _getGType() nothrow", "{", "import gid.loader : gidSymbolNotFound;",
         "return cast(void function())" ~ glibGetType
         ~ " != &gidSymbolNotFound ? " ~ glibGetType ~ "() : cast(GType)0;", "}"]; // Return 0 if get_type() function was not resolved
 
     auto overrideStr = (kind == TypeKind.Object || kind == TypeKind.Boxed) ? "override "d : ""d;
 
     if (kind.among(TypeKind.Struct, TypeKind.Boxed, TypeKind.Object))
-      writer ~= ["", "/** */", overrideStr ~ "@property GType _gType()", "{", "return _getGType();", "}"];
+      writer ~= ["", "/** */", overrideStr ~ "@property GType _gType() nothrow", "{", "return _getGType();", "}"];
 
     if (kind.among(TypeKind.Boxed, TypeKind.Object))
-      writer ~= ["", "/** Returns `this`, for use in `with` statements. */", overrideStr ~ dType ~ " self()", "{",
-        "return this;", "}"];
+      writer ~= ["", "/** Returns `this`, for use in `with` statements. */", overrideStr ~ dType ~ " self() nothrow",
+        "{", "return this;", "}"];
 
     if (kind == TypeKind.Struct)
-      writer ~= ["", "void* boxCopy()", "{", "import gobject.c.functions : g_boxed_copy;", "return g_boxed_copy(_gType,
-        cast(void*)&this);", "}"];
+      writer ~= ["", "void* boxCopy() nothrow", "{", "import gobject.c.functions : g_boxed_copy;",
+        "return g_boxed_copy(_gType, cast(void*)&this);", "}"];
 
     if (kind == TypeKind.Object)
       writer ~= ["", "/**", "    Get builder for [" ~ fullDType ~ "]", "    Returns: New builder object", "*/",
-        "static " ~ dType ~ "GidBuilder builder()", "{", "return new " ~ dType ~ "GidBuilder;", "}"];
+        "static " ~ dType ~ "GidBuilder builder() nothrow", "{", "return new " ~ dType ~ "GidBuilder;", "}"];
   }
 
   // Write a Boxed type constructor with all fields as parameters with default values (optional)
@@ -673,7 +674,7 @@ final class Structure : TypeNode
       }
     }
 
-    s ~= ")\n{\nsuper(gMalloc(" ~ cType ~ ".sizeof), Yes.Take);\n";
+    s ~= ") nothrow\n{\nsuper(gMalloc(" ~ cType ~ ".sizeof), Yes.Take);\n";
 
     foreach (f; fields)
       if (f.active == Active.Enabled && f.writable)
@@ -707,7 +708,7 @@ final class Structure : TypeNode
       lines ~= genPropDocs(f, PropMethodType.Getter);
 
       if (f.kind != TypeKind.Callback)
-        lines ~= ["@property " ~ f.fullDType ~ " " ~ f.dName ~ "()", "{"];
+        lines ~= ["@property " ~ f.fullDType ~ " " ~ f.dName ~ "() nothrow", "{"];
 
       dstring addrIfNeeded() // Returns an & if field is a direct structure, when we need a pointer to it
       {
@@ -727,9 +728,9 @@ final class Structure : TypeNode
           break;
         case Callback:
           if (f.typeObject) // Callback function is an alias type?
-            lines ~= ["@property " ~ f.cType ~ " " ~ f.dName ~ "()", "{"];
+            lines ~= ["@property " ~ f.cType ~ " " ~ f.dName ~ "() nothrow", "{"];
           else // Callback function type is directly defined in field
-            lines ~= ["@property " ~ f.name.camelCase(true) ~ "FuncType " ~ f.dName ~ "()", "{"];
+            lines ~= ["@property " ~ f.name.camelCase(true) ~ "FuncType " ~ f.dName ~ "() nothrow", "{"];
 
           lines ~= "return " ~ cPtr ~ "." ~ f.dName ~ ";";
           break;
@@ -760,7 +761,7 @@ final class Structure : TypeNode
       lines ~= genPropDocs(f, PropMethodType.Setter);
 
       if (f.kind != TypeKind.Callback) // Callback setter declaration is specially handled below
-        lines ~= ["@property void " ~ f.dName ~ "(" ~ f.fullDType ~ " propval)", "{"];
+        lines ~= ["@property void " ~ f.dName ~ "(" ~ f.fullDType ~ " propval) nothrow", "{"];
 
       final switch (f.kind) with (TypeKind)
       {
@@ -776,9 +777,9 @@ final class Structure : TypeNode
           break;
         case Callback:
           if (f.typeObject) // Callback function is an alias type?
-            lines ~= ["", "@property void " ~ f.dName ~ "(" ~ f.cType ~ " propval)", "{"];
+            lines ~= ["", "@property void " ~ f.dName ~ "(" ~ f.cType ~ " propval) nothrow", "{"];
           else // Callback function type is directly defined in field
-            lines ~= ["", "@property void " ~ f.dName ~ "(" ~ f.name.camelCase(true) ~ "FuncType propval)", "{"];
+            lines ~= ["", "@property void " ~ f.dName ~ "(" ~ f.name.camelCase(true) ~ "FuncType propval) nothrow", "{"];
 
           lines ~= cPtr ~ "." ~ f.dName ~ " = propval;";
           break;
@@ -875,19 +876,20 @@ final class Structure : TypeNode
               lines ~= ["", "alias "d ~ p.dName ~ " = " ~ conflictClass.fullDType ~ "." ~ p.dName ~ ";"]; // Add an alias for conflicting methods which don't conform
 
         lines ~= genPropDocs(p, PropMethodType.Getter);
-        lines ~= (outOverrideMethod ? "override "d : ""d) ~ "@property " ~ p.fullDType ~ " " ~ p.dName ~ "()";
+        lines ~= (outOverrideMethod ? "override "d : ""d) ~ "@property " ~ p.fullDType ~ " " ~ p.dName ~ "() nothrow";
 
         if (moduleType != ModuleType.Iface)
         {
-          Func checkGetter(TypeNode n)
+          Func chkGetter(TypeNode n)
           {
             auto f = cast(Func)n;
             return (f && p.checkGetter(f)) ? f : null;
           }
 
-          auto getter = !p.getter.empty ? checkGetter(dMethodHash.get(repo.defs.symbolName(p.getter.camelCase), null)) : null; // Use getter method for improved performance
+          auto getter = !p.getter.empty ? chkGetter(dMethodHash.get(repo.defs.symbolName(p.getter.camelCase), null)) // Use getter method for improved performance
+            : null;
           if (!getter)
-            getter = !p.propGet.empty ? checkGetter(cast(Func)repo.defs.cSymbolHash.get(p.propGet, null)) : null; // Use alternative org.gtk.Property.get attribute as a backup (full C symbol function name)
+            getter = !p.propGet.empty ? chkGetter(cast(Func)repo.defs.cSymbolHash.get(p.propGet, null)) : null; // Use alternative org.gtk.Property.get attribute as a backup (full C symbol function name)
 
           if (!getter)
             addImport("gobject.object");
@@ -910,7 +912,8 @@ final class Structure : TypeNode
             lines ~= ["", "alias "d ~ p.dName ~ " = " ~ conflictClass.fullDType ~ "." ~ p.dName ~ ";"]; // Add an alias for conflicting methods which don't conform
 
       lines ~= genPropDocs(p, PropMethodType.Setter);
-      lines ~= (outOverrideMethod ? "override "d : ""d) ~ "@property void " ~ p.dName ~ "(" ~ p.fullDType ~ " propval)";
+      lines ~= (outOverrideMethod ? "override "d : ""d) ~ "@property void " ~ p.dName ~ "(" ~ p.fullDType
+        ~ " propval) nothrow";
 
       if (moduleType != ModuleType.Iface)
       {
@@ -972,7 +975,7 @@ final class Structure : TypeNode
     {
       writer ~= genPropDocs(p, PropMethodType.Builder);
       writer ~= (builderPropOverride(p) ? "override "d : "") ~ "T " ~ p.dName ~ "("
-        ~ p.fullDType ~ " propval)" ~ (moduleType == ModuleType.Iface ? ";"d : ""d);
+        ~ p.fullDType ~ " propval) nothrow" ~ (moduleType == ModuleType.Iface ? ";"d : ""d);
 
       if (moduleType != ModuleType.Iface)
         writer ~= ["{", "return setProperty(\"" ~ p.name ~ "\", propval);", "}"];
@@ -986,7 +989,7 @@ final class Structure : TypeNode
 
       writer ~= ["", "/// Fluent builder for [" ~ fullDType ~ "]", "final class " ~ dType ~ "GidBuilder : "
         ~ dType ~ "GidBuilderImpl!" ~ dType ~ "GidBuilder", "{", "/**", "    Create object from builder.",
-        "    Returns: New object", "*/", dType ~ " build()", "{", "return new "
+        "    Returns: New object", "*/", dType ~ " build() nothrow", "{", "return new "
         ~ dType ~ "(cast(void*)createGObject(" ~ dType ~ "._getGType), " ~ takeStr ~ ".Take);", "}", "}"];
     }
   }

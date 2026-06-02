@@ -520,8 +520,8 @@ final class Repo : Base
       "import " ~ st.fullModuleName ~ "_mixin;", "",
       "/// Proxy object for [" ~ st.fullDName ~ "] interface when a GObject has no applicable D binding",
       "class " ~ className ~ " : IfaceProxy, " ~ st.fullDType, "{",
-      "this(void* ptr, Flag!\"Take\" take)", "{", "super(cast(void*)ptr, take);", "}", "",
-      "override TypeInfo_Interface getIface()", "{", "return typeid(" ~ st.fullDType ~ ");", "}", "",
+      "this(void* ptr, Flag!\"Take\" take) nothrow", "{", "super(cast(void*)ptr, take);", "}", "",
+      "override TypeInfo_Interface getIface() nothrow", "{", "return typeid(" ~ st.fullDType ~ ");", "}", "",
       "mixin " ~ st.dType ~ "T!();",
       "}",
     ];
@@ -696,7 +696,7 @@ final class Repo : Base
 
     writeSharedLibs(writer);
 
-    writer ~= ["__gshared extern(C)", "{"];
+    writer ~= ["__gshared extern(C) nothrow", "{"];
 
     foreach (st; structs)
     {

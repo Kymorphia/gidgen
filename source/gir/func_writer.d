@@ -855,7 +855,7 @@ class FuncWriter
     }
 
     // Add "override" for methods of an interface mixin template or if an ancestor/iface has a method with the same name
-    writer ~= overrideStr ~ decl;
+    writer ~= overrideStr ~ decl ~ (func.throws ? ""d : " nothrow"d); // Add nothrow if the function itself does not throw
 
     writer ~= "{";
 

@@ -76,7 +76,8 @@ class SignalWriter
       ~ signal.fullDName.to!string);
 
     with (TypeKind) callbackTypes ~= CallbackType(retVal.fullDType, retVal.kind.among(Object, Interface) != 0);
-    call ~= "auto _retval = ";
+    preCall ~= retVal.fullDType ~ " _retval;";
+    call ~= "_retval = ";
     postCall ~= ["", "setVal!(" ~ retVal.fullDType ~ ")(_returnValue, _retval);"];
   }
 
@@ -268,7 +269,7 @@ class SignalWriter
   {
     writer ~= genDocs;
     writer ~= "gulong connect" ~ signal.titleName ~ "(T)(" ~ (signal.detailed ? "string detail = null, "d : "")
-      ~ "T callback, Flag!\"After\" after = No.After)" ~ (moduleType == ModuleType.Iface ? ";"d : "");
+      ~ "T callback, Flag!\"After\" after = No.After) nothrow" ~ (moduleType == ModuleType.Iface ? ";"d : "");
 
     if (moduleType == ModuleType.Iface)
       return;
@@ -287,7 +288,7 @@ class SignalWriter
     writer ~= ["&& Parameters!T.length < " ~ callbackTypes.length.to!dstring ~ ")", "{"]; // Ensure there aren't more arguments than expected
 
     writer ~= ["extern(C) void _cmarshal(GClosure* _closure, GValue* _returnValue, uint _nParams," // C marshal function
-      ~ " const(GValue)* _paramVals, void* _invocHint, void* _marshalData)", "{",
+      ~ " const(GValue)* _paramVals, void* _invocHint, void* _marshalData) nothrow", "{",
       "assert(_nParams == " ~ (signal.params.length + 1).to!dstring ~ ", \"Unexpected number of signal parameters\");", // assert C marshal receives expected number of parameters
       "auto _dClosure = cast(DGClosure!T*)_closure;",
       "Tuple!(Parameters!T) _paramTuple;"]; // Create D type parameter tuple
@@ -298,7 +299,8 @@ class SignalWriter
     if (inpProcess.length > 0)
       writer ~= inpProcess;
 
-    writer ~= ["", call];
+    writer ~= ["", "try", "{", call, "}", "catch (Exception e)", "{", // Handle exceptions from D callback
+      `gidInvokeCallbackExceptionHandler(e, "` ~ signal.fullDName ~ `");`, "}"];
 
     if (postCall.length > 0)
       writer ~= postCall;

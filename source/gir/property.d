@@ -115,7 +115,7 @@ final class Property : TypeNode
    */
   Func checkGetter(Func f)
   {
-    return (f && f.active == Active.Enabled && f.funcType == FuncType.Method && typeEqual(f.returnVal)
+    return (f && !f.throws && f.active == Active.Enabled && f.funcType == FuncType.Method && typeEqual(f.returnVal)
       && f.params.length == 1 && f.params[0].isInstanceParam) ? f : null;
   }
 
@@ -127,7 +127,7 @@ final class Property : TypeNode
    */
   Func checkSetter(Func f)
   {
-    return (f && f.active == Active.Enabled && f.funcType == FuncType.Method && (!f.returnVal
+    return (f && !f.throws && f.active == Active.Enabled && f.funcType == FuncType.Method && (!f.returnVal
       || f.returnVal.origDType == "none") && f.params.length == 2 && f.params[0].isInstanceParam
       && typeEqual(f.params[1])) ? f : null;
   }

@@ -200,8 +200,8 @@ final class Enumeration : TypeNode
       exceptionName = repo.namespace;
 
     output = "class " ~ exceptionName ~ "Exception : ErrorWrap\n{\n";
-    output ~= "this(GError* err)\n{\nsuper(err);\n}\n\n";
-    output ~= "this(Code code, string msg)\n{\nsuper(" ~ func.fullDName ~ ", cast(int)code, msg);\n}\n";
+    output ~= "this(GError* err) nothrow\n{\nsuper(err);\n}\n\n";
+    output ~= "this(Code code, string msg) nothrow\n{\nsuper(" ~ func.fullDName ~ ", cast(int)code, msg);\n}\n";
     output ~= "\nalias Code = " ~ repo.packageNamespace ~ ".types." ~ dType ~ ";\n}";
 
     return output;
