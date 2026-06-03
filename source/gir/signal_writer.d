@@ -195,7 +195,7 @@ class SignalWriter
           inpProcess ~= "_dArray = cast(" ~ elemType.fullDType ~ "[])_cArray[0 .. " ~ lengthStr ~ "];";
           break;
         case String:
-          inpProcess ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_dArray ~= _cArray[i].fromCString("
+          inpProcess ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_dArray ~= _cArray[i].fromCString!("
             ~ param.fullOwnerFlag ~ ".Free);"];
           break;
         case Opaque, Boxed, Wrap, Reffed:

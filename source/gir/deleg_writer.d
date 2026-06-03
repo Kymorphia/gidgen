@@ -121,7 +121,8 @@ class DelegWriter
         postCall ~= "auto _retval = cast(" ~ retVal.cType ~ ")_dretval;";
         break;
       case String:
-        postCall ~= "auto _retval = _dretval.toCString(Yes.Alloc);";
+        postCall ~= "auto _retval = toCString!(Yes.Malloc, " ~ (retVal.nullable ? "Yes"d : "No"d)
+          ~ ".Nullable)(_dretval);";
         break;
       case Opaque, Wrap, Boxed, Reffed, Object:
         postCall ~= "auto _retval = cast(" ~ retVal.cTypeRemPtr ~ "*)_dretval._cPtr(" ~ retVal.fullOwnerFlag ~ ".Dup);";
@@ -178,7 +179,7 @@ class DelegWriter
           postCall ~= "_retval[i] = _dretval[i];"; // Convert between bool and gboolean
           break;
         case String:
-          postCall ~= "_retval[i] = _dretval[i].toCString(Yes.Alloc);";
+          postCall ~= "_retval[i] = toCString!(Yes.Malloc)(_dretval[i]);";
           break;
         case Opaque, Wrap, Boxed, Reffed, Object, Interface:
           postCall ~= "_retval[i] = _dretval[i]._cPtr(" ~ retVal.fullOwnerFlag ~ ".Dup);";
@@ -281,14 +282,15 @@ class DelegWriter
       case String:
         if (param.direction == ParamDirection.In)
         {
-          preCall ~= "string _" ~ param.dName ~ " = " ~ param.dName ~ ".fromCString(" ~ param.fullOwnerFlag ~ ".Free);";
+          preCall ~= "string _" ~ param.dName ~ " = " ~ param.dName ~ ".fromCString!(" ~ param.fullOwnerFlag ~ ".Free);";
           addCallParam("_" ~ param.dName);
         }
         else if (param.direction == ParamDirection.Out)
         {
           preCall ~= "string _" ~ param.dName ~ ";";
           addCallParam("_" ~ param.dName);
-          postCall ~= "*" ~ param.dName ~ " = _" ~ param.dName ~ ".toCString(" ~ param.fullOwnerFlag ~ ".Alloc);";
+          postCall ~= "*" ~ param.dName ~ " = _" ~ param.dName ~ ".toCString!(" ~ param.fullOwnerFlag ~ ".Malloc, "
+            ~ (param.nullable ? "Yes"d : "No"d) ~ " ~ .Nullable);";
         }
         else // InOut
           // InOut string parameters are rejected by Param.verify() so this should never be reached.
@@ -380,7 +382,7 @@ class DelegWriter
           break;
         case String:
           preCall ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_" ~ param.dName ~ "[i] = "
-            ~ param.dName ~ "[i].fromCString(" ~ param.fullOwnerFlag ~ ".Free);"];
+            ~ param.dName ~ "[i].fromCString!(" ~ param.fullOwnerFlag ~ ".Free);"];
           break;
         case Opaque, Boxed, Wrap, Reffed:
           preCall ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_" ~ param.dName ~ "[i] = "
@@ -408,7 +410,7 @@ class DelegWriter
       {
         case Basic, String, BasicAlias, Enum, Flags, StructAlias, Struct, Pointer, Opaque, Wrap, Boxed, Reffed,
             Object, Interface:
-          postCall ~= param.dName ~ " = arrayDtoC!(" ~ elemType.fullDType ~ ", Yes.Alloc, "
+          postCall ~= param.dName ~ " = arrayDtoC!(" ~ elemType.fullDType ~ ", Yes.Malloc, "
             ~ (param.zeroTerminated ? "Yes"d : "No"d) ~ ".ZeroTerm)(_" ~ param.dName ~ ");";
           break;
         case Unknown, Callback, Container, Namespace:

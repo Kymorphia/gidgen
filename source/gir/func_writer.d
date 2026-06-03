@@ -151,7 +151,7 @@ class FuncWriter
       case String:
         preCall ~= retVal.cType ~ " _cretval;";
         call ~= "_cretval = ";
-        postCall ~= "string _retval = (cast(const(char)*)_cretval).fromCString("d ~ retVal.fullOwnerFlag ~ ".Free);";
+        postCall ~= "string _retval = (cast(const(char)*)_cretval).fromCString!("d ~ retVal.fullOwnerFlag ~ ".Free);";
         break;
       case Enum, Flags:
         preCall ~= retVal.cType ~ " _cretval;";
@@ -252,7 +252,7 @@ class FuncWriter
         break;
       case String:
         postCall ~= ["_retval = new " ~ elemType.fullDType ~ "[" ~ lengthStr ~ "];", "foreach (i; 0 .. "
-          ~ lengthStr ~ ")", "_retval[i] = _cretval[i].fromCString(" ~ retVal.fullOwnerFlag ~ ".Free);"];
+          ~ lengthStr ~ ")", "_retval[i] = _cretval[i].fromCString!(" ~ retVal.fullOwnerFlag ~ ".Free);"];
         break;
       case Enum, Flags, Struct:
         postCall ~= ["_retval = new " ~ elemType.fullDType ~ "[" ~ lengthStr ~ "];", "foreach (i; 0 .. "
@@ -427,15 +427,15 @@ class FuncWriter
 
         if (param.direction == ParamDirection.In)
         {
-          preCall ~= param.cType ~ " _" ~ param.dName ~ " = " ~ param.dName ~ ".toCString(" ~ param.fullOwnerFlag
-            ~ ".Alloc);";
+          preCall ~= param.cType ~ " _" ~ param.dName ~ " = " ~ param.dName ~ ".toCString!(" ~ param.fullOwnerFlag
+            ~ ".Malloc, " ~ (param.nullable ? "Yes"d : "No"d) ~ ".Nullable);";
           addCallParam("_" ~ param.dName);
         }
         else if (param.direction == ParamDirection.Out)
         {
           preCall ~= "char* _" ~ param.dName ~ ";";
           addCallParam("&_" ~ param.dName);
-          postCall ~= param.dName ~ " = _" ~ param.dName ~ ".fromCString(" ~ param.fullOwnerFlag ~ ".Free);";
+          postCall ~= param.dName ~ " = _" ~ param.dName ~ ".fromCString!(" ~ param.fullOwnerFlag ~ ".Free);";
         }
         else // InOut
           // InOut string parameters are rejected by Param.verify() so this should never be reached.
@@ -560,7 +560,7 @@ class FuncWriter
         break;
       case String:
         preCall ~= [elemType.cType ~ "[] _tmp" ~ param.dName ~ ";", "foreach (s; " ~ param.dName ~ ")",
-          "_tmp" ~ param.dName ~ " ~= s.toCString(No.Alloc);"];
+          "_tmp" ~ param.dName ~ " ~= s.toCString;"];
 
         if (param.zeroTerminated)
           preCall ~= "_tmp" ~ param.dName ~ " ~= null;";
@@ -677,7 +677,7 @@ class FuncWriter
           preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";";
           addCallParam("&_" ~ param.dName);
           postCall ~= [param.dName ~ ".length = " ~ lengthStr ~ ";", "foreach (i; 0 .. " ~ lengthStr ~ ")",
-            param.dName ~ "[i] = _" ~ param.dName ~ "[i].fromCString(" ~ param.fullOwnerFlag ~ ".Free);"];
+            param.dName ~ "[i] = _" ~ param.dName ~ "[i].fromCString!(" ~ param.fullOwnerFlag ~ ".Free);"];
 
           if (param.ownership != Ownership.None)
             postCall ~= "gFree(cast(void*)_" ~ param.dName ~ ");";
@@ -687,7 +687,7 @@ class FuncWriter
           preCall ~= [elemType.cType ~ "[] _" ~ param.dName ~ ";", "_" ~ param.dName ~ ".length = " ~ lengthStr ~ ";"];
           addCallParam("_" ~ param.dName ~ ".ptr");
           postCall ~= [param.dName ~ ".length = " ~ lengthStr ~ ";", "foreach (i; 0 .. " ~ lengthStr ~ ")", 
-            param.dName ~ "[i] = _" ~ param.dName ~ "[i].fromCString(" ~ param.fullOwnerFlag ~ ".Free);"];
+            param.dName ~ "[i] = _" ~ param.dName ~ "[i].fromCString!(" ~ param.fullOwnerFlag ~ ".Free);"];
         }
         break;
       case Opaque, Wrap, Boxed, Reffed:
