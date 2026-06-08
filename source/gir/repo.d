@@ -843,7 +843,7 @@ final class Repo : Base
   private void writeSharedLibs(CodeWriter writer)
   {
     // Split libraries into individual ones (comma separated), strip the lib prefix, change .so. to _
-    auto libsArray = sharedLibrary.splitter(',').map!(s => s.stripLeft("lib").splitter(".so.").join("_"));
+    auto libsArray = sharedLibrary.splitter(',').map!(s => s.stripLeft("lib").replace(".so.", "_"));
 
     writer ~= [
       "private immutable LIBS = [\"" ~ libsArray.join("\", \"") ~ "\"];",
