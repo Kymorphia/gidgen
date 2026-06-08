@@ -842,26 +842,11 @@ final class Repo : Base
 
   private void writeSharedLibs(CodeWriter writer)
   {
-    dstring[] winLibs, osxLibs, posixLibs;
-
-    foreach (lib; sharedLibrary.split(',')) // Multiple libraries separated by commas
-    { // Example "libatk-1.0.so.0"
-      auto t = lib.split(".so."); // Split example into "libatk-1.0" and "0"
-      auto t2 = t[0].split("."); // Split "libatk-1.0" into "libatk-1" and "0"
-
-      // libatk-1.0-0.dll;atk-1.0-0.dll;atk-1.dll
-      winLibs ~= "\"" ~ t[0] ~ "-" ~ t[1] ~ ".dll;" ~ t[0][3 .. $] ~ "-" ~ t[1] ~ ".dll;" ~ t2[0][3 .. $] ~ ".dll\"";
-      osxLibs ~= "\"" ~ t[0] ~ "." ~ t[1] ~ ".dylib\""; // libatk-1.0.0.dylib
-      posixLibs ~= "\"" ~ lib ~ "\""; // libatk-1.0.so.0
-    }
+    // Split libraries into individual ones (comma separated), strip the lib prefix, change .so. to _
+    auto libsArray = sharedLibrary.splitter(',').map!(s => s.stripLeft("lib").splitter(".so.").join("_"));
 
     writer ~= [
-      "version(Windows)",
-      "private immutable LIBS = [" ~ winLibs.join(", ") ~ "];",
-      "else version(OSX)",
-      "private immutable LIBS = [" ~ osxLibs.join(", ") ~ "];",
-      "else",
-      "private immutable LIBS = [" ~ posixLibs.join(", ") ~ "];",
+      "private immutable LIBS = [\"" ~ libsArray.join("\", \"") ~ "\"];",
       ""
     ];
   }
