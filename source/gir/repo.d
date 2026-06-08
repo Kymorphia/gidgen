@@ -852,7 +852,7 @@ final class Repo : Base
       // libatk-1.0-0.dll;atk-1.0-0.dll;atk-1.dll
       winLibs ~= "\"" ~ t[0] ~ "-" ~ t[1] ~ ".dll;" ~ t[0][3 .. $] ~ "-" ~ t[1] ~ ".dll;" ~ t2[0][3 .. $] ~ ".dll\"";
       osxLibs ~= "\"" ~ t[0] ~ "." ~ t[1] ~ ".dylib\""; // libatk-1.0.0.dylib
-      posixLibs ~= "\"" ~ lib ~ "\""; // libatk-1.0.so.0
+      posixLibs ~= "\"" ~ lib ~ ";" ~ t[0] ~ ".so\""; // libatk-1.0.so.0;libatk-1.0.so
     }
 
     writer ~= [
