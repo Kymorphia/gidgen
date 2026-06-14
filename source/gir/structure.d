@@ -635,9 +635,11 @@ final class Structure : TypeNode
     dstring s = "\n/**\n    Create a `" ~ dName ~ "` boxed type.\n";
     bool paramsShown;
 
+    bool isFieldCandidate(Field f) { return f.active == Active.Enabled && f.writable && !f.arrayFields; }
+
     foreach (f; fields)
     {
-      if (f.active == Active.Enabled && f.writable)
+      if (isFieldCandidate(f))
       {
         if (!paramsShown)
         {
@@ -653,7 +655,7 @@ final class Structure : TypeNode
 
     foreach (f; fields)
     {
-      if (f.active == Active.Enabled && f.writable)
+      if (isFieldCandidate(f))
       {
         if (s[$ - 1] != '(')
           s ~= ", ";
@@ -677,7 +679,7 @@ final class Structure : TypeNode
     s ~= ") nothrow\n{\nsuper(gMalloc(" ~ cType ~ ".sizeof), Yes.Take);\n";
 
     foreach (f; fields)
-      if (f.active == Active.Enabled && f.writable)
+      if (isFieldCandidate(f))
         s ~= "this." ~ f.dName ~ " = " ~ f.dName ~ ";\n";
 
     return s ~ "}";
@@ -692,13 +694,10 @@ final class Structure : TypeNode
 
     foreach (f; fields)
     {
-      if (f.active != Active.Enabled)
+      if (f.active != Active.Enabled || f.arrayFields) // Skip inactive fields or those which are array lengths
         continue;
 
       assert(!f.directStruct, "Unsupported embedded structure field " ~ f.fullDName.to!string);
-
-      assert(f.containerType == ContainerType.None, "Unsupported structure field " ~ f.fullDName.to!string
-          ~ " with container type " ~ f.containerType.to!string);
 
       if (f.kind == TypeKind.Callback && !f.typeObject) // Callback function type directly defined in field?
         lines ~= ["", "/** Function alias for field `"~ f.dName ~"` */",
@@ -734,6 +733,12 @@ final class Structure : TypeNode
 
           lines ~= "return " ~ cPtr ~ "." ~ f.dName ~ ";";
           break;
+        case Container:
+          if (f.containerType == ContainerType.Array)
+            lines ~= constructFieldArrayGetter(f);
+          else
+            lines ~= constructFieldContainerGetter(f);
+          break;
         case String, StructAlias, Struct, Object, Boxed, Reffed, Interface:
           lines ~= "return cToD!(" ~ f.fullDType ~ ")(cast(void*)" ~ addrIfNeeded ~ cPtr ~ "." ~ f.dName ~ ");";
           break;
@@ -747,7 +752,7 @@ final class Structure : TypeNode
             lines ~= "return new " ~ f.fullDType ~ "(cast(" ~ f.cType.stripConst ~ ")" ~ cPtr ~ "." ~ f.dName
               ~ ", No.Take);";
           break;
-        case Unknown, Container, Namespace:
+        case Unknown, Namespace:
           throw new Exception(
               "Unhandled readable field property type '" ~ f.fullDType.to!string ~ "' (" ~ f.kind.to!string
               ~ ") for struct " ~ fullDType.to!string);
@@ -796,6 +801,86 @@ final class Structure : TypeNode
     }
 
     return lines;
+  }
+
+  // Construct an array field getter
+  private dstring[] constructFieldArrayGetter(Field field)
+  {
+    auto cPtr = "(cast(" ~ (cType.countStars > 0 ? cTypeRemPtr : cType) ~ "*)this._cPtr)";
+    auto elemType = field.elemTypes[0];
+    dstring[] lines;
+    dstring lengthStr;
+
+    if (field.lengthField) // Array has length field?
+      lengthStr = cPtr ~ "." ~ field.lengthField.dName;
+    else if (field.fixedSize != ArrayNotFixed) // Array is a fixed size?
+      lengthStr = field.fixedSize.to!dstring;
+    else if (field.zeroTerminated) // Array is zero terminated?
+    {
+      lines ~= ["uint len;", "if (" ~ cPtr ~ "." ~ field.dName ~ ")", "{", "for (; " ~ cPtr ~ "."
+        ~ field.dName ~ "[len] " ~ (elemType.cType.endsWith("*") ? "!is null"d : "!= 0")
+        ~ "; len++)", "{", "}", "}", ""];
+      lengthStr = "len";
+    }
+    else
+      assert(0); // This should be prevented by verify()
+
+    final switch (elemType.kind) with (TypeKind)
+    {
+      case Basic, BasicAlias, Enum, Flags, StructAlias, Struct, Pointer:
+        if (field.dType == "bool")
+          lines ~= ["auto _retval = new bool[](" ~ lengthStr ~ ");", "foreach (i; 0 .. " ~ lengthStr ~ ")",
+            "_retval[i] = " ~ cPtr ~ "." ~ field.dName ~ "[i];", "return _retval;"];
+        else
+          lines ~= "return " ~ cPtr ~ "." ~ field.dName ~ "[0 .. " ~ lengthStr ~ "].dup;";
+        break;
+      case String:
+        lines ~= ["auto _retval = new string[](" ~ lengthStr ~ ");", "foreach (i; 0 .. " ~ lengthStr ~ ")",
+          "_retval[i] = " ~ cPtr ~ "." ~ field.dName ~ "[i].fromCString;", "return _retval;"];
+        break;
+      case Opaque, Wrap, Boxed, Reffed:
+        lines ~= ["auto _retval = new " ~ field.fullDType ~ "(" ~ lengthStr ~ ");",
+          "foreach (i; 0 .. " ~ lengthStr ~ ")", "_retval[i] = new " ~ elemType.fullDType ~ "(cast(void*)" ~ cPtr ~ "."
+            ~ field.dName ~ "[i], No.Take);", "return _retval;"];
+        break;
+      case Object, Interface:
+        addImport("gobject.object");
+
+        lines ~= ["auto _retval = new " ~ field.fullDType ~ "(" ~ lengthStr ~ ");",
+          "foreach (i; 0 .. " ~ lengthStr ~ ")", "_retval[i] = gobject.object.ObjectWrap._getDObject!("
+            ~ elemType.fullDType ~ ")(cast(void*)" ~ cPtr ~ "." ~ field.dName ~ "[i], No.Take);", "return _retval;"];
+        break;
+      case Unknown, Callback, Container, Namespace:
+        assert(0, "Unsupported field array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType.kind.to!string
+            ~ ") for " ~ field.fullDName.to!string);
+    }
+
+    return lines;
+  }
+
+  // Construct a container field getter (except array)
+  private dstring[] constructFieldContainerGetter(Field field)
+  {
+    auto cPtr = "(cast(" ~ (cType.countStars > 0 ? cTypeRemPtr : cType) ~ "*)this._cPtr)";
+    dstring toDParams;
+
+    final switch (field.containerType) with(ContainerType)
+    {
+      case ByteArray:
+        break;
+      case ArrayG, PtrArray, List, SList:
+        toDParams = field.elemTypes[0].fullDType;
+        break;
+      case HashTable:
+        toDParams = field.elemTypes[0].fullDType ~ ", " ~ field.elemTypes[1].fullDType;
+        break;
+      case Array, None:
+        assert(0, "Unsupported container type '" ~ field.containerType.to!string
+          ~ "' for " ~ field.fullDName.to!string);
+    }
+
+    return ["return g" ~ field.containerType.to!dstring ~ "ToD!(" ~ toDParams ~ ")("
+      ~ cPtr ~ "." ~ field.dName ~ ");"];
   }
 
   /// Property type used with genPropDocs

@@ -44,7 +44,7 @@ class Suggester
           continue outer;
 
       // Zero terminate string arrays
-      if (typeNode && typeNode.containerType == ContainerType.Array && typeNode.lengthParamIndex == ArrayLengthUnset
+      if (typeNode && typeNode.containerType == ContainerType.Array && typeNode.arrayLengthIndex == ArrayLengthUnset
           && typeNode.fixedSize == ArrayNotFixed && !typeNode.zeroTerminated
           && typeNode.elemTypes.length > 0 && typeNode.elemTypes[0].kind == TypeKind.String)
         addSug(typeNode.repo, "string-array-null-term", "//!set " ~ typeNode.xmlSelector.to!string

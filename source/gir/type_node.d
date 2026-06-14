@@ -232,7 +232,7 @@ class TypeNode : Base
 
     if (zeroTerminated)
     {
-      if (lengthParamIndex != ArrayLengthUnset)
+      if (arrayLengthIndex != ArrayLengthUnset)
         return "length-zero";
       else if (fixedSize != ArrayNotFixed)
         return "fixed-zero";
@@ -240,9 +240,9 @@ class TypeNode : Base
         return "zero";
     }
 
-    if (lengthParamIndex == ArrayLengthCaller)
+    if (arrayLengthIndex == ArrayLengthCaller)
       return "caller";
-    else if (lengthParamIndex != ArrayLengthUnset)
+    else if (arrayLengthIndex != ArrayLengthUnset)
       return "length";
     else if (fixedSize != ArrayNotFixed)
       return "fixed";
@@ -304,11 +304,11 @@ class TypeNode : Base
           fixedSize = ArrayNotFixed;
 
         if (auto pLength = "length" in arr.attrs)
-          lengthParamIndex = (*pLength).to!int;
+          arrayLengthIndex = (*pLength).to!int;
         else if (arr.get("caller-length", "0") == "1")
-          lengthParamIndex = ArrayLengthCaller;
+          arrayLengthIndex = ArrayLengthCaller;
         else
-          lengthParamIndex = ArrayLengthUnset;
+          arrayLengthIndex = ArrayLengthUnset;
       }
 
       if (_dType == "GLib.Array")
@@ -369,13 +369,13 @@ class TypeNode : Base
     if (containerType == ContainerType.Array)
     {
       if (elemTypes.length == 1 && elemTypes[0].cType == "char"
-        && lengthParamIndex != ArrayLengthUnset) // If this is a char[] array, set element type to Basic char, but FuncWriter will consider it as a string.
+        && arrayLengthIndex != ArrayLengthUnset) // If this is a char[] array, set element type to Basic char, but FuncWriter will consider it as a string.
       {
         elemTypes[0].kind = TypeKind.Basic;
         elemTypes[0]._dType = "char";
         info("'" ~ fullDName.to!string ~ "' using string for char array with length");
       }
-      else if (lengthParamIndex != ArrayLengthUnset && !elemTypes.empty && elemTypes[0]._dType == "ubyte"
+      else if (arrayLengthIndex != ArrayLengthUnset && !elemTypes.empty && elemTypes[0]._dType == "ubyte"
         && cType.stripConst.startsWith("char")) // If there is a length parameter, dType is "ubyte", and array type uses char - treat it as a ubyte array
       {
         info("Changing array cType from " ~ cType.to!string ~ " to ubyte for " ~ fullDName.to!string);
@@ -519,7 +519,7 @@ class TypeNode : Base
       if (elemTypes.empty)
         throw new Exception("Array type '" ~ cType.to!string ~ "' has no element type");
 
-      if (lengthParamIndex == ArrayLengthUnset && fixedSize == ArrayNotFixed && !zeroTerminated)
+      if (arrayLengthIndex == ArrayLengthUnset && fixedSize == ArrayNotFixed && !zeroTerminated)
       {
         if (elemTypes[0].kind != TypeKind.String)
           throw new Exception("Array of type '" ~ elemTypes[0]._dType.to!string ~ "' has indeterminate length");
@@ -626,12 +626,6 @@ class TypeNode : Base
 
     js.jsonSetNonDefault("ownership", ownership.to!string, Ownership.Unset.to!string);
 
-    if (lengthParam)
-      js["lengthParam"] = lengthParam.fullDName;
-
-    if (lengthReturn)
-      js["lengthReturn"] = lengthReturn.fullDName;
-
     js.jsonSetNonDefault("unresolvedFlags", cast(uint)unresolvedFlags);
 
     if (containerType != ContainerType.None)
@@ -639,7 +633,7 @@ class TypeNode : Base
       js["containerType"] = containerType.to!string;
       js["zeroTerminated"] = zeroTerminated;
       js.jsonSetNonDefault("fixedSize", fixedSize, ArrayNotFixed);
-      js.jsonSetNonDefault("lengthParamIndex", lengthParamIndex, ArrayLengthUnset);
+      js.jsonSetNonDefault("arrayLengthIndex", arrayLengthIndex, ArrayLengthUnset);
     }
   }
 
@@ -653,20 +647,18 @@ class TypeNode : Base
   TypeNode[] elemTypes; /// Container element types (2 for HashTable, 1 for other container types)
   Ownership ownership; /// Ownership of passed value (return values, parameters, and properties)
   ContainerType containerType; /// The type of container or None
-  Param lengthParam; /// Set to a length parameter for arrays
-  ReturnValue lengthReturn; /// Set to length return value for arrays
   UnresolvedFlags unresolvedFlags; /// Flags of what type references are unresolved (0 if none)
   bool zeroTerminated; /// true if array is zero terminated
   int fixedSize = ArrayNotFixed; /// Non-zero if array is a fixed size
-  int lengthParamIndex = ArrayLengthUnset; /// >= 0 if a length parameter index is set, -1 (ArrayLengthReturn) if length is return value (GIR non-standard extension)
+  int arrayLengthIndex = ArrayLengthUnset; /// >= 0 if an array length index is set, -1 (ArrayLengthReturn) if length is return value (GIR non-standard extension)
 
   static bool dumpSelectorWarnings; /// Enable dumping of XML selectors for warnings
 }
 
 enum ArrayNotFixed = 0; /// Value for TypeNode.fixedSize which indicates size is not fixed
 
-enum ArrayLengthReturn = -1; /// Value used for TypeNode.lengthParamIndex which indicates no length parameter
-enum ArrayLengthUnset = -2; /// Value used for TypeNode.lengthParamIndex which indicates no length parameter
+enum ArrayLengthReturn = -1; /// Value used for TypeNode.arrayLengthIndex which indicates a function return value is an array length (GIR non-standard extension)
+enum ArrayLengthUnset = -2; /// Value used for TypeNode.arrayLengthIndex which indicates no length parameter
 enum ArrayLengthCaller = -3; /// Caller is responsible for defining the proper length (callerAllocates out/inout buffer)
 
 /// Ownership transfer of a type
@@ -712,6 +704,17 @@ enum TypeKind
 bool typeKindIsStructured(TypeKind kind)
 {
   with (TypeKind) return kind.among(StructAlias, Struct, Pointer, Opaque, Wrap, Boxed, Reffed, Object, Interface) != 0;
+}
+
+/**
+ * Check if the value of a given TypeKind enum is a scalar (is not normally passed as a pointer in C).
+ * Params:
+ *   kind = The type kind
+ * Returns: true if the value in C is a scalar type
+ */
+bool typeKindIsScalar(TypeKind kind)
+{
+  with (TypeKind) return kind.among(Basic, BasicAlias, Enum, Flags) != 0;
 }
 
 /// Container type
@@ -1014,13 +1017,13 @@ unittest
   
   // Test: array with length parameter
   node.containerType = ContainerType.Array;
-  node.lengthParamIndex = 0;
+  node.arrayLengthIndex = 0;
   node.zeroTerminated = false;
   node.fixedSize = ArrayNotFixed;
   assert(node.arraySizeStr == "length");
   
   // Test: fixed-size array
-  node.lengthParamIndex = ArrayLengthUnset;
+  node.arrayLengthIndex = ArrayLengthUnset;
   node.fixedSize = 10;
   assert(node.arraySizeStr == "fixed");
   
@@ -1030,22 +1033,22 @@ unittest
   assert(node.arraySizeStr == "zero");
   
   // Test: length + zero-terminated
-  node.lengthParamIndex = 1;
+  node.arrayLengthIndex = 1;
   assert(node.arraySizeStr == "length-zero");
   
   // Test: fixed + zero-terminated
-  node.lengthParamIndex = ArrayLengthUnset;
+  node.arrayLengthIndex = ArrayLengthUnset;
   node.fixedSize = 5;
   assert(node.arraySizeStr == "fixed-zero");
   
   // Test: caller-length
   node.fixedSize = ArrayNotFixed;
   node.zeroTerminated = false;
-  node.lengthParamIndex = ArrayLengthCaller;
+  node.arrayLengthIndex = ArrayLengthCaller;
   assert(node.arraySizeStr == "caller");
   
   // Test: unknown size
-  node.lengthParamIndex = ArrayLengthUnset;
+  node.arrayLengthIndex = ArrayLengthUnset;
   assert(node.arraySizeStr == "unknown");
 }
 

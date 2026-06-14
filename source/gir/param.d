@@ -2,6 +2,7 @@ module gir.param;
 
 import defs;
 import gir.func;
+import gir.return_value;
 import gir.structure;
 import gir.type_node;
 import std_includes;
@@ -119,21 +120,21 @@ final class Param : TypeNode
       elemTypes.length = 0;
     }
 
-    if (lengthParamIndex >= 0)
+    if (arrayLengthIndex >= 0)
     {
       if (func.hasInstanceParam) // Instance parameters don't count towards index
-        lengthParamIndex++;
+        arrayLengthIndex++;
 
-      if (lengthParamIndex < func.params.length)
+      if (arrayLengthIndex < func.params.length)
       {
-        lengthParam = func.params[lengthParamIndex];
+        lengthParam = func.params[arrayLengthIndex];
 
         // gidgen extension which allows other zero terminated arrays to be used for length, should not have lengthArrayParams assigned for the reference array
         if (lengthParam.containerType != ContainerType.Array)
           lengthParam.lengthArrayParams ~= this;
       }
     }
-    else if (lengthParamIndex == ArrayLengthReturn) // Array parameter uses return value as length
+    else if (arrayLengthIndex == ArrayLengthReturn) // Array parameter uses return value as length
     {
       lengthReturn = func.returnVal;
       lengthReturn.lengthArrayParams ~= this;
@@ -280,10 +281,10 @@ final class Param : TypeNode
 
     if (containerType == ContainerType.Array) with (ParamDirection)
     {
-      if (lengthParamIndex == ArrayLengthReturn && (!lengthReturn || lengthReturn.kind != TypeKind.Basic))
+      if (arrayLengthIndex == ArrayLengthReturn && (!lengthReturn || lengthReturn.kind != TypeKind.Basic))
         throw new Exception("Invalid return value for array length");
 
-      if (lengthParamIndex >= 0 && !lengthParam) // Array has invalid length argument?
+      if (arrayLengthIndex >= 0 && !lengthParam) // Array has invalid length argument?
         throw new Exception("Invalid array length parameter index");
 
       if (direction == In)
@@ -425,6 +426,8 @@ final class Param : TypeNode
   bool isLengthReturnArray; /// true if this is a length parameter for a return array
   bool isOptional; /// Set to true if GIR optional is set and all D params following are also isOptional
   Param[] lengthArrayParams; /// Array parameters which use this one as a length
+  Param lengthParam; /// If this is an array parameter, this can be set to an array length parameter
+  ReturnValue lengthReturn; /// Set to length return value for arrays
   ParamDirection direction; /// Parameter direction
   bool nullable; /// Nullable pointer (treated as "optional"), null is always passed as is to C functions
   bool optional; /// Optional pointer

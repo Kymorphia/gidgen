@@ -643,7 +643,7 @@ class FuncWriter
         ~ param.dName ~ "++)", "{", "}", "}", ""];
       lengthStr = "_len" ~ param.dName;
     }
-    else if (param.lengthParamIndex != ArrayLengthCaller)
+    else if (param.arrayLengthIndex != ArrayLengthCaller)
       assert(0); // This should be prevented by verify()
 
     final switch (elemType.kind) with (TypeKind)

@@ -203,14 +203,14 @@ final class Func : TypeNode
 
     if (returnVal)
     {
-      if (returnVal.lengthParamIndex >= 0) // Return array has a length argument?
+      if (returnVal.arrayLengthIndex >= 0) // Return array has a length argument?
       {
         if (hasInstanceParam) // Array length parameter indexes don't count instance parameters
-          returnVal.lengthParamIndex++;
+          returnVal.arrayLengthIndex++;
 
-        if (returnVal.lengthParamIndex < params.length)
+        if (returnVal.arrayLengthIndex < params.length)
         {
-          returnVal.lengthParam = params[returnVal.lengthParamIndex];
+          returnVal.lengthParam = params[returnVal.arrayLengthIndex];
           returnVal.lengthParam.isLengthReturnArray = true;
         }
       }
@@ -330,7 +330,7 @@ final class Func : TypeNode
 
     if (returnVal)
     {
-      if (returnVal.lengthParamIndex >= 0)
+      if (returnVal.arrayLengthIndex >= 0)
       {
         if (!returnVal.lengthParam) // Return array has invalid length argument?
         {

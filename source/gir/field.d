@@ -77,6 +77,18 @@ final class Field : TypeNode
     }
     else if (kind == TypeKind.Callback)
       callback = cast(Func)typeObject;
+
+    if (arrayLengthIndex >= 0) // Resolve array field index reference
+    {
+      if (auto st = getParentByType!Structure)
+      {
+        if (arrayLengthIndex < st.fields.length)
+        {
+          lengthField = st.fields[arrayLengthIndex];
+          lengthField.arrayFields ~= this;
+        }
+      }
+    }
   }
 
   protected override void resolve()
@@ -121,14 +133,30 @@ final class Field : TypeNode
     if (directStruct)
       throw new Exception("Embedded structure fields not supported");
 
-    if (containerType != ContainerType.None)
-      throw new Exception("Container type '" ~ containerType.to!string ~ "' not supported");
+    if (containerType == ContainerType.Array)
+    {
+      auto isScalar = typeKindIsScalar(elemTypes[0].kind);
+      auto elemStars = elemTypes[0].cType.countStars;
+
+      if (arrayLengthIndex >= 0 && (!lengthField || lengthField.cType.countStars > 0)) // Array has invalid length argument?
+        throw new Exception("Invalid array length parameter");
+
+      if (starCount < 1 || (isScalar && starCount > 1) || (!isScalar && starCount > 2))
+        throw new Exception("Array has unexpected C type '" ~ cType.to!string ~ "'");
+
+      if ((isScalar && elemStars > 0) || (!isScalar && elemStars > 1))
+        throw new Exception("Array has unexpected C element type '" ~ elemTypes[0].cType.to!string ~ "'");
+    }
+    else if (containerType != ContainerType.None && starCount != 1)
+      throw new Exception("Invalid container field with type '" ~ containerType.to!string ~ "' and C type '"
+        ~ cType.to!string);
 
     if (kind.among(TypeKind.Unknown, TypeKind.Namespace))
       throw new Exception("Unhandled type '" ~ dType.to!string ~ "' (" ~ kind.to!string ~ ")");
 
     with (TypeKind) if (writable
-      && ((kind.among(Struct, StructAlias) && starCount != 0)  // Writable structure pointer fields are not supported
+      && ((kind == Container) // Writable container fields are not currently supported
+        || (kind.among(Struct, StructAlias) && starCount != 0)  // Writable structure pointer fields are not supported
         || kind.among(Pointer, Opaque, Wrap) // Unsupported structure types (unknown memory allocation methods)
         || (kind == Boxed && starCount == 0))) // Non-pointer boxed types not currently supported
     {
@@ -164,6 +192,8 @@ final class Field : TypeNode
   private dstring _name; /// Field name
   Func callback; /// For callback fields (embedded callback type or alias reference)
   Structure directStruct; /// Directly embedded structure or union
+  Field lengthField; /// For array fields to indicate what other field is the array length
+  Field[] arrayFields; /// Array fields which this field is a length for
   bool readable; /// Readable field?
   bool writable; /// Writable field?
   bool introspectable = true; /// Is field introspectable?

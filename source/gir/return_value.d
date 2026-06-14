@@ -57,5 +57,6 @@ final class ReturnValue : TypeNode
   }
 
   bool nullable; /// Pointer can be null
+  Param lengthParam; /// If this is an array return value, this can be set to an array length parameter
   Param[] lengthArrayParams; /// Array parameters which use return value as length
 }
