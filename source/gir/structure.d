@@ -1070,12 +1070,10 @@ final class Structure : TypeNode
 
     if (moduleType == ModuleType.Normal)
     {
-      auto takeStr = ctorFunc ? ctorFunc.returnVal.fullOwnerFlag : "No";
-
       writer ~= ["", "/// Fluent builder for [" ~ fullDType ~ "]", "final class " ~ dType ~ "GidBuilder : "
         ~ dType ~ "GidBuilderImpl!" ~ dType ~ "GidBuilder", "{", "/**", "    Create object from builder.",
         "    Returns: New object", "*/", dType ~ " build() nothrow", "{", "return new "
-        ~ dType ~ "(cast(void*)createGObject(" ~ dType ~ "._getGType), " ~ takeStr ~ ".Take);", "}", "}"];
+        ~ dType ~ "(cast(void*)createGObject(" ~ dType ~ "._getGType), Yes.Take);", "}", "}"];
     }
   }
 
