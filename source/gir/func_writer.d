@@ -42,7 +42,7 @@ class FuncWriter
 
     if (func.throws)
     { // postCall for exceptions is order sensitive and must be handled before output and return processing
-      postCall ~= ["if (_err)", "throw new " ~ func.errorDomain ~ "(_err);"];
+      postCall ~= ["if (_err)", "throw new " ~ func.errorDomain ~ "(_err, Yes.Take);"];
       addImport("glib.error");
     }
 
