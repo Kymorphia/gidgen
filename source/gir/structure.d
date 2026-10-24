@@ -676,7 +676,7 @@ final class Structure : TypeNode
       }
     }
 
-    s ~= ") nothrow\n{\nsuper(gMalloc(" ~ cType ~ ".sizeof), Yes.Take);\n";
+    s ~= ") nothrow\n{\nsuper(boxedNew!" ~ cType ~ "(_getGType), Yes.Take);\n";
 
     foreach (f; fields)
       if (isFieldCandidate(f))

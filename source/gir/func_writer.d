@@ -161,8 +161,13 @@ class FuncWriter
       case StructAlias, Struct:
         preCall ~= retVal.cType ~ " _cretval;";
         call ~= "_cretval = ";
-        postCall ~= [retVal.fullDType ~ " _retval;", "if (_cretval)", "_retval = *cast(" ~ retVal.fullDType
-          ~ "*)_cretval;"];
+        postCall ~= [retVal.fullDType ~ " _retval;", "if (_cretval)"];
+
+        if (retVal.ownership == Ownership.Full)
+          postCall ~= ["{", "_retval = *cast(" ~ retVal.fullDType ~ "*)_cretval;",
+            "cValueFree!(" ~ retVal.fullDType ~ ")(_cretval);", "}"];
+        else
+          postCall ~= ["_retval = *cast(" ~ retVal.fullDType ~ "*)_cretval;"];
         break;
       case Callback:
         call ~= retVal.fullDType ~ "* _retval = ";
