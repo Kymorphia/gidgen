@@ -100,6 +100,9 @@ final class Property : TypeNode
     if (kind == TypeKind.Unknown)
       throw new Exception("Unresolved type for property");
 
+    if (kind == TypeKind.Callback)
+      throw new Exception("Unsupported property of type " ~ kind.to!string);
+
     if (ownership != Ownership.None && ownership != Ownership.Unset)
       throw new Exception("Property ownership '" ~ ownership.to!string ~ "' not supported");
 
