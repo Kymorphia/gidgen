@@ -362,6 +362,13 @@ final class Func : TypeNode
       if (!pa.resolved)
         disableFunc(__FILE__, __LINE__, "Unresolved parameter '" ~ pa.name.to!string ~ "' of type '" ~ pa.dType.to!string ~ "'", pa);
 
+      with (TypeKind) if (funcType == FuncType.Callback)
+      {
+        if (pa.direction == ParamDirection.InOut && pa.kind.among(Opaque, Wrap, Boxed, Reffed, Object, Interface))
+          disableFunc(__FILE__, __LINE__, "Unsupported InOut param '" ~ pa.name.to!string ~ "' of type '"
+            ~ pa.dType.to!string ~ "'", pa);
+      }
+
       // Resolve parameter type aliases to see if any are disabled and disable parameter if so
       for (TypeNode tn = pa.typeObject; tn; tn = typeRepo.typeObjectHash.get((cast(Alias)tn).dType, null))
       {

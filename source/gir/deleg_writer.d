@@ -314,11 +314,16 @@ class DelegWriter
               ~ param.fullOwnerFlag ~ ".Take) : null");
         }
         else if (param.direction == ParamDirection.Out)
-        { // Creates a temporary D wrapper around the C pointer. For optimization, consider allowing
-          // direct use of C structure in D object when the lifetime is guaranteed.
-          preCall ~= "auto _" ~ param.dName ~ " = new " ~ param.fullDType ~ "(" ~ param.dName ~ ", No.Take);";
+        {
+          preCall ~= param.fullDType ~ " _" ~ param.dName ~ ";";
           addCallParam("_" ~ param.dName);
-          postCall ~= "*" ~ param.dName ~ " = *cast(" ~ param.cType ~ ")_" ~ param.dName ~ "._cPtr;";
+
+          if (param.cTypeRemPtr.endsWith('*')) // Out pointer value?
+            postCall ~= "*" ~ param.dName ~ " = _" ~ param.dName ~ " ? cast(" ~ param.cTypeRemPtr ~ ")_" ~ param.dName
+              ~ "._cPtr(" ~ param.fullOwnerFlag ~ ".Dup) : null;";
+          else // Out pass by value: if the D Out value is null, leave the C value struct alone (assumes the caller initialized it or knows when the value is valid)
+            postCall ~= "if (_" ~ param.dName ~ ")\n{\n auto p_ = _" ~ param.dName ~ "._cPtr(Yes.Dup);\n*" ~ param.dName
+              ~ " = *cast(" ~ param.cType ~ ")p_;\ngFree(p_);\n}\n";
         }
         else // InOut
           // InOut parameters for structured types (Opaque, Wrap, Boxed, Reffed, Object, Interface)

@@ -118,7 +118,7 @@ final class Structure : TypeNode
   {
     if (structType == StructType.Record || structType == StructType.Union)
     {
-      if (opaque || pointer)
+      if (opaque || pointer || freeFunction)
       {
         if (!glibGetType.empty)
           return TypeKind.Boxed;
@@ -612,8 +612,6 @@ final class Structure : TypeNode
     if (kind == TypeKind.Opaque && freeFunction)
       writer ~= ["", "~this() nothrow", "{", "if (owned && _cInstancePtr)",
         "cValueFreeInMainContext(cast(void*)_cInstancePtr, cast(GDestroyNotify)&" ~ freeFunction ~ ");", "}"];
-    else if (kind == TypeKind.Wrap && freeFunction)
-      writer ~= ["", "~this() nothrow", "{", freeFunction ~ "(&_cInstance);", "}"];
 
     if (kind == TypeKind.Opaque)
       writer ~= ["", "/** */", "void* _cPtr() nothrow", "{", "return cast(void*)_cInstancePtr;", "}"];
@@ -624,7 +622,8 @@ final class Structure : TypeNode
       writer ~= ["", "/** */", "void* _cPtr(Flag!\"Dup\" dup = No.Dup) nothrow", "{",
         "return dup ? boxCopy : _cInstancePtr;", "}"];
     else if (kind == TypeKind.Wrap)
-      writer ~= ["", "/** */", "void* _cPtr() nothrow", "{", "return cast(void*)&_cInstance;", "}"];
+      writer ~= ["", "/** */", "void* _cPtr(Flag!\"Dup\" dup = No.Dup) nothrow", "{",
+        "return cast(void*)(dup ? mallocDup(&_cInstance) : &_cInstance);", "}"];
 
     if (kind.among(TypeKind.Struct, TypeKind.Boxed, TypeKind.Object)
         || (kind == TypeKind.Interface && moduleType == ModuleType.Iface))
