@@ -604,13 +604,14 @@ final class Structure : TypeNode
       writer ~= ["_cInstance = *cast(" ~ cTypeRemPtr ~ "*)ptr;", "", "if (take)", "gFree(ptr);", "}"];
     else if (kind == TypeKind.Reffed && !parentStruct)
       writer ~= ["_cInstancePtr = cast(" ~ cTypeRemPtr ~ "*)ptr;", "", "if (!take && ptr)", glibRefFunc
-        ~ "(_cInstancePtr);", "}", "", "~this() nothrow", "{", "if (_cInstancePtr)", glibUnrefFunc ~ "(_cInstancePtr);",
-        "}", ""];
+        ~ "(_cInstancePtr);", "}", "", "~this() nothrow", "{", "if (_cInstancePtr)",
+        "cValueFreeInMainContext(cast(void*)_cInstancePtr, cast(GDestroyNotify)&" ~ glibUnrefFunc ~ ");", "}", ""];
     else if (kind == TypeKind.Reffed && parentStruct)
       writer ~= ["super(cast(" ~ parentStruct.cType ~ "*)ptr, take);", "}"];
 
     if (kind == TypeKind.Opaque && freeFunction)
-      writer ~= ["", "~this() nothrow", "{", "if (owned && _cInstancePtr)", freeFunction ~ "(_cInstancePtr);", "}"];
+      writer ~= ["", "~this() nothrow", "{", "if (owned && _cInstancePtr)",
+        "cValueFreeInMainContext(cast(void*)_cInstancePtr, cast(GDestroyNotify)&" ~ freeFunction ~ ");", "}"];
     else if (kind == TypeKind.Wrap && freeFunction)
       writer ~= ["", "~this() nothrow", "{", freeFunction ~ "(&_cInstance);", "}"];
 
