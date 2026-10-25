@@ -497,13 +497,46 @@ class FuncWriter
           addCallParam(param.dName ~ " ? cast(" ~ param.cType ~ ")" ~ param.dName ~ "._cPtr"
             ~ (!param.kind.among(TypeKind.Opaque, TypeKind.Wrap) ? ("(" ~ param.fullOwnerFlag ~ ".Dup)") : "") ~ " : null");
         }
-        else if (param.direction == ParamDirection.Out)
+        else // Out
         {
           addDeclParam("out " ~ param.fullDType ~ " " ~ param.dName);
-          preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";";
-          addCallParam("&_" ~ param.dName);
-          postCall ~= param.dName ~ " = " ~ "new " ~ param.fullDType ~ "(cast(void*)"
-            ~ (param.cTypeRemPtr.endsWith('*') ? "_"d : "&_"d) ~ param.dName ~ ", " ~ param.fullOwnerFlag ~ ".Take);";
+
+          auto st = cast(Structure)param.typeObject;
+          if (st && st.pointer) // Pointer typedef (GdkAtom etc), C param is effectively **
+          {
+            preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";";
+            addCallParam("&_" ~ param.dName);
+            postCall ~= param.dName ~ " = new " ~ param.fullDType ~ "(cast(void*)_" ~ param.dName ~ ", "
+              ~ param.fullOwnerFlag ~ ".Take);";
+          }
+          else if (param.callerAllocates && !param.cTypeRemPtr.endsWith('*')) // Out, caller allocates, and struct pass by value
+          {
+            if (param.kind == Boxed)
+            {
+              preCall ~= "auto _" ~ param.dName ~ " = boxedNew!" ~ param.cTypeRemPtr ~ "(" ~ param.fullDType
+                ~ "._getGType);";
+              addCallParam("_" ~ param.dName);
+              postCall ~= param.dName ~ " = " ~ "new " ~ param.fullDType ~ "(cast(void*)_" ~ param.dName
+                ~ ", Yes.Take);";
+            }
+            else if (param.kind == Wrap)
+            {
+              preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";";
+              addCallParam("&_" ~ param.dName);
+              postCall ~= param.dName ~ " = " ~ "new " ~ param.fullDType ~ "(cast(void*)&_" ~ param.dName
+                ~ ", No.Take);";
+            }
+            else
+              assert(0, "Unsupported caller allocates out param of type '" ~ param.fullDType.to!string ~ "' ("
+                ~ param.kind.to!string ~ ") for " ~ param.fullDName.to!string);
+          }
+          else // Out pointer to struct
+          {
+            preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";";
+            addCallParam("&_" ~ param.dName);
+            postCall ~= param.dName ~ " = " ~ "new " ~ param.fullDType ~ "(cast(void*)_" ~ param.dName ~ ", "
+              ~ param.fullOwnerFlag ~ ".Take);";
+          }
         }
         break;
       case Interface:
