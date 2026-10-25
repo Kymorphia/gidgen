@@ -50,8 +50,11 @@ class FuncWriter
     foreach (param; func.params)
     {
       if (param.kind == TypeKind.Callback && !param.isDestroy)
-      { // Use a static delegate pointer if there is no closure data argument
-        auto staticDelegatePtr = !param.typeObjectRoot || !(cast(Func)param.typeObjectRoot).closureParam;
+      { // Use a static delegate pointer if there is no closure data argument and scope is Call
+        auto staticDelegatePtr = (!param.typeObjectRoot || !(cast(Func)param.typeObjectRoot).closureParam);
+
+        assert(!staticDelegatePtr || param.scope_ == ParamScope.Call,
+          "Static delegate path requires Call scope (Param.verify should have rejected this)");
 
         if (staticDelegatePtr)
           preCall ~= ["static " ~ param.fullDType ~ " _static_" ~ param.dName ~ ";", ""];
@@ -64,7 +67,7 @@ class FuncWriter
           preCall ~= "_static_" ~ param.dName ~ " = " ~ param.dName ~ ";";
           postCall ~= "_static_" ~ param.dName ~ " = null;"; // Clear the delegate pointer to allow it to be collected
         }
-     }
+      }
     }
 
     processReturn();
