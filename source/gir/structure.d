@@ -6,6 +6,7 @@ import gir.base;
 import gir.field;
 import gir.func;
 import gir.func_writer;
+import gir.param;
 import gir.property;
 import gir.repo;
 import gir.signal_writer;
@@ -341,6 +342,21 @@ final class Structure : TypeNode
       if (f.active != Active.Enabled)
         continue;
 
+      // Fields of wrapped structures are written as property methods, disable fields which conflict with a method name
+      with (TypeKind) if (kind.among(Wrap, Boxed, Reffed))
+      {
+        if (auto fn = cast(Func)dMethodHash.get(f.dName, null))
+        {
+          if (fn.active == Active.Enabled)
+          {
+            f.active = Active.Ignored;
+            infoWithLoc(__FILE__, __LINE__, f.xmlLocation, "Ignoring field '" ~ f.fullDName.to!string
+              ~ "' which conflicts with an identically named method");
+            continue;
+          }
+        }
+      }
+
       try
         f.doVerify;
       catch (Exception e)
@@ -566,7 +582,11 @@ final class Structure : TypeNode
 
     // Boxed structures with defined structures can be allocated, add ctor without args
     if (kind == TypeKind.Boxed && !ctorFunc && !opaque && !pointer && !fields.empty)
-      writer ~= writeBoxedCtor;
+      writer ~= writeBoxedOrWrapCtor!"boxed";
+
+    // Create constructors for Wrap structures without a constructor
+    if (kind == TypeKind.Wrap && !ctorFunc && !fields.empty)
+      writer ~= writeBoxedOrWrapCtor!"wrap";
 
     if (kind == TypeKind.Opaque)
       writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take) nothrow", "{"];
@@ -630,9 +650,9 @@ final class Structure : TypeNode
   }
 
   // Write a Boxed type constructor with all fields as parameters with default values (optional)
-  private dstring writeBoxedCtor()
+  private dstring writeBoxedOrWrapCtor(string BoxedOrWrap)()
   {
-    dstring s = "\n/**\n    Create a `" ~ dName ~ "` boxed type.\n";
+    dstring s = "\n/**\n    Create a `" ~ dName ~ "` " ~ BoxedOrWrap ~ " type.\n";
     bool paramsShown;
 
     bool isFieldCandidate(Field f) { return f.active == Active.Enabled && f.writable && !f.arrayFields; }
@@ -676,7 +696,10 @@ final class Structure : TypeNode
       }
     }
 
-    s ~= ") nothrow\n{\nsuper(boxedNew!" ~ cType ~ "(_getGType), Yes.Take);\n";
+    s ~= ") nothrow\n{\n";
+    
+    static if (BoxedOrWrap == "boxed")
+      s ~= "super(boxedNew!" ~ cType ~ "(_getGType), Yes.Take);\n";
 
     foreach (f; fields)
       if (isFieldCandidate(f))
@@ -1015,7 +1038,23 @@ final class Structure : TypeNode
         if (!setter)
           addImport("gobject.object");
 
-        lines ~= ["{", setter ? (setter.dName ~ "(propval);") : ("gobject.object.ObjectWrap.setProperty!("
+        // Simple structure setter parameters which are nullable are passed by pointer
+        dstring setterAddr;
+        if (setter)
+        {
+          with (TypeKind) foreach (sp; setter.params)
+          {
+            if (!sp.isInstanceParam && sp.isDParam)
+            {
+              if (sp.kind.among(Struct, StructAlias) && sp.direction == ParamDirection.In
+                  && (sp.nullable || sp.optional) && sp.cType.countStars == 1)
+                setterAddr = "&";
+              break;
+            }
+          }
+        }
+
+        lines ~= ["{", setter ? (setter.dName ~ "(" ~ setterAddr ~ "propval);") : ("gobject.object.ObjectWrap.setProperty!("
           ~ p.fullDType ~ ")(\"" ~ p.name ~ "\", propval);"), "}"];  // Use setProperty if no setter method
       }
       else

@@ -448,15 +448,11 @@ class FuncWriter
           assert(0, "InOut string arguments not supported");
 
         break;
-      case StructAlias:
-        addDeclParam(param.directionStr ~ param.fullDType ~ " " ~ param.dName);
-        addCallParam("&" ~ param.dName);
-        break;
-      case Struct:
-        addDeclParam(param.directionStr ~ param.fullDType ~ " " ~ param.dName);
-
+      case Struct, StructAlias:
         if (param.direction != ParamDirection.In)
         {
+          addDeclParam(param.directionStr ~ param.fullDType ~ " " ~ param.dName);
+
           if (!param.callerAllocates)
           {
             preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";";
@@ -466,8 +462,16 @@ class FuncWriter
           else
             addCallParam("cast(" ~ param.cType ~ ")&" ~ param.dName);
         }
+        else if ((param.nullable || param.optional) && param.cType.countStars == 1)
+        {
+          addDeclParam(param.fullDType ~ "* " ~ param.dName);
+          addCallParam("cast(" ~ param.cType ~ ")" ~ param.dName);
+        }
         else
+        {
+          addDeclParam(param.fullDType ~ " " ~ param.dName);
           addCallParam("cast(" ~ param.cType ~ ")" ~ (param.cType.countStars == 1 ? "&"d : "") ~ param.dName);
+        }
 
         break;
       case Pointer:
