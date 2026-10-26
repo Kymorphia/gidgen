@@ -605,13 +605,15 @@ final class Structure : TypeNode
     else if (kind == TypeKind.Reffed && !parentStruct)
       writer ~= ["_cInstancePtr = cast(" ~ cTypeRemPtr ~ "*)ptr;", "", "if (!take && ptr)", glibRefFunc
         ~ "(_cInstancePtr);", "}", "", "~this() nothrow", "{", "if (_cInstancePtr)",
-        "cValueFreeInMainContext(cast(void*)_cInstancePtr, cast(GDestroyNotify)&" ~ glibUnrefFunc ~ ");", "}", ""];
+        "cValueFreeInMainContext(cast(void*)_cInstancePtr, cast(GDestroyNotify)cFuncPtr!(" ~ glibUnrefFunc ~ ")());",
+        "}", ""];
     else if (kind == TypeKind.Reffed && parentStruct)
       writer ~= ["super(cast(" ~ parentStruct.cType ~ "*)ptr, take);", "}"];
 
     if (kind == TypeKind.Opaque && freeFunction)
       writer ~= ["", "~this() nothrow", "{", "if (owned && _cInstancePtr)",
-        "cValueFreeInMainContext(cast(void*)_cInstancePtr, cast(GDestroyNotify)&" ~ freeFunction ~ ");", "}"];
+        "cValueFreeInMainContext(cast(void*)_cInstancePtr, cast(GDestroyNotify)cFuncPtr!(" ~ freeFunction ~ ")());",
+        "}"];
 
     if (kind == TypeKind.Opaque)
       writer ~= ["", "/** */", "void* _cPtr() nothrow", "{", "return cast(void*)_cInstancePtr;", "}"];
