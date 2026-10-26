@@ -273,7 +273,8 @@ class FuncWriter
       case Opaque, Wrap, Boxed, Reffed:
         postCall ~= ["_retval = new " ~ elemType.fullDType ~ "[" ~ lengthStr ~ "];", "foreach (i; 0 .. "
           ~ lengthStr ~ ")", "_retval[i] = new " ~ elemType.fullDType ~ "(cast(void*)"
-          ~ (retVal.cType.countStars == 1 ? "&"d : "") ~ "_cretval[i], " ~ retVal.fullOwnerFlag ~ ".Take);"];
+          ~ (retVal.cType.countStars == 1 ? "&_cretval[i], No.Take);"d : "_cretval[i], " ~ retVal.fullOwnerFlag
+          ~ ".Take);")];
         break;
       case Object, Interface:
         addImport("gobject.object");
@@ -736,28 +737,26 @@ class FuncWriter
         }
         break;
       case Opaque, Wrap, Boxed, Reffed:
+        auto inlineElems = param.cType.countStars == (param.callerAllocates ? 1 : 2);
+        auto elemExpr = (inlineElems ? "&_"d : "_"d) ~ param.dName ~ "[i]";
+        auto takeStr = inlineElems ? "No.Take"d : param.fullOwnerFlag ~ ".Take";
+
         if (!param.callerAllocates)
         {
           preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";";
           addCallParam("&_" ~ param.dName);
-          postCall ~= [param.dName ~ ".length = " ~ lengthStr ~ ";", "foreach (i; 0 .. " ~ lengthStr ~ ")",
-            param.dName ~ "[i] = new " ~ elemType.fullDType ~ "(cast(void*)&_" ~ param.dName ~ "[i], "
-            ~ param.fullOwnerFlag ~ ".Take);"];
-
-          if (param.ownership != Ownership.None)
-            postCall ~= "gFree(cast(void*)_" ~ param.dName ~ ");";
         }
         else
         {
           preCall ~= [elemType.cType ~ "[] _" ~ param.dName ~ ";", "_" ~ param.dName ~ ".length = " ~ lengthStr ~ ";"];
           addCallParam("_" ~ param.dName ~ ".ptr");
-          postCall ~= [param.dName ~ ".length = " ~ lengthStr ~ ";", "foreach (i; 0 .. " ~ lengthStr ~ ")",
-            param.dName ~ "[i] = new " ~ elemType.fullDType ~ "(cast(void*)&_" ~ param.dName ~ "[i], "
-            ~ param.fullOwnerFlag ~ ".Take);"];
-
-          if (param.ownership != Ownership.None)
-            postCall ~= "gFree(cast(void*)_" ~ param.dName ~ ");";
         }
+
+        postCall ~= [param.dName ~ ".length = " ~ lengthStr ~ ";", "foreach (i; 0 .. " ~ lengthStr ~ ")",
+          param.dName ~ "[i] = new " ~ elemType.fullDType ~ "(cast(void*)" ~ elemExpr ~ ", " ~ takeStr ~ ");"];
+
+        if (!param.callerAllocates && param.ownership != Ownership.None)
+          postCall ~= "gFree(cast(void*)_" ~ param.dName ~ ");";
         break;
       case Object, Interface:
         addImport("gobject.object");
@@ -778,7 +777,7 @@ class FuncWriter
           preCall ~= [elemType.cType ~ "[] _" ~ param.dName ~ ";", "_" ~ param.dName ~ ".length = " ~ lengthStr ~ ";"];
           addCallParam("_" ~ param.dName ~ ".ptr");
           postCall ~= [param.dName ~ ".length = " ~ lengthStr ~ ";", "foreach (i; 0 .. " ~ lengthStr ~ ")",
-            param.dName ~ "[i] = gobject.object.ObjectWrap._getDObject!(" ~ elemType.fullDType ~ ")(cast(void*)&_"
+            param.dName ~ "[i] = gobject.object.ObjectWrap._getDObject!(" ~ elemType.fullDType ~ ")(cast(void*)_"
             ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);"];
         }
         break;

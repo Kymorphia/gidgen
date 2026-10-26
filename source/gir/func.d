@@ -344,6 +344,18 @@ final class Func : TypeNode
           return;
         }
       }
+
+      // Arrays of inline structures (not pointers) with full transfer can't be freed generically:
+      // the element free function frees the instance pointer too, and there is no way to clear
+      // just the element contents before freeing the array.
+      with (TypeKind) if (returnVal.containerType == ContainerType.Array
+        && returnVal.ownership == Ownership.Full && returnVal.cType.countStars == 1
+        && returnVal.elemTypes.length == 1 && returnVal.elemTypes[0].kind.among(Opaque, Boxed, Reffed))
+      {
+        disableFunc(__FILE__, __LINE__, "return array of inline '" ~ returnVal.elemTypes[0].kind.to!string
+          ~ "' structures with full ownership is not supported", returnVal);
+        return;
+      }
     }
 
     foreach (pi, pa; params)
@@ -358,6 +370,13 @@ final class Func : TypeNode
         pa.doVerify; // Verify parameter
       catch (Exception e)
         disableFunc(e.file, e.line, "Parameter '" ~ pa.name.to!string ~ "' error: " ~ e.msg, pa);
+
+      // Out/InOut arrays of inline structures with full transfer can't be freed generically (see return array check)
+      with (TypeKind) if (pa.containerType == ContainerType.Array && pa.direction != ParamDirection.In
+          && pa.ownership == Ownership.Full && pa.elemTypes.length == 1 && pa.elemTypes[0].kind.among(Opaque, Boxed, Reffed)
+          && pa.cType.countStars == (pa.callerAllocates ? 1 : 2))
+        disableFunc(__FILE__, __LINE__, "output array parameter '" ~ pa.name.to!string ~ "' of inline '"
+          ~ pa.elemTypes[0].kind.to!string ~ "' structures with full ownership is not supported", pa);
 
       if (!pa.resolved)
         disableFunc(__FILE__, __LINE__, "Unresolved parameter '" ~ pa.name.to!string ~ "' of type '" ~ pa.dType.to!string ~ "'", pa);
