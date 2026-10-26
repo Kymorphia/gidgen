@@ -1,5 +1,7 @@
 module gir.structure;
 
+import std.typecons : Tuple;
+
 import code_writer;
 import defs;
 import gir.base;
@@ -1158,14 +1160,68 @@ final class Structure : TypeNode
 
       writer ~= [(st.structType == StructType.Union ? "union"d : "struct"d) ~ (typeName ? (" " ~ typeName) : ""), "{"];
 
+      dstring bitsType; // Current bit field type or empty if not active
+      ubyte bitsLeft; // Number of bits remaining for this bit field type
+
+      alias BitField = Tuple!(dstring, "name", ubyte, "bits", dstring, "docs");
+      BitField[] bitFields;
+
+      void writeBitfield()
+      {
+        writer ~= "mixin(bitfields!(";
+
+        foreach (i, t; bitFields)
+        {
+          if (t.docs.length > 0)
+            writer ~= t.docs;
+
+          auto lastField = i + 1 == bitFields.length && bitsLeft == 0;
+          writer ~= bitsType ~ ", \""d ~ t.name ~ "\", "d ~ t.bits.to!dstring ~ (lastField ? "));"d : ","d);
+        }
+
+        if (bitsLeft > 0)
+          writer ~= bitsType ~ ", \"\", "d ~ bitsLeft.to!dstring ~ "));"d;
+
+        writer ~= "";
+
+        bitsType.length = 0;
+        bitsLeft = 0;
+        bitFields.length = 0;
+      }
+
       foreach (fi, f; st.fields)
       {
+        auto bitFieldSize = cast(ubyte)(f.bits > 0 ? (BasicTypeSizes.get(f.dType.to!string, 0) * 8) : 0);
+
+        // Just emit a normal field if a bitfield takes up its entire available bit allocation
+        if (bitFieldSize > 0 && bitsType.length == 0 && f.bits == bitFieldSize)
+          bitFieldSize = 0;
+
+        if (bitFieldSize > 0) // Is this a bit field?
+        {
+          if (bitsType.length > 0 && (f.dType != bitsType || f.bits > bitsLeft))
+            writeBitfield; // Type changed or field doesn't fit, start a new storage unit
+
+          if (bitsType.length == 0) // First field of a bit field?
+          {
+            bitsType = f.dType;
+            bitsLeft = bitFieldSize;
+          }
+
+          bitFields ~= BitField(f.dName, f.bits, f.docContent.length > 0 ? f.genDocs : null);
+          bitsLeft -= f.bits;
+          continue;
+        }
+        else if (f.bits > 0)
+          f.xmlNode.warn("Unsupported bitfield type '" ~ f.dType ~ "'");
+
+        if (bitsType.length > 0) // Write out bitfield when a non-bitfield is found
+          writeBitfield;
+
         writer ~= f.genDocs;
 
         if (f.directStruct)
-        {
           recurseStruct(f.directStruct);
-        }
         else if (f.containerType == ContainerType.Array)
         {
           if (f.fixedSize == ArrayNotFixed)
@@ -1195,6 +1251,9 @@ final class Structure : TypeNode
         if (fi + 1 < st.fields.length)
           writer ~= "";
       }
+
+      if (bitsType.length > 0) // Write out bitfield at the end of the record (if any)
+        writeBitfield;
 
       if (!structMod || st !is this) // Suppress final brace if structMod and st is outermost struct
         writer ~= ["}", ""];

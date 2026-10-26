@@ -775,6 +775,25 @@ immutable string[] BasicTypeValues = [
   "size_t", "ubyte", "uint", "ulong", "ushort", "void*", "void"
 ];
 
+// Map of D types to byte sizes
+const ubyte[string] BasicTypeSizes = [
+  "byte" : byte.sizeof,
+  "char" : char.sizeof,
+
+  // Intentionally removed, since type size isn't portable
+  // "glong" : glong.sizeof,
+  // "gulong" : gulong.sizeof,
+
+  "int" : int.sizeof,
+  "long" : long.sizeof,
+  "ptrdiff_t" : ptrdiff_t.sizeof,
+  "short" : short.sizeof,
+  "size_t" : size_t.sizeof,
+  "ubyte" : ubyte.sizeof,
+  "uint" : uint.sizeof,
+  "ushort" : ushort.sizeof,
+];
+
 /// Hash of basic type names to true values
 immutable bool[dstring] BasicTypeHash;
 
