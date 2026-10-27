@@ -461,7 +461,13 @@ class FuncWriter
           {
             preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";";
             addCallParam("&_" ~ param.dName);
-            postCall ~= param.dName ~ " = *cast(" ~ param.dType ~ "*)_" ~ param.dName ~ ";";
+            postCall ~= "if (_" ~ param.dName ~ ")";
+
+            if (param.ownership == Ownership.Full)
+              postCall ~= ["{", param.dName ~ " = *cast(" ~ param.fullDType ~ "*)_" ~ param.dName ~ ";",
+                "cValueFree!(" ~ param.fullDType ~ ")(cast(void*)_" ~ param.dName ~ ");", "}"];
+            else
+              postCall ~= param.dName ~ " = *cast(" ~ param.fullDType ~ "*)_" ~ param.dName ~ ";";
           }
           else
             addCallParam("cast(" ~ param.cType ~ ")&" ~ param.dName);
