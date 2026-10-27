@@ -48,6 +48,7 @@ final class Field : TypeNode
     writable = node.get("writable", "0") == "1";
     introspectable = node.get("introspectable", "1") == "1";
     private_ = node.get("private") == "1";
+    owned = node.get("owned", "0") == "1";
 
     try
       bits = node.get("bits", "0").to!ubyte;
@@ -158,12 +159,28 @@ final class Field : TypeNode
       && ((kind == Container) // Writable container fields are not currently supported
         || (kind.among(Struct, StructAlias) && starCount != 0)  // Writable structure pointer fields are not supported
         || kind.among(Pointer, Opaque, Wrap) // Unsupported structure types (unknown memory allocation methods)
-        || (kind == Boxed && starCount == 0))) // Non-pointer boxed types not currently supported
+        || (kind.among(Boxed, Reffed) && starCount == 0))) // Embedded boxed/reffed types not supported
     {
       writable = false;
       warnWithLoc(__FILE__, __LINE__, xmlLocation, "Setting writable to false for field '" ~ fullDName.to!string
         ~ "' with unhandled type '" ~ dType.to!string ~ "' (" ~ kind.to!string ~ ")");
       TypeNode.dumpSelectorOnWarning(this);
+    }
+
+    // GIR has no field ownership annotations. Wrap structures borrow pointer field values (kept alive by the D wrapper).
+    // For other structures the C free function determines field ownership, so writable pointer fields are disabled
+    // unless the definitions mark them as owned.
+    with (TypeKind) if (writable && kind.among(String, Boxed, Reffed, Object, Interface) && !owned)
+    {
+      auto st = getParentByType!Structure;
+
+      if (!st || st.kind != Wrap)
+      {
+        writable = false;
+        warnWithLoc(__FILE__, __LINE__, xmlLocation, "Setting writable to false for pointer field '"
+          ~ fullDName.to!string ~ "' of unknown ownership (set 'owned' to 1 in definitions if the structure owns it)");
+        TypeNode.dumpSelectorOnWarning(this);
+      }
     }
 
     if (callback)
@@ -187,6 +204,7 @@ final class Field : TypeNode
     js["introspectable"] = introspectable;
     js["private"] = private_;
     js.jsonSetNonDefault("bits", bits);
+    js.jsonSetNonDefault("owned", owned);
   }
 
   private dstring _name; /// Field name
@@ -199,4 +217,5 @@ final class Field : TypeNode
   bool introspectable = true; /// Is field introspectable?
   bool private_; /// Private field?
   ubyte bits; /// For C bit fields, number of bits occupied for this field in integer type (or 0 if not a bit field)
+  bool owned; /// Pointer field value is owned by the structure (gidgen extension: set via definitions, enables setters for non-Wrap structures)
 }

@@ -724,6 +724,11 @@ final class Structure : TypeNode
       if (f.active != Active.Enabled || f.arrayFields) // Skip inactive fields or those which are array lengths
         continue;
 
+      // Wrap structure object fields keep a reference to the D object, since the C field borrows its pointer
+      if (kind == TypeKind.Wrap && f.writable
+          && f.kind.among(TypeKind.Boxed, TypeKind.Reffed, TypeKind.Object, TypeKind.Interface))
+        lines ~= ["", "private " ~ f.fullDType ~ " _" ~ f.dName ~ "Ref; // Keeps borrowed field value alive"];
+
       assert(!f.directStruct, "Unsupported embedded structure field " ~ f.fullDName.to!string);
 
       if (f.kind == TypeKind.Callback && !f.typeObject) // Callback function type directly defined in field?
@@ -797,15 +802,14 @@ final class Structure : TypeNode
 
       final switch (f.kind) with (TypeKind)
       {
-        case Basic, BasicAlias, Pointer:
+        case Basic, BasicAlias:
           lines ~= cPtr ~ "." ~ f.dName ~ " = propval;";
           break;
         case Enum, Flags:
           lines ~= cPtr ~ "." ~ f.dName ~ " = cast(" ~ f.cType ~ ")propval;";
           break;
-        case StructAlias, Struct:
-          lines ~= cPtr ~ "." ~ f.dName ~ " = cast(" ~ f.cType ~ ")" ~ (f.cType.countStars == 1 ? "&"d : ""d)
-            ~ "propval;"; // If field is a pointer, use the address of the structure
+        case StructAlias, Struct: // Only embedded (non-pointer) structures are writable
+          lines ~= cPtr ~ "." ~ f.dName ~ " = cast(" ~ f.cType ~ ")propval;";
           break;
         case Callback:
           if (f.typeObject) // Callback function is an alias type?
@@ -815,11 +819,28 @@ final class Structure : TypeNode
 
           lines ~= cPtr ~ "." ~ f.dName ~ " = propval;";
           break;
-        case String, Boxed, Reffed, Object, Interface:
-          lines ~= ["cValueFree!(" ~ f.fullDType ~ ")(cast(void*)" ~ addrIfNeeded ~ cPtr ~ "." ~ f.dName ~ ");",
-            "dToC(propval, cast(void*)&" ~ cPtr ~ "." ~ f.dName ~ ");"];
+        case String:
+          if (kind == Wrap) // Borrowed, GC string is kept alive by the wrapper's _cInstance (scanned by the GC)
+            lines ~= cPtr ~ "." ~ f.dName ~ " = cast(" ~ f.cType ~ ")toCString!(No.Malloc, Yes.Nullable)(propval);";
+          else // Owned field (enabled via definitions)
+            lines ~= ["cValueFree!(string)(cast(void*)" ~ cPtr ~ "." ~ f.dName ~ ");",
+              "dToC(propval, cast(void*)&" ~ cPtr ~ "." ~ f.dName ~ ");"];
           break;
-        case Opaque, Wrap, Container, Namespace, Unknown:
+        case Boxed, Reffed, Object, Interface:
+          if (kind == Wrap) // Borrowed pointer, D object kept alive by _<field>Ref
+          {
+            if (f.kind == Interface)
+              addImport("gobject.object");
+ 
+            auto objExpr = f.kind == Interface ? "(cast(gobject.object.ObjectWrap)propval)"d : "propval"d;
+            lines ~= ["_" ~ f.dName ~ "Ref = propval;", cPtr ~ "." ~ f.dName ~ " = propval ? cast(" ~ f.cType ~ ")"
+              ~ objExpr ~ "._cPtr(No.Dup) : null;"];
+          }
+          else // Owned field (enabled via definitions)
+            lines ~= ["cValueFree!(" ~ f.fullDType ~ ")(cast(void*)" ~ cPtr ~ "." ~ f.dName ~ ");",
+              "dToC(propval, cast(void*)&" ~ cPtr ~ "." ~ f.dName ~ ");"];
+          break;
+        case Pointer, Opaque, Wrap, Container, Namespace, Unknown:
           throw new Exception("Unhandled writable field property type '" ~ f.fullDType.to!string ~ "' (" ~ f
               .kind.to!string ~ ") for struct " ~ fullDType.to!string);
       }
