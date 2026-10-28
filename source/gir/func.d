@@ -412,11 +412,12 @@ final class Func : TypeNode
 
         if (pa.optional || pa.nullable) // optional or nullable set? We treat them the same.
         { // Verify it is a supported parameter type
-          if (pa.direction == ParamDirection.Out)
+          if (pa.direction == ParamDirection.Out
+            || (pa.direction == ParamDirection.InOut && pa.cType.countStars == 2))
           {
             optionalNotOk = true;
             infoWithLoc(__FILE__, __LINE__, pa.xmlLocation, "Optional not supported for parameter '"
-              ~ pa.fullDName.to!string ~ "' with output direction");
+              ~ pa.fullDName.to!string ~ "' with " ~ pa.direction.to!string ~" direction");
           }
           // Note: void* is currently classified as Basic kind due to how GIR represents it.
           // Ideally it should be Pointer kind, but changing this requires broader refactoring.

@@ -501,7 +501,24 @@ class FuncWriter
         }
         break;
       case Opaque, Wrap, Boxed, Reffed, Object:
-        if (param.direction == ParamDirection.In || param.direction == ParamDirection.InOut)
+        if (param.direction == ParamDirection.InOut && param.cType.countStars == 2)
+        {
+          addDeclParam("ref " ~ param.fullDType ~ " " ~ param.dName);
+          preCall ~= param.cTypeRemPtr.stripConst ~ " _" ~ param.dName ~ " = " ~ param.dName ~ " ? cast("
+            ~ param.cTypeRemPtr.stripConst ~ ")" ~ param.dName ~ "._cPtr(" ~ param.fullOwnerFlag ~ ".Dup) : null;";
+          addCallParam("&_" ~ param.dName);
+
+          if (param.kind == TypeKind.Object)
+          {
+            addImport("gobject.object");
+            postCall ~= param.dName ~ " = gobject.object.ObjectWrap._getDObject!(" ~ param.fullDType ~ ")(_"
+              ~ param.dName ~ ", " ~ param.fullOwnerFlag ~ ".Take);";
+          }
+          else
+            postCall ~= param.dName ~ " = _" ~ param.dName ~ " ? new " ~ param.fullDType ~ "(cast(void*)_"
+              ~ param.dName ~ ", " ~ param.fullOwnerFlag ~ ".Take) : null;";
+        }
+        else if (param.direction == ParamDirection.In || param.direction == ParamDirection.InOut)
         {
           addDeclParam(param.fullDType ~ " " ~ param.dName);
           addCallParam(param.dName ~ " ? cast(" ~ param.cType ~ ")" ~ param.dName ~ "._cPtr"
@@ -552,7 +569,17 @@ class FuncWriter
       case Interface:
         addImport("gobject.object");
 
-        if (param.direction == ParamDirection.In || param.direction == ParamDirection.InOut)
+        if (param.direction == ParamDirection.InOut && param.cType.countStars == 2)
+        {
+          addDeclParam("ref " ~ param.fullDType ~ " " ~ param.dName);
+          preCall ~= param.cTypeRemPtr.stripConst ~ " _" ~ param.dName ~ " = " ~ param.dName ~ " ? cast("
+            ~ param.cTypeRemPtr.stripConst ~ ")(cast(gobject.object.ObjectWrap)" ~ param.dName ~ ")._cPtr("
+            ~ param.fullOwnerFlag ~ ".Dup) : null;";
+          addCallParam("&_" ~ param.dName);
+          postCall ~= param.dName ~ " = gobject.object.ObjectWrap._getDObject!(" ~ param.fullDType ~ ")(_"
+            ~ param.dName ~ ", " ~ param.fullOwnerFlag ~ ".Take);";
+        }
+        else if (param.direction == ParamDirection.In || param.direction == ParamDirection.InOut)
         {
           addImport("gobject.object");
           addDeclParam(param.fullDType ~ " " ~ param.dName);

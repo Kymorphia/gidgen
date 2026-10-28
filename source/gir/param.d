@@ -249,13 +249,24 @@ final class Param : TypeNode
       callerAllocates = true;
     }
 
+    with (TypeKind) if (direction == ParamDirection.In && containerType == ContainerType.None
+        && kind.among(Opaque, Wrap, Boxed, Reffed, Object, Interface) && cType.countStars == 2)
+      throw new Exception("Input " ~ kind.to!string ~ " parameter has pointer-to-pointer C type '"
+        ~ cType.to!string ~ "' (missing out/inout annotation?)");
+
     if (direction == ParamDirection.InOut)
     {
       if (kind == TypeKind.String)
         throw new Exception("Unsupported string InOut parameter");
 
-      // Ownership other than None does not make sense for InOut parameters
-      if (ownership != Ownership.None)
+      with (TypeKind) if (kind.among(Opaque, Wrap) && cType.countStars == 2)
+        throw new Exception("Unsupported InOut " ~ kind.to!string ~ " pointer parameter (unknown memory management)");
+
+      bool isPtrInOut; // Pointer to an object/struct pointer, GIR transfer applies to both directions
+      with (TypeKind) isPtrInOut = kind.among(Boxed, Reffed, Object, Interface) && cType.countStars == 2;
+
+      // Ownership other than None does not make sense for other InOut parameters
+      if (ownership != Ownership.None && !isPtrInOut)
       {
         info("Changing InOut parameter '" ~ fullDName.to!string ~ "' with ownership '" ~ ownership.to!string
           ~ "' to None");
