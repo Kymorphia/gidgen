@@ -397,7 +397,8 @@ class DelegWriter
         case Object, Interface:
           addImport("gobject.object");
           preCall ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_" ~ param.dName
-            ~ "[i] = gobject.object.ObjectWrap._getDObject(" ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);"];
+            ~ "[i] = gobject.object.ObjectWrap._getDObject!(" ~ elemType.fullDType ~ ")(" ~ param.dName ~ "[i], "
+            ~ param.fullOwnerFlag ~ ".Take);"];
           break;
         case Unknown, Callback, Container, Namespace:
           assert(0, "Unsupported parameter array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType.kind.to!string

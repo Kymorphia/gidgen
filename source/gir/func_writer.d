@@ -533,8 +533,8 @@ class FuncWriter
           {
             preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";";
             addCallParam("&_" ~ param.dName);
-            postCall ~= param.dName ~ " = new " ~ param.fullDType ~ "(cast(void*)_" ~ param.dName ~ ", "
-              ~ param.fullOwnerFlag ~ ".Take);";
+            postCall ~= ["if (_" ~ param.dName ~ ")", param.dName ~ " = new " ~ param.fullDType ~ "(cast(void*)_"
+              ~ param.dName ~ ", " ~ param.fullOwnerFlag ~ ".Take);"];
           }
           else if (param.callerAllocates && !param.cTypeRemPtr.endsWith('*')) // Out, caller allocates, and struct pass by value
           {
@@ -557,12 +557,20 @@ class FuncWriter
               assert(0, "Unsupported caller allocates out param of type '" ~ param.fullDType.to!string ~ "' ("
                 ~ param.kind.to!string ~ ") for " ~ param.fullDName.to!string);
           }
-          else // Out pointer to struct
+          else // Out pointer to struct or object
           {
             preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";";
             addCallParam("&_" ~ param.dName);
-            postCall ~= param.dName ~ " = " ~ "new " ~ param.fullDType ~ "(cast(void*)_" ~ param.dName ~ ", "
-              ~ param.fullOwnerFlag ~ ".Take);";
+
+            if (param.kind == Object)
+            {
+              addImport("gobject.object");
+              postCall ~= param.dName ~ " = gobject.object.ObjectWrap._getDObject!(" ~ param.fullDType ~ ")(_"
+                ~ param.dName ~ ", " ~ param.fullOwnerFlag ~ ".Take);";
+            }
+            else
+              postCall ~= ["if (_" ~ param.dName ~ ")", param.dName ~ " = new " ~ param.fullDType ~ "(cast(void*)_"
+                ~ param.dName ~ ", " ~ param.fullOwnerFlag ~ ".Take);"];
           }
         }
         break;
