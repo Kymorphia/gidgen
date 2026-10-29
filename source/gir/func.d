@@ -388,6 +388,12 @@ final class Func : TypeNode
             ~ pa.dType.to!string ~ "'", pa);
       }
 
+      // Signal array parameters are passed as a gpointer, so an element C type can't distinguish inline structures from pointers
+      with (TypeKind) if (funcType == FuncType.Signal && pa.containerType == ContainerType.Array
+          && pa.elemTypes.length == 1 && pa.elemTypes[0].kind.among(Opaque, Boxed, Wrap, Reffed))
+        disableFunc(__FILE__, __LINE__, "signal array parameter '" ~ pa.name.to!string ~ "' of '"
+          ~ pa.elemTypes[0].kind.to!string ~ "' elements is not supported", pa);
+
       // Resolve parameter type aliases to see if any are disabled and disable parameter if so
       for (TypeNode tn = pa.typeObject; tn; tn = typeRepo.typeObjectHash.get((cast(Alias)tn).dType, null))
       {

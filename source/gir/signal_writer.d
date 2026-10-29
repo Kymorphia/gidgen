@@ -164,8 +164,15 @@ class SignalWriter
       return;
     }
 
+    dstring cArrayType;
+
+    with (TypeKind) if (elemType.kind.among(String, Object, Interface)) // Array of pointers, element cType may or may not have the '*'
+      cArrayType = elemType.cTypeRemPtr ~ "**";
+    else // Array of values (Basic, Enum, Flags, Pointer, inline structs)
+      cArrayType = elemType.cType ~ "*";
+
     inpProcess ~= ["", "static if (Parameters!T.length > " ~ cbIndex.to!dstring ~ ")", // Only process parameters which are included in the callback
-      "{", "auto _cArray = getVal!(" ~ elemType.cTypeRemPtr ~ "**)(&_paramVals[" ~ (paramIndex + 1).to!dstring // The parameter index is +1 because the first one is the object instance
+      "{", "auto _cArray = getVal!(" ~ cArrayType ~ ")(&_paramVals[" ~ (paramIndex + 1).to!dstring // The parameter index is +1 because the first one is the object instance
       ~ "]);", elemType.fullDType ~ "[] _dArray;"];
 
     with (TypeKind) callbackTypes ~= CallbackType(param.fullDType, elemType.kind.among(Object, Interface) != 0,
@@ -198,17 +205,12 @@ class SignalWriter
           inpProcess ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_dArray ~= _cArray[i].fromCString!("
             ~ param.fullOwnerFlag ~ ".Free);"];
           break;
-        case Opaque, Boxed, Wrap, Reffed:
-          inpProcess ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_dArray ~= new " ~ elemType.fullDType ~ "(cast("
-            ~ elemType.cType.stripConst ~ "*)&_cArray[i]" ~ (param.kind != Wrap ? (", " ~ param.fullOwnerFlag
-            ~ ".Take") : "") ~ ");"];
-          break;
         case Object, Interface:
           addImport("gobject.object");
           inpProcess ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_dArray ~= gobject.object.ObjectWrap._getDObject!("
             ~ elemType.fullDType ~ ")(_cArray[i], " ~ param.fullOwnerFlag ~ ".Take);"];
           break;
-        case Unknown, Callback, Container, Namespace:
+        case Opaque, Boxed, Wrap, Reffed, Unknown, Callback, Container, Namespace:
           assert(0, "Unsupported parameter array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType.kind.to!string
               ~ ") for signal " ~ signal.fullDName.to!string);
       }
