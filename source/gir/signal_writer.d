@@ -116,19 +116,16 @@ class SignalWriter
         "_paramTuple[" ~ cbIndex.to!dstring ~ "] = getVal!(Parameters!T[" ~ cbIndex.to!dstring
         ~ "])(&_paramVals[" ~ (paramIndex + 1).to!dstring ~ "]);"]; // The parameter index is +1 because the first one is the object instance
     else // Out or InOut parameter?
-    { // De-referenced value pointer (gpointer GValue)
-      auto pointerParam = "*getVal!(Parameters!T[" ~ cbIndex.to!dstring ~ "]*)(&_paramVals["
-        ~ (paramIndex + 1).to!dstring ~ "])";
+    {
+      auto cb = cbIndex.to!dstring;
+      auto ptrExpr = "getVal!(Parameters!T[" ~ cb ~ "]*)(&_paramVals[" ~ (paramIndex + 1).to!dstring ~ "])";
 
-      // Create variable for Out or InOut direction to pass to delegate
-      preCall ~= ["", "Parameters!T[" ~ cbIndex.to!dstring ~ "] " ~ param.dName
-        ~ (param.direction == ParamDirection.InOut ? (" = " ~ pointerParam ~ ";") : ";")]; // Assign GValue to variable if InOut
+      if (param.direction == ParamDirection.InOut)
+        preCall ~= ["", "static if (Parameters!T.length > " ~ cb ~ ")", "{",
+          "if (auto _p = " ~ ptrExpr ~ ")", "_paramTuple[" ~ cb ~ "] = *_p;", "}"];
 
-      preCall ~= ["", "static if (Parameters!T.length > " ~ cbIndex.to!dstring ~ ")", // Only process parameters which are included in the callback
-        "_paramTuple[" ~ cbIndex.to!dstring ~ "] = " ~ param.dName ~ ";"]; // The parameter index is +1 because the first one is the object instance
-
-      postCall ~= ["", "static if (Parameters!T.length > " ~ cbIndex.to!dstring ~ ")", pointerParam ~ " = "
-        ~ param.dName ~ ";"];
+      postCall ~= ["", "static if (Parameters!T.length > " ~ cb ~ ")", "{",
+        "if (auto _p = " ~ ptrExpr ~ ")", "*_p = _paramTuple[" ~ cb ~ "];", "}"];
     }
 
     with (TypeKind) callbackTypes ~= CallbackType(param.fullDType, param.kind.among(Object, Interface) != 0,
