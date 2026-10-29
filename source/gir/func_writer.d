@@ -857,8 +857,8 @@ class FuncWriter
       ~ param.dName ~ ");";
 
     if (param.ownership != Ownership.Full)
-      preCall ~= "scope(exit) containerFree!(" ~ param.cType ~ ", " ~ param.elemTypes[0].fullDType ~ ", " ~ "GidOwnership."
-        ~ param.ownership.to!dstring ~ ")(_" ~ param.dName ~ ");";
+      preCall ~= "scope(exit) containerFree!(" ~ param.cType.stripConst ~ ", " ~ param.elemTypes[0].fullDType
+        ~ ", GidOwnership." ~ param.ownership.to!dstring ~ ")(_" ~ param.dName ~ ");";
 
     addCallParam("_" ~ param.dName);
 
