@@ -291,7 +291,7 @@ class DelegWriter
           preCall ~= "string _" ~ param.dName ~ ";";
           addCallParam("_" ~ param.dName);
           postCall ~= "*" ~ param.dName ~ " = _" ~ param.dName ~ ".toCString!(" ~ param.fullOwnerFlag ~ ".Malloc, "
-            ~ (param.nullable ? "Yes"d : "No"d) ~ " ~ .Nullable);";
+            ~ (param.nullable ? "Yes"d : "No"d) ~ ".Nullable);";
         }
         else // InOut
           // InOut string parameters are rejected by Param.verify() so this should never be reached.
@@ -375,7 +375,7 @@ class DelegWriter
       final switch (elemType.kind) with (TypeKind)
       {
         case Basic, BasicAlias, Enum, Flags, StructAlias, Pointer:
-          if (param.dType == "bool") // Convert gboolean to bool
+          if (elemType.dType == "bool") // Convert gboolean to bool
             preCall ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_" ~ param.dName ~ "[i] = cast(bool)"
               ~ param.dName ~ "[i];"];
           else
@@ -383,8 +383,8 @@ class DelegWriter
               ~ "[0 .. " ~ lengthStr ~ "];";
           break;
         case Struct:
-          preCall ~= "_" ~ param.dName ~ "[0 .. " ~ lengthStr ~ "] = cast(" ~ param.fullDType ~ "*)" ~ param.dName
-            ~ "[0 .. " ~ lengthStr ~ "];";
+          preCall ~= "_" ~ param.dName ~ "[0 .. " ~ lengthStr ~ "] = (cast(" ~ elemType.fullDType ~ "*)" ~ param.dName
+            ~ ")[0 .. " ~ lengthStr ~ "];";
           break;
         case String:
           preCall ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_" ~ param.dName ~ "[i] = "
@@ -435,7 +435,7 @@ class DelegWriter
     switch (param.containerType) with(ContainerType)
     {
       case ByteArray:
-        templateParams = param.ownership.to!dstring;
+        templateParams = "GidOwnership." ~ param.ownership.to!dstring;
         break;
       case ArrayG, PtrArray, List, SList:
         templateParams = param.elemTypes[0].fullDType  ~ ", " ~ "GidOwnership." ~ param.ownership.to!dstring;

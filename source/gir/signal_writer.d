@@ -215,7 +215,7 @@ class SignalWriter
       }
     }
 
-    inpProcess ~= ["_paramTuple[" ~ paramIndex.to!dstring ~ "] = _dArray;", "}"];
+    inpProcess ~= ["_paramTuple[" ~ cbIndex.to!dstring ~ "] = _dArray;", "}"];
     callbackProto ~= (callbackProto[$ - 1] != '(' ? ", "d : "") ~ param.directionStr ~ param.fullDType
       ~ " " ~ param.dName;
   }
@@ -238,7 +238,7 @@ class SignalWriter
     switch (param.containerType) with(ContainerType)
     {
       case ByteArray:
-        templateParams = param.ownership.to!dstring;
+        templateParams = "GidOwnership." ~ param.ownership.to!dstring;
         break;
       case ArrayG, PtrArray, List, SList:
         templateParams = param.elemTypes[0].fullDType  ~ ", " ~ "GidOwnership." ~ param.ownership.to!dstring;
@@ -252,7 +252,7 @@ class SignalWriter
           ~ param.fullDName.to!string);
     }
 
-    preCall ~= "_paramTuple[" ~ paramIndex.to!dstring ~ "] = g" ~ param.containerType.to!dstring ~ "ToD!("
+    preCall ~= "_paramTuple[" ~ cbIndex.to!dstring ~ "] = g" ~ param.containerType.to!dstring ~ "ToD!("
       ~ templateParams ~ ")(cast(" ~ param.containerType.containerTypeCType ~ "*)getVal!(void*)(&_paramVals["
       ~ (paramIndex + 1).to!dstring ~ "]));\n"; // The parameter index is +1 because the first one is the object instance
 
