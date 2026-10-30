@@ -775,10 +775,11 @@ final class Structure : TypeNode
           lines ~= "return cToD!(" ~ f.fullDType ~ ")(cast(void*)" ~ addrIfNeeded ~ cPtr ~ "." ~ f.dName ~ ");";
           break;
         case Opaque, Wrap:
+          auto st = cast(Structure)f.typeObject;
           auto starCount = f.cType.retro.countUntil!(x => x != '*');
 
-          if (starCount < 1) // The cast is for casting away "const"
-            lines ~= "return new " ~ f.fullDType ~ "(cast(" ~ f.cType.stripConst ~ "*)" ~ "&" ~ cPtr ~ "." ~ f.dName
+          if (starCount < 1 && !(st && st.pointer)) // pointer typedefs (GdkAtom) are already pointers
+            lines ~= "return new " ~ f.fullDType ~ "(cast(" ~ f.cType.stripConst ~ "*)&" ~ cPtr ~ "." ~ f.dName
               ~ ", No.Take);";
           else
             lines ~= "return new " ~ f.fullDType ~ "(cast(" ~ f.cType.stripConst ~ ")" ~ cPtr ~ "." ~ f.dName
