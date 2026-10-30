@@ -125,12 +125,13 @@ class DelegWriter
           ~ ".Nullable)(_dretval);";
         break;
       case Opaque, Wrap, Boxed, Reffed, Object:
-        postCall ~= "auto _retval = cast(" ~ retVal.cTypeRemPtr ~ "*)_dretval._cPtr(" ~ retVal.fullOwnerFlag ~ ".Dup);";
+        postCall ~= "auto _retval = _dretval ? cast(" ~ retVal.cTypeRemPtr ~ "*)_dretval._cPtr(" ~ retVal.fullOwnerFlag
+          ~ ".Dup) : null;";
         break;
       case Interface:
         addImport("gobject.object");
-        postCall ~= "auto _retval = cast(" ~ retVal.cTypeRemPtr ~ "*)(cast(gobject.object.ObjectWrap)_dretval)._cPtr("
-          ~ retVal.fullOwnerFlag ~ ".Dup);";
+        postCall ~= "auto _retval = _dretval ? cast(" ~ retVal.cTypeRemPtr
+          ~ "*)(cast(gobject.object.ObjectWrap)_dretval)._cPtr(" ~ retVal.fullOwnerFlag ~ ".Dup) : null;";
         break;
       case Callback, Unknown, Container, Namespace:
         assert(0, "Unsupported delegate return value type '" ~ retVal.fullDType.to!string
