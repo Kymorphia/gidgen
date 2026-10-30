@@ -361,6 +361,10 @@ final class Func : TypeNode
           ~ "' structures with full ownership is not supported", returnVal);
         return;
       }
+
+      with (TypeKind) if (returnVal.containerType == ContainerType.Array && returnVal.ownership != Ownership.None
+        && returnVal.cType.countStars == 1 && returnVal.elemTypes[0].kind == Opaque)
+        disableFunc(__FILE__, __LINE__, "return array of inline Opaque structures with ownership transfer is not supported", returnVal);
     }
 
     foreach (pi, pa; params)

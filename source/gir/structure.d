@@ -617,7 +617,10 @@ final class Structure : TypeNode
         "cValueFreeInMainContext(cast(void*)_cInstancePtr, cast(GDestroyNotify)cFuncPtr!(" ~ freeFunction ~ ")());",
         "}"];
 
-    if (kind == TypeKind.Opaque)
+    if (kind == TypeKind.Opaque && copyFunction)
+      writer ~= ["", "/** */", "void* _cPtr(Flag!\"Dup\" dup = No.Dup) nothrow", "{",
+        "return dup ? cast(void*)" ~ copyFunction ~ "(_cInstancePtr) : cast(void*)_cInstancePtr;", "}"];
+    else if (kind == TypeKind.Opaque)
       writer ~= ["", "/** */", "void* _cPtr() nothrow", "{", "return cast(void*)_cInstancePtr;", "}"];
     else if (kind == TypeKind.Reffed && !parentStruct)
       writer ~= ["", "/** */", "void* _cPtr(Flag!\"Dup\" dup = No.Dup) nothrow", "{", "if (dup)", glibRefFunc
@@ -627,7 +630,8 @@ final class Structure : TypeNode
         "return dup ? boxCopy : _cInstancePtr;", "}"];
     else if (kind == TypeKind.Wrap)
       writer ~= ["", "/** */", "void* _cPtr(Flag!\"Dup\" dup = No.Dup) nothrow", "{",
-        "return cast(void*)(dup ? mallocDup(&_cInstance) : &_cInstance);", "}"];
+        "return cast(void*)(dup ? " ~ (copyFunction ? copyFunction ~ "(&_cInstance)"d : "mallocDup(&_cInstance)"d)
+        ~ " : &_cInstance);", "}"];
 
     if (kind.among(TypeKind.Struct, TypeKind.Boxed, TypeKind.Object)
         || (kind == TypeKind.Interface && moduleType == ModuleType.Iface))

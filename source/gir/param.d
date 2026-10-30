@@ -76,6 +76,16 @@ final class Param : TypeNode
     return !isInstanceParam && !isLengthReturnArray && lengthArrayParams.length == 0 && !isClosure && !isDestroy;
   }
 
+  /**
+   * Check if a parameter can fully transfer its memory to another user.
+   * Returns: true if parameter can be fully transferred, false otherwise
+   */
+  @property bool canTransferFull()
+  {
+    auto st = cast(Structure)typeObject;
+    return !kind.among(TypeKind.Opaque, TypeKind.Wrap) || (st && st.copyFunction);
+  }
+
   override void fromXml(XmlNode node)
   {
     super.fromXml(node);
@@ -218,6 +228,10 @@ final class Param : TypeNode
 
     if (kind == TypeKind.Unknown)
       throw new Exception("Unresolved type for parameter '" ~ fullDName.to!string ~ "'");
+
+    if (direction == ParamDirection.In && ownership == Ownership.Full && !canTransferFull)
+      throw new Exception("Unsupported input " ~ kind.to!string
+        ~ " parameter with full ownership transfer and no copy function");
 
     if (containerType != ContainerType.None)
     {

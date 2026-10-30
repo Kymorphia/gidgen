@@ -522,7 +522,7 @@ class FuncWriter
         {
           addDeclParam(param.fullDType ~ " " ~ param.dName);
           addCallParam(param.dName ~ " ? cast(" ~ param.cType ~ ")" ~ param.dName ~ "._cPtr"
-            ~ (!param.kind.among(TypeKind.Opaque, TypeKind.Wrap) ? ("(" ~ param.fullOwnerFlag ~ ".Dup)") : "") ~ " : null");
+            ~ (param.canTransferFull ? ("(" ~ param.fullOwnerFlag ~ ".Dup)") : "") ~ " : null");
         }
         else // Out
         {
