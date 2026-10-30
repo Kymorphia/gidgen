@@ -325,6 +325,11 @@ final class Func : TypeNode
             return;
           }
         }
+        else if (returnVal.kind == TypeKind.String && returnVal.ownership == Ownership.None)
+        {
+          disableFunc(__FILE__, __LINE__, "callback string return value with transfer none is not supported", returnVal);
+          return;
+        }
       }
     }
 
