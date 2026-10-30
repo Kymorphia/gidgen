@@ -186,8 +186,10 @@ class SignalWriter
         lengthStr = param.fixedSize.to!dstring;
       else if (param.zeroTerminated) // Array is zero terminated?
       {
-        inpProcess ~= ["uint _len" ~ param.dName ~ ";", "if (_cArray)", "for (; _cArray" ~ "[_len" ~ param.dName ~ "] "
-          ~ (elemType.cType.endsWith("*") ? "!is null"d : "!= 0") ~ "; _len" ~ param.dName ~ "++)", "break;"];
+        auto termCheck = elemType.kind.among(TypeKind.String, TypeKind.Object, TypeKind.Interface)
+          || elemType.cType.endsWith("*") ? "!is null"d : "!= 0";
+        inpProcess ~= ["uint _len" ~ param.dName ~ ";", "if (_cArray)", "{", "for (; _cArray" ~ "[_len" ~ param.dName
+          ~ "] " ~ termCheck ~ "; _len" ~ param.dName ~ "++)", "{", "}", "}", ""];
         lengthStr = "_len" ~ param.dName;
       }
       else

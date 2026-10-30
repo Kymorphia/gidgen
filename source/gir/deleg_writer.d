@@ -362,9 +362,9 @@ class DelegWriter
         lengthStr = param.fixedSize.to!dstring;
       else if (param.zeroTerminated) // Array is zero terminated?
       {
-        preCall ~= ["uint _len" ~ param.dName ~ ";", "if (" ~ param.dName ~ ")", "for (; " ~ param.dName
+        preCall ~= ["uint _len" ~ param.dName ~ ";", "if (" ~ param.dName ~ ")", "{", "for (; " ~ param.dName
           ~ "[_len" ~ param.dName ~ "] " ~ (elemType.cType.endsWith("*") ? "!is null"d : "!= 0") ~ "; _len"
-          ~ param.dName ~ "++)", "break;"];
+          ~ param.dName ~ "++)", "{", "}", "}", ""];
         lengthStr = "_len" ~ param.dName;
       }
       else
