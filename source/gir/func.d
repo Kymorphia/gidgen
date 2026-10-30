@@ -376,6 +376,12 @@ final class Func : TypeNode
       catch (Exception e)
         disableFunc(e.file, e.line, "Parameter '" ~ pa.name.to!string ~ "' error: " ~ e.msg, pa);
 
+      if (pa.containerType != ContainerType.None && pa.containerType != ContainerType.Array
+          && pa.direction == ParamDirection.In && pa.ownership == Ownership.Container
+          && funcType != FuncType.Callback && funcType != FuncType.Signal)
+        disableFunc(__FILE__, __LINE__, "input container parameter '" ~ pa.name.to!string
+          ~ "' with transfer container is not supported", pa);
+
       // Out/InOut arrays of inline structures with full transfer can't be freed generically (see return array check)
       with (TypeKind) if (pa.containerType == ContainerType.Array && pa.direction != ParamDirection.In
           && pa.ownership == Ownership.Full && pa.elemTypes.length == 1 && pa.elemTypes[0].kind.among(Opaque, Boxed, Reffed)
