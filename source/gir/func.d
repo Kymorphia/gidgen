@@ -386,6 +386,10 @@ final class Func : TypeNode
         if (pa.direction == ParamDirection.InOut && pa.kind.among(Opaque, Wrap, Boxed, Reffed, Object, Interface))
           disableFunc(__FILE__, __LINE__, "Unsupported InOut param '" ~ pa.name.to!string ~ "' of type '"
             ~ pa.dType.to!string ~ "'", pa);
+
+        if (pa.containerType == ContainerType.Array && pa.direction != ParamDirection.In && pa.callerAllocates)
+          disableFunc(__FILE__, __LINE__, "caller allocated output array parameter '" ~ pa.name.to!string
+            ~ "' in callback is not supported", pa);
       }
 
       // Signal array parameters are passed as a gpointer, so an element C type can't distinguish inline structures from pointers

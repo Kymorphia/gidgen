@@ -410,14 +410,14 @@ class DelegWriter
     if (param.direction == ParamDirection.Out || param.direction == ParamDirection.InOut)
     {
       if (param.lengthParam) // Array has length parameter?
-        postCall ~= param.lengthParam.dName ~ " = cast(" ~ param.lengthParam.cType  ~ ")_" ~ param.dName ~ ".length"
-          ~ (param.zeroTerminated ? " - 1;"d : ";"d);
+        postCall ~= "*" ~ param.lengthParam.dName ~ " = cast(typeof(*" ~ param.lengthParam.dName ~ "))_" ~ param.dName
+          ~ ".length;";
 
       final switch (elemType.kind) with (TypeKind)
       {
         case Basic, String, BasicAlias, Enum, Flags, StructAlias, Struct, Pointer, Opaque, Wrap, Boxed, Reffed,
             Object, Interface:
-          postCall ~= param.dName ~ " = arrayDtoC!(" ~ elemType.fullDType ~ ", Yes.Malloc, "
+          postCall ~= "*" ~ param.dName ~ " = arrayDtoC!(" ~ elemType.fullDType ~ ", Yes.Malloc, "
             ~ (param.zeroTerminated ? "Yes"d : "No"d) ~ ".ZeroTerm)(_" ~ param.dName ~ ");";
           break;
         case Unknown, Callback, Container, Namespace:
