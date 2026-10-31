@@ -778,12 +778,30 @@ class FuncWriter
     else if (param.arrayLengthIndex != ArrayLengthCaller)
       assert(0); // This should be prevented by verify()
 
+    auto inOutFull = param.direction == ParamDirection.InOut && param.ownership == Ownership.Full;
+
+    if (inOutFull) // Callee may free or reallocate the array: pass a GLib owned copy, result is converted back below
+    {
+      auto n = param.dName;
+      auto zeroTerm = param.zeroTerminated ? " + 1"d : "";
+
+      if (elemType.kind == TypeKind.String)
+        preCall ~= ["auto _" ~ n ~ " = cast(char**)gMalloc((" ~ n ~ ".length" ~ zeroTerm ~ ") * (char*).sizeof);",
+          "foreach (i, s; " ~ n ~ ") _" ~ n ~ "[i] = s.toCString!(Yes.Malloc);"];
+      else
+        preCall ~= ["auto _" ~ n ~ " = cast(" ~ param.cTypeRemPtr ~ ")gMalloc((" ~ n ~ ".length" ~ zeroTerm
+          ~ ") * (" ~ elemType.cType ~ ").sizeof);", "_" ~ n ~ "[0 .. " ~ n ~ ".length] = (cast(" ~ elemType.cType
+          ~ "*)" ~ n ~ ".ptr)[0 .. " ~ n ~ ".length];"];
+    }
+
     final switch (elemType.kind) with (TypeKind)
     {
       case Basic, BasicAlias, Enum, Flags, StructAlias, Struct, Pointer:
         if (!param.callerAllocates)
         {
-          preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";";
+          if (!inOutFull)
+            preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";";
+
           addCallParam("&_" ~ param.dName);
           postCall ~= [param.dName ~ ".length = " ~ lengthStr ~ ";", param.dName ~ "[0 .. $] = (cast("
             ~ elemType.fullDType ~ "*)_" ~ param.dName ~ ")[0 .. " ~ lengthStr ~ "];"];
@@ -806,7 +824,9 @@ class FuncWriter
       case String:
         if (!param.callerAllocates)
         {
-          preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";";
+          if (!inOutFull)
+            preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";";
+
           addCallParam("&_" ~ param.dName);
           postCall ~= [param.dName ~ ".length = " ~ lengthStr ~ ";", "foreach (i; 0 .. " ~ lengthStr ~ ")",
             param.dName ~ "[i] = _" ~ param.dName ~ "[i].fromCString!(" ~ param.fullOwnerFlag ~ ".Free);"];

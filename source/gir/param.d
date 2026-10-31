@@ -236,9 +236,11 @@ final class Param : TypeNode
           throw new Exception("Array input " ~ elemTypes[0].kind.to!string ~ " parameter Full ownership not supported");
       }
 
-      if (direction == ParamDirection.InOut)
-        throw new Exception("Container " ~ containerType.to!string ~ " parameter with direction "
-          ~ direction.to!string ~ " ownership " ~ ownership.to!string ~ " not supported");
+      with (TypeKind) if (direction == ParamDirection.InOut && (containerType != ContainerType.Array
+          || (ownership != Ownership.Full || callerAllocates
+          || !elemTypes[0].kind.among(Basic, BasicAlias, Enum, Flags, String))))
+        throw new Exception("Container " ~ containerType.to!string ~ " parameter with direction InOut ownership "
+          ~ ownership.to!string ~ " not supported");
     }
 
     with (TypeKind) if (containerType == ContainerType.None && kind.among(Basic, BasicAlias, Enum, Flags))
@@ -280,8 +282,8 @@ final class Param : TypeNode
       bool isPtrInOut; // Pointer to an object/struct pointer, GIR transfer applies to both directions
       with (TypeKind) isPtrInOut = kind.among(Boxed, Reffed, Object, Interface) && cType.countStars == 2;
 
-      // Ownership other than None does not make sense for other InOut parameters
-      if (ownership != Ownership.None && !isPtrInOut)
+      // Ownership other than None does not make sense for other InOut non-container parameters
+      if (ownership != Ownership.None && !isPtrInOut && containerType == ContainerType.None)
       {
         info("Changing InOut parameter '" ~ fullDName.to!string ~ "' with ownership '" ~ ownership.to!string
           ~ "' to None");
@@ -358,7 +360,12 @@ final class Param : TypeNode
       }
       else if (direction == InOut)
       {
-        if (!callerAllocates)
+        if (ownership == Ownership.Full)
+        {
+          if (callerAllocates)
+            throw new Exception("InOut caller allocated arrays cannot be ownership Full");
+        }
+        else if (!callerAllocates)
           throw new Exception("InOut arrays must be caller allocated");
         else if (ownership != Ownership.None)
           throw new Exception("InOut arrays cannot be ownership " ~ ownership.to!string);
