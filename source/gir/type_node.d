@@ -574,9 +574,20 @@ class TypeNode : Base
       }
       else if (containerType != ContainerType.None)
       {
-        with (TypeKind) if (elemTypes[0].kind.among(Unknown, Callback, Container, Opaque, Wrap, Namespace))
+        with (TypeKind) if (elemTypes[0].kind.among(Unknown, Callback, Container, Opaque, Namespace))
           throw new Exception("Unsupported " ~ containerType.to!string ~ " container element type "
             ~ elemTypes[0].dType.to!string ~ " (" ~ elemTypes[0].kind.to!string ~ ")");
+
+        if (containerType == ContainerType.ArrayG && elemTypes[0].kind == TypeKind.Wrap) // GArray stores structures inline, gid helpers treat non-simple types as pointers
+          throw new Exception("Unsupported " ~ containerType.to!string ~ " container element type "
+            ~ elemTypes[0].dType.to!string ~ " (" ~ elemTypes[0].kind.to!string ~ ")");
+
+        // Wrap elements are freed shallow, can't deep free structures with pointer fields
+        if (ownership == Ownership.Full && elemTypes[0].kind == TypeKind.Wrap)
+          if (auto st = cast(Structure)elemTypes[0].typeObjectRoot)
+            if (st.fields.canFind!(f => f.cType.countStars > 0 || f.kind == TypeKind.String))
+              throw new Exception("Transfer full " ~ containerType.to!string ~ " of " ~ elemTypes[0].dType.to!string
+                ~ " (" ~ elemTypes[0].kind.to!string ~ ") with pointer fields not supported");
       }
     }
 

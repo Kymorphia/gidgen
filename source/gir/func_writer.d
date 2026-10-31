@@ -662,6 +662,9 @@ class FuncWriter
           preCall ~= "_tmp" ~ param.dName ~ " ~= " ~ elemType.cTypeRemPtr ~ "();";
 
         preCall ~= [param.cType ~ " _" ~ param.dName ~ " = _tmp" ~ param.dName ~ ".ptr" ~ ";", ""];
+
+        if (!param.cType.canFind("const")) // Non-const array, C function may modify the structures, copy them back
+          postCall ~= ["foreach (i, obj; " ~ param.dName ~ ")", "obj._cInstance = _tmp" ~ param.dName ~ "[i];", ""];
         break;
       case Boxed:
         preCall ~= [elemType.cType ~ "[] _tmp" ~ param.dName ~ ";", "foreach (obj; " ~ param.dName ~ ")",
