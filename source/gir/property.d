@@ -106,7 +106,8 @@ final class Property : TypeNode
     if (ownership != Ownership.None && ownership != Ownership.Unset)
       throw new Exception("Property ownership '" ~ ownership.to!string ~ "' not supported");
 
-    if (containerType != containerType.None)
+    if (containerType != containerType.None
+        && (containerType != ContainerType.Array || elemTypes[0].kind != TypeKind.String)) // Allow arrays of string (GStrv)
       throw new Exception("Properties with container values not supported");
   }
 
