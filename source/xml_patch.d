@@ -446,6 +446,7 @@ class XmlPatch
   dstring selAttrId; /// The selected attribute of the node matched by selectors (null if selecting a node)
   dstring strValue; /// Attribute value (if op == Set and selAttrId is set), attribute name (if op == Rename and selAttrId), or node ID (if op == Rename and !selAttrId)
   XmlTree nodeValue; /// Node value (parsed XML tree) or null
+  string posInfo; /// Definition file position information of the patch command (for error messages)
 
   static bool dumpSelectorMatches; /// Enables dumping of XML patch selection matches
 }

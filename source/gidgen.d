@@ -162,7 +162,8 @@ int main(string[] args)
 
   auto defs = new Defs();
   defs.loadDefFiles(defPaths);
-  defs.loadRepos(girPaths);
+  if (!defs.loadRepos(girPaths))
+    return 1;
 
   if (dumpJson || dumpJsonWithDocs)
   {

@@ -51,6 +51,27 @@ final class Alias : TypeNode
       kind = TypeKind.BasicAlias;
   }
 
+  /**
+   * Get the type object this alias refers to, following chains of aliases.
+   * Returns: The aliased type object or null if the alias is of a basic type or the type is not found
+   */
+  @property TypeNode aliasedType()
+  {
+    TypeNode tn = this;
+
+    foreach (i; 0 .. 4) // Resolve aliases (up to 4 dereferences)
+    {
+      auto al = cast(Alias)tn;
+
+      if (!al || !al.typeRepo)
+        break;
+
+      tn = al.typeRepo.typeObjectHash.get(al._dType, null);
+    }
+
+    return tn !is this ? tn : null;
+  }
+
   override void toJson(ref JSONValue js)
   {
     super.toJson(js);

@@ -448,7 +448,8 @@ final class Func : TypeNode
           // Ideally it should be Pointer kind, but changing this requires broader refactoring.
           // For now, we explicitly check for void* as a special case for optional parameters.
           else with (TypeKind) if (!pa.kind.among(String, Callback, Container, Pointer, Opaque, Wrap, Boxed, Reffed,
-            Object, Interface) && !(pa.kind == Basic && pa.dType.among("void*"d, "const(void)*"d))
+            Object, Interface) && !(pa.kind == Basic && pa.direction == ParamDirection.In
+            && pa.dType.among("void*"d, "const(void)*"d))
             && !(pa.kind.among(Struct, StructAlias) && pa.direction == ParamDirection.In && pa.cType.countStars == 1))
           {
             optionalNotOk = true;

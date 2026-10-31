@@ -143,13 +143,16 @@ final class Repo : Base
         case "docsection": // Documentation section
           docSections ~= new DocSection(this, node);
           break;
+        case "doc:format": // Indicates the doc format (gi-docgen or unknown have been seen), currently ignored
+          break;
         case "field": // Field
           if (auto st = node.baseParentFromXmlNodeWarn!Structure)
             st.fields ~= new Field(st, node);
           break;
         case "function-inline": // Inline function
         case "function-macro": // Function macro
-          goto noRecurse; // Ignore function macros
+        case "method-inline": // Inline method
+          goto noRecurse; // Ignore
         case "glib:boxed":
           break; // Silently ignore this seldom used node (only TreeRowData seen so far)
         case "glib:signal": // Signals (class and interface)
@@ -448,6 +451,23 @@ final class Repo : Base
         st.active = Active.Unsupported;
         warnWithLoc(e.file, e.line, st.xmlLocation, "Disabling structure '" ~ st.fullDName.to!string ~ "': " ~ e.msg);
         TypeNode.dumpSelectorOnWarning(st);
+      }
+    }
+
+    foreach (al; aliases) // Disable aliases whose aliased type got disabled after the alias was verified
+    {
+      if (al.active != Active.Enabled)
+        continue;
+
+      if (auto aliased = al.aliasedType)
+      {
+        if (aliased.active != Active.Enabled)
+        {
+          al.active = Active.Unsupported;
+          warnWithLoc(__FILE__, __LINE__, al.xmlLocation, "Disabling alias '" ~ (namespace ~ "." ~ al.name).to!string
+            ~ "': Aliased type '" ~ aliased.fullDName.to!string ~ "' is not active");
+          TypeNode.dumpSelectorOnWarning(al);
+        }
       }
     }
   }
@@ -873,9 +893,9 @@ final class Repo : Base
 
     foreach (i, al; aliases.filter!(x => x.active == Active.Enabled).enumerate) // Generate aliases without writing them (to populate import manager)
     {
-      auto st = cast(Structure)al.typeObjectRoot;
+      auto aliased = al.aliasedType;
 
-      if ((al.typeObjectRoot && al.typeObjectRoot.active != Active.Enabled) || (st && st.inModule)) // Skip if target type is disabled or an alias of a type in a module (alias is written as a module in writePackage())
+      if (aliased && aliased.active != Active.Enabled) // Skip if aliased type is disabled
         continue;
 
       if (al.kind == TypeKind.Callback) // Callback aliases should alias to D callback delegates, not C functions

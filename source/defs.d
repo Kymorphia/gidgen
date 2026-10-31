@@ -271,6 +271,8 @@ class Defs : Base
           catch (XmlPatchError e)
             throw new Exception("XML patch error: " ~ e.msg ~ " " ~ posInfo);
 
+          patch.posInfo = posInfo;
+
           if (curRepo)
             curRepo.patches ~= patch;
           else
@@ -372,9 +374,12 @@ class Defs : Base
    * Load gir files specified in the loaded definition files to Repo objects.
    * Params:
    *   girPaths = Array of paths to search for Gir files
+   * Returns: false if any XML patches failed to apply (errors are logged for all of them), true otherwise
    */
-  void loadRepos(string[] girPaths = [DefaultGirPath])
+  bool loadRepos(string[] girPaths = [DefaultGirPath])
   {
+    uint patchErrors;
+
     repos = repos.sort!((x, y) => x.namespace < y.namespace).array;
 
     foreach (repo; repos)
@@ -418,12 +423,28 @@ class Defs : Base
       }
 
       foreach (patch; repo.patches) // Apply XML patches from defs file
-        patch.apply(tree, namespaceNode);
+      {
+        try
+          patch.apply(tree, namespaceNode);
+        catch (XmlPatchError e)
+        {
+          error(e.msg ~ " " ~ patch.posInfo ~ " (Gir file '" ~ repo.filename ~ "')");
+          patchErrors++;
+        }
+      }
 
       repo.fromXmlTree(tree); // Convert XML tree to Gir object tree
     }
 
+    if (patchErrors > 0)
+    {
+      error(patchErrors.to!string ~ " definition XML patch " ~ (patchErrors == 1 ? "command" : "commands")
+        ~ " failed to apply");
+      return false;
+    }
+
     fixupVerifyRepos();
+    return true;
   }
 
   /// Ensure consistent state of repo data and fixup additional data (array parameter indexes, etc)
