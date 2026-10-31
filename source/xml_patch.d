@@ -272,7 +272,7 @@ class XmlPatch
             curNode.attrs.remove(selAttrId);
           break;
         case Add:
-          curNode.addChild(nodeValue.root);
+          curNode.addChild(nodeValue.root.deepcopy);
           break;
       }
     }

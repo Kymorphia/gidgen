@@ -128,7 +128,7 @@ final class Repo : Base
           {
             base.docContent = node.content;
             base.docFilename = node.get("filename");
-            base.docLine = node.get("line").to!uint;
+            base.docLine = node.attrTo!uint("line", 0);
           }
           break;
         case "doc-deprecated": // Deprecated note
@@ -214,7 +214,7 @@ final class Repo : Base
           if (auto base = node.baseParentFromXmlNodeWarn!Base)
           {
             base.sourceFilename = node.get("filename");
-            base.sourceLine = node.get("line").to!uint;
+            base.sourceLine = node.attrTo!uint("line", 0);
           }
           break;
         case "type": // Type information
@@ -1413,6 +1413,34 @@ void warnWithLoc(string file, size_t line, string xmlLoc, string message)
 void infoWithLoc(string file, size_t line, string xmlLoc, string message)
 {
   info((Repo.logCodeLoc ? (file ~ ":" ~ line.to!string ~ " ") : "") ~ (Repo.logGirLoc ? (xmlLoc ~ " ") : "") ~ message);
+}
+
+/**
+ * Convert an XML node attribute. Warn and return a default if it is missing or invalid.
+ * Params:
+ *   T = The type to convert to
+ *   node = XML node
+ *   attr = The attribute name
+ *   defVal = The value to use if the attribute is missing or invalid
+ * Returns: The converted attribute value or defVal
+ */
+T attrTo(T)(XmlNode node, dstring attr, T defVal, string file = __FILE__, size_t line = __LINE__)
+{
+  auto pVal = attr in node.attrs;
+
+  if (!pVal)
+    return defVal;
+
+  try
+  {
+    return (*pVal).to!T;
+  }
+  catch (ConvException e)
+  {
+    warnWithLoc(file, line, node.parseFile ~ ":" ~ node.parseLine.to!string,
+      "Invalid '" ~ attr.to!string ~ "' attribute value '" ~ (*pVal).to!string ~ "', using default");
+    return defVal;
+  }
 }
 
 /// Package include

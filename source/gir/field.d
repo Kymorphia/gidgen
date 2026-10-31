@@ -49,11 +49,7 @@ final class Field : TypeNode
     introspectable = node.get("introspectable", "1") == "1";
     private_ = node.get("private") == "1";
     owned = node.get("owned", "0") == "1";
-
-    try
-      bits = node.get("bits", "0").to!ubyte;
-    catch (ConvException e)
-      warnWithLoc(__FILE__, __LINE__, xmlLocation, "Invalid field bits value '" ~ node.get("bits").to!string ~ "'");
+    bits = node.attrTo!ubyte("bits", 0);
   }
 
   protected override void fixup()

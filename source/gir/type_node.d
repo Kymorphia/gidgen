@@ -297,18 +297,11 @@ class TypeNode : Base
       {
         containerType = ContainerType.Array;
         zeroTerminated = arr.get("zero-terminated", "0") == "1";
+        fixedSize = arr.attrTo!int("fixed-size", ArrayNotFixed);
+        arrayLengthIndex = arr.attrTo!int("length", ArrayLengthUnset);
 
-        if (auto pFixedSize = "fixed-size" in arr.attrs)
-          fixedSize = (*pFixedSize).to!int;
-        else
-          fixedSize = ArrayNotFixed;
-
-        if (auto pLength = "length" in arr.attrs)
-          arrayLengthIndex = (*pLength).to!int;
-        else if (arr.get("caller-length", "0") == "1")
+        if (arrayLengthIndex == ArrayLengthUnset && arr.get("caller-length", "0") == "1")
           arrayLengthIndex = ArrayLengthCaller;
-        else
-          arrayLengthIndex = ArrayLengthUnset;
       }
 
       if (_dType == "GLib.Array")

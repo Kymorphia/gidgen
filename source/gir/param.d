@@ -99,17 +99,8 @@ final class Param : TypeNode
     allowNone = node.get("allow-none") == "1";
     callerAllocates = node.get("caller-allocates") == "1";
     varargs = node.findChild("varargs") !is null;
-
-    if (auto pVal = "closure" in node.attrs)
-      closureIndex = (*pVal).to!int;
-    else
-      closureIndex = NoClosure;
-
-    if (auto pVal = "destroy" in node.attrs)
-      destroyIndex = (*pVal).to!int;
-    else
-      destroyIndex = NoDestroy;
-
+    closureIndex = node.attrTo!int("closure", NoClosure);
+    destroyIndex = node.attrTo!int("destroy", NoDestroy);
     scope_ = cast(ParamScope)ParamScopeValues.countUntil(node.get("scope"));
   }
 
