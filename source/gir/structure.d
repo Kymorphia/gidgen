@@ -700,7 +700,12 @@ final class Structure : TypeNode
         if (f.dType == "float" || f.dType == "double")
           s ~= fieldType ~ " " ~ f.dName ~ " = 0.0"; // Use 0.0 for default value for floating point values (not nan)
         else
-          s ~= fieldType ~ " " ~ f.dName ~ " = " ~ fieldType ~ ".init"; // Otherwise use types .init value
+        {
+          if (fieldType.endsWith(']'))
+            s ~= fieldType ~ " " ~ f.dName ~ " = (" ~ fieldType ~ ").init"; // Use parenthesis for static array field types (end with [size])
+          else
+            s ~= fieldType ~ " " ~ f.dName ~ " = " ~ fieldType ~ ".init"; // Otherwise use types .init value
+        }
       }
     }
 
@@ -824,6 +829,12 @@ final class Structure : TypeNode
 
           lines ~= cPtr ~ "." ~ f.dName ~ " = propval;";
           break;
+        case Container:
+          if (f.containerType == ContainerType.Array)
+            lines ~= constructFieldArraySetter(f);
+          else
+            assert(0, "Write of container fields is not supported"); // Verify should prevent this
+          break;
         case String:
           if (kind == Wrap) // Borrowed, GC string is kept alive by the wrapper's _cInstance (scanned by the GC)
             lines ~= cPtr ~ "." ~ f.dName ~ " = cast(" ~ f.cType ~ ")toCString!(No.Malloc, Yes.Nullable)(propval);";
@@ -845,7 +856,7 @@ final class Structure : TypeNode
             lines ~= ["cValueFree!(" ~ f.fullDType ~ ")(cast(void*)" ~ cPtr ~ "." ~ f.dName ~ ");",
               "dToC(propval, cast(void*)&" ~ cPtr ~ "." ~ f.dName ~ ");"];
           break;
-        case Pointer, Opaque, Wrap, Container, Namespace, Unknown:
+        case Pointer, Opaque, Wrap, Namespace, Unknown:
           throw new Exception("Unhandled writable field property type '" ~ f.fullDType.to!string ~ "' (" ~ f
               .kind.to!string ~ ") for struct " ~ fullDType.to!string);
       }
@@ -878,32 +889,70 @@ final class Structure : TypeNode
     else
       assert(0); // This should be prevented by verify()
 
+    dstring declareRetval(dstring elemDType)
+    {
+      if (field.fixedSize != ArrayNotFixed)
+        return elemDType ~ "[" ~ lengthStr ~ "] _retval;";
+      else
+        return "auto _retval = new " ~ elemDType ~ "[](" ~ lengthStr ~ ");";
+    }
+
     final switch (elemType.kind) with (TypeKind)
     {
       case Basic, BasicAlias, Enum, Flags, StructAlias, Struct, Pointer:
         if (field.dType == "bool")
-          lines ~= ["auto _retval = new bool[](" ~ lengthStr ~ ");", "foreach (i; 0 .. " ~ lengthStr ~ ")",
-            "_retval[i] = " ~ cPtr ~ "." ~ field.dName ~ "[i];", "return _retval;"];
+          lines ~= [declareRetval("bool"), "foreach (i; 0 .. " ~ lengthStr ~ ")", "_retval[i] = " ~ cPtr ~ "."
+            ~ field.dName ~ "[i];", "return _retval;"];
+        else if (field.fixedSize != ArrayNotFixed)
+          lines ~= "return *cast(" ~ field.fullDType ~ "*)&" ~ cPtr ~ "." ~ field.dName ~ ";";
         else
           lines ~= "return " ~ cPtr ~ "." ~ field.dName ~ "[0 .. " ~ lengthStr ~ "].dup;";
         break;
       case String:
-        lines ~= ["auto _retval = new string[](" ~ lengthStr ~ ");", "foreach (i; 0 .. " ~ lengthStr ~ ")",
-          "_retval[i] = " ~ cPtr ~ "." ~ field.dName ~ "[i].fromCString;", "return _retval;"];
+        lines ~= [declareRetval("string"), "foreach (i; 0 .. " ~ lengthStr ~ ")", "_retval[i] = " ~ cPtr ~ "."
+          ~ field.dName ~ "[i].fromCString;", "return _retval;"];
         break;
       case Opaque, Wrap, Boxed, Reffed:
-        lines ~= ["auto _retval = new " ~ field.fullDType ~ "(" ~ lengthStr ~ ");",
-          "foreach (i; 0 .. " ~ lengthStr ~ ")", "_retval[i] = new " ~ elemType.fullDType ~ "(cast(void*)" ~ cPtr ~ "."
-            ~ field.dName ~ "[i], No.Take);", "return _retval;"];
+        auto addrOf = elemType.cType.countStars == 0 ? "&"d : "";
+        lines ~= [declareRetval(elemType.fullDType), "foreach (i; 0 .. " ~ lengthStr ~ ")", "_retval[i] = new "
+          ~ elemType.fullDType ~ "(cast(void*)" ~ addrOf ~ cPtr ~ "." ~ field.dName ~ "[i], No.Take);",
+          "return _retval;"];
         break;
       case Object, Interface:
         addImport("gobject.object");
 
-        lines ~= ["auto _retval = new " ~ field.fullDType ~ "(" ~ lengthStr ~ ");",
-          "foreach (i; 0 .. " ~ lengthStr ~ ")", "_retval[i] = gobject.object.ObjectWrap._getDObject!("
-            ~ elemType.fullDType ~ ")(cast(void*)" ~ cPtr ~ "." ~ field.dName ~ "[i], No.Take);", "return _retval;"];
+        lines ~= [declareRetval(elemType.fullDType), "foreach (i; 0 .. " ~ lengthStr ~ ")",
+          "_retval[i] = gobject.object.ObjectWrap._getDObject!(" ~ elemType.fullDType ~ ")(cast(void*)" ~ cPtr
+          ~ "." ~ field.dName ~ "[i], No.Take);", "return _retval;"];
         break;
       case Unknown, Callback, Container, Namespace:
+        assert(0, "Unsupported field array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType.kind.to!string
+            ~ ") for " ~ field.fullDName.to!string);
+    }
+
+    return lines;
+  }
+
+  // Construct an array field setter
+  private dstring[] constructFieldArraySetter(Field field)
+  {
+    auto cPtr = "(cast(" ~ (cType.countStars > 0 ? cTypeRemPtr : cType) ~ "*)this._cPtr)";
+    auto elemType = field.elemTypes[0];
+    dstring[] lines;
+
+    assert(field.fixedSize != ArrayNotFixed, "Write is only supported for fixed size array fields"); // Should be prevented by verify
+
+    auto lengthStr = field.fixedSize.to!dstring;
+
+    final switch (elemType.kind) with (TypeKind)
+    {
+      case Basic, BasicAlias, Enum, Flags, StructAlias, Struct:
+        if (field.dType == "bool")
+          lines ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", cPtr ~ "." ~ field.dName ~ "[i] = propval[i];"];
+        else
+          lines ~= cPtr ~ "." ~ field.dName ~ " = *cast(" ~ elemType.cType ~ "[" ~ lengthStr ~ "]*)&propval;";
+        break;
+      case Pointer, String, Opaque, Wrap, Boxed, Reffed, Object, Interface, Unknown, Callback, Container, Namespace:
         assert(0, "Unsupported field array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType.kind.to!string
             ~ ") for " ~ field.fullDName.to!string);
     }

@@ -183,13 +183,23 @@ class TypeNode : Base
     if (containerType == ContainerType.HashTable)
       return elemTypes.length == 2 ? (elemTypes[1].fullDType ~ "[" ~ elemTypes[0].fullDType ~ "]") : dType;
     else if (containerType != ContainerType.None)
-      return elemTypes.length == 1 ? (elemTypes[0].fullDType ~ "[]") : dType;
+      return elemTypes.length == 1 ? (elemTypes[0].fullDType ~ "[" ~ (isStaticArray // Use static array size if fixed size and array cType is empty
+        ? fixedSize.to!dstring : ""d) ~ "]") : dType;
     else if (typeObject)
       return typeObject.fullModuleName ~ "." ~ dType;
     else if (!inModule && !inGlobal)
       return dType;
     else
       return fullModuleName ~ "." ~ dType;
+  }
+
+  /**
+   * Check if a node is a fixed size static array type.
+   * Returns: true if node is a fixed size static array with empty array cType.
+   */
+  bool isStaticArray()
+  {
+    return containerType == ContainerType.Array && fixedSize != ArrayNotFixed && cType.empty;
   }
 
   /**
@@ -697,6 +707,17 @@ enum TypeKind
 bool typeKindIsStructured(TypeKind kind)
 {
   with (TypeKind) return kind.among(StructAlias, Struct, Pointer, Opaque, Wrap, Boxed, Reffed, Object, Interface) != 0;
+}
+
+/**
+ * Check if a type kind is plain old data (directly copyable).
+ * Params:
+ *   kind = Type kind to check
+ * Returns: true if kind is plain old data, false otherwise
+ */
+bool isPlainData(TypeKind kind)
+{
+  with (TypeKind) return kind.among(Basic, BasicAlias, Enum, Flags, Struct, StructAlias) != 0;
 }
 
 /**

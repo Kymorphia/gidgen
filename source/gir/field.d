@@ -138,7 +138,8 @@ final class Field : TypeNode
       if (arrayLengthIndex >= 0 && (!lengthField || lengthField.cType.countStars > 0)) // Array has invalid length argument?
         throw new Exception("Invalid array length parameter");
 
-      if (starCount < 1 || (isScalar && starCount > 1) || (!isScalar && starCount > 2))
+      if (!isStaticArray // Allow fixed size array fields
+          && (starCount < 1 || (isScalar && starCount > 1) || (!isScalar && starCount > 2)))
         throw new Exception("Array has unexpected C type '" ~ cType.to!string ~ "'");
 
       if ((isScalar && elemStars > 0) || (!isScalar && elemStars > 1))
@@ -152,7 +153,7 @@ final class Field : TypeNode
       throw new Exception("Unhandled type '" ~ dType.to!string ~ "' (" ~ kind.to!string ~ ")");
 
     with (TypeKind) if (writable
-      && ((kind == Container) // Writable container fields are not currently supported
+      && ((kind == Container && (!isStaticArray || !elemTypes[0].kind.isPlainData)) // Only writable static array plain data field containers are supported
         || (kind.among(Struct, StructAlias) && starCount != 0)  // Writable structure pointer fields are not supported
         || kind.among(Pointer, Opaque, Wrap) // Unsupported structure types (unknown memory allocation methods)
         || (kind.among(Boxed, Reffed) && starCount == 0))) // Embedded boxed/reffed types not supported
