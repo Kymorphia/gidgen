@@ -317,12 +317,11 @@ final class Repo : Base
 
       foreach (m; en.members) // Add enum/flag member names
       {
-        // Register by cName when glibName is available (glibName presence indicates valid C symbol).
-        // Fall back to registering by glibName when cName is available.
-        // Both hashes point to the same member for lookup flexibility.
-        if (m.glibName)
+        // Register by C identifier, and also by the GType value name if it differs
+        if (m.cName)
           defs.cSymbolHash[m.cName] = m;
-        else if (m.cName)
+
+        if (m.glibName && m.glibName != m.cName)
           defs.cSymbolHash[m.glibName] = m;
       }
     }
