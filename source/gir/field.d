@@ -39,6 +39,16 @@ final class Field : TypeNode
     return repo.defs.symbolName(_name.camelCase);
   }
 
+  override bool isPlainData()
+  {
+    if (kind == TypeKind.Wrap)
+      return typeObjectRoot.isPlainData;
+    else if (kind == TypeKind.Container && isStaticArray)
+      return elemTypes[0].kind == TypeKind.Wrap ? elemTypes[0].typeObjectRoot.isPlainData : elemTypes[0].isPlainData;
+    else
+      return super.isPlainData;
+  }
+
   override void fromXml(XmlNode node)
   {
     super.fromXml(node);

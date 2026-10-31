@@ -5,6 +5,7 @@ import std.file : fileRead = read, fileWrite = write;
 import std_includes;
 
 import line_tracker;
+import utils : stripComment;
 
 /**
  * Code writer object.
@@ -153,9 +154,13 @@ class CodeWriter
       }
       else if (line.startsWith('{')) // Open brace for a control block increases indent
         indent += 2;
-      else if (["else", "for ", "foreach ", "if ", "static if ", "version(", "while "].filter!(x => line.startsWith(x))
-          .empty != true)
-        indentStatement = true;
+      else
+      {
+        auto l = line.stripComment;
+        if (l == "else" || (l.endsWith(")") && ["for ", "foreach ", "if ", "static if ", "version(", "while "]
+            .filter!(x => line.startsWith(x)).empty != true))
+          indentStatement = true;
+      }
     }
 
     string strContent = content.to!string;

@@ -627,75 +627,117 @@ class FuncWriter
 
     addCallParam("_" ~ param.dName);
 
-    // Input array parameters with ownership transfer (Full/Container) would require copying the
-    // array data to GLib-allocated memory. This is not yet implemented - such parameters should
-    // be handled via definition file patches if encountered.
-    assert(param.ownership == Ownership.None, "Function array parameter " ~ param.fullDName.to!string
-        ~ " ownership not supported");
+    with (TypeKind) if (param.ownership == Ownership.Container || (param.ownership == Ownership.Full
+        && (elemType.kind.among(Pointer, Opaque) || (elemType.kind == Wrap && !elemType.typeObjectRoot.isPlainData))))
+      assert(0, "Function array parameter " ~ param.fullDName.to!string ~ " ownership " ~ param.ownership.to!string
+        ~ " not supported");
 
     if (param.fixedSize != ArrayNotFixed) // Add an array size assertion if fixed size does not match
       preCall ~= "assert(!" ~ param.dName ~ " || " ~ param.dName ~ ".length == "
         ~ param.fixedSize.to!dstring ~ ");";
 
+    auto zeroTerm = param.zeroTerminated ? " + 1"d : "";
+
     final switch (elemType.kind) with (TypeKind)
     {
       case Basic, BasicAlias, Enum, Flags, StructAlias, Struct, Pointer:
-        preCall ~= "auto _" ~ param.dName ~ " = " ~ param.dName ~ ".ptr ? cast(" ~ param.cType ~ ")"
-          ~ (param.zeroTerminated // If zero terminated, append a null or 0 value to the array and use the pointer to pass to the C function call
-            ? ("(" ~ param.dName ~ " ~ " ~ (elemType.cType.endsWith("*") ? "null" : elemType.cType ~ ".init") ~ ").ptr")
-            : param.dName ~ ".ptr") ~ " : [" ~ elemType.cType ~ ".init].ptr;";
+        if (elemType.dType == "bool")
+        {
+          if (param.ownership == Ownership.None)
+            preCall ~= ["auto _" ~ param.dName ~ "_arr = new gboolean[](" ~ param.dName ~ ".length" ~ zeroTerm ~ ");",
+              "auto _" ~ param.dName ~ " = " ~ "_" ~ param.dName ~ "_arr.ptr" ~ ";"];
+          else // Ownership Full
+            preCall ~= ["auto _" ~ param.dName ~ " = cast(gboolean*)gMalloc((" ~ param.dName ~ ".length" ~ zeroTerm
+              ~ ") * gboolean.sizeof);"];
+
+          preCall ~= "foreach (i, b; " ~ param.dName ~ ") _" ~ param.dName ~ "[i] = cast(gboolean)b;";
+          break;
+        }
+
+        if (param.ownership == Ownership.None)
+        {
+          if (param.zeroTerminated)
+            preCall ~= ["auto _" ~ param.dName ~ "_arr = " ~ param.dName ~ " ~ " ~ (elemType.cType.endsWith("*")
+              ? "null" : elemType.cType ~ ".init") ~ ";", "auto _" ~ param.dName ~ " = _" ~ param.dName ~ "_arr.ptr;"];
+          else
+            preCall ~= "auto _" ~ param.dName ~ " = cast(" ~ elemType.cType ~ "*)" ~ param.dName ~ ".ptr;";
+        }
+        else // Ownership Full
+          preCall ~= ["auto _" ~ param.dName ~ " = cast(" ~ param.cType.stripConst ~ ")gMalloc((" ~ param.dName
+            ~ ".length" ~ zeroTerm ~ ") * (" ~ elemType.cType ~ ").sizeof);", "_" ~ param.dName ~ "[0 .. " ~ param.dName
+            ~ ".length] = " ~ param.dName ~ "[];"];
         break;
       case String:
-        preCall ~= [elemType.cType ~ "[] _tmp" ~ param.dName ~ ";", "foreach (s; " ~ param.dName ~ ")",
-          "_tmp" ~ param.dName ~ " ~= s.toCString;"];
+        if (param.ownership == Ownership.None)
+          preCall ~= ["auto _" ~ param.dName ~ "_arr = new char*[](" ~ param.dName ~ ".length" ~ zeroTerm ~ ");",
+            "auto _" ~ param.dName ~ " = cast(" ~ param.cType.stripConst ~ ")" ~ "_" ~ param.dName ~ "_arr.ptr" ~ ";"];
+        else // Ownership Full
+          preCall ~= ["auto _" ~ param.dName ~ " = cast(char**)gMalloc((" ~ param.dName ~ ".length" ~ zeroTerm
+            ~ ") * (char*).sizeof);"];
 
-        if (param.zeroTerminated)
-          preCall ~= "_tmp" ~ param.dName ~ " ~= null;";
-
-        preCall ~= [param.cType ~ " _" ~ param.dName ~ " = " ~ "_tmp" ~ param.dName ~ ".ptr" ~ ";", ""];
+        auto malloc = param.ownership == Ownership.None ? "No"d : "Yes"d;
+        preCall ~= "foreach (i, s; " ~ param.dName ~ ") _" ~ param.dName ~ "[i] = s.toCString!(" ~ malloc
+          ~ ".Malloc);";
         break;
       case Wrap:
-        preCall ~= [elemType.cTypeRemPtr ~ "[] _tmp" ~ param.dName ~ ";", "foreach (obj; " ~ param.dName ~ ")",
-          "_tmp" ~ param.dName ~ " ~= obj._cInstance;"];
+        if (param.ownership == Ownership.None)
+          preCall ~= ["auto _" ~ param.dName ~ "_arr = new " ~ elemType.cType ~ "[](" ~ param.dName ~ ".length"
+            ~ zeroTerm ~ ");", "auto _" ~ param.dName ~ " = " ~ "_" ~ param.dName ~ "_arr.ptr" ~ ";"];
+        else // Ownership Full
+          preCall ~= ["auto _" ~ param.dName ~ " = cast(" ~ param.cType.stripConst ~ ")gMalloc((" ~ param.dName
+            ~ ".length" ~ zeroTerm ~ ") * (" ~ elemType.cType ~ ").sizeof);"];
 
-        if (param.zeroTerminated)
-          preCall ~= "_tmp" ~ param.dName ~ " ~= " ~ elemType.cTypeRemPtr ~ "();";
+        preCall ~= "foreach (i, obj; " ~ param.dName ~ ") _" ~ param.dName ~ "[i] = obj._cInstance;";
 
-        preCall ~= [param.cType ~ " _" ~ param.dName ~ " = _tmp" ~ param.dName ~ ".ptr" ~ ";", ""];
-
-        if (!param.cType.canFind("const")) // Non-const array, C function may modify the structures, copy them back
-          postCall ~= ["foreach (i, obj; " ~ param.dName ~ ")", "obj._cInstance = _tmp" ~ param.dName ~ "[i];", ""];
+        if (param.ownership == Ownership.None && !param.cType.canFind("const")) // Non-const array, C function may modify the structures, copy them back
+          postCall ~= "foreach (i, obj; " ~ param.dName ~ ") obj._cInstance = _" ~ param.dName ~ "[i];";
         break;
       case Boxed:
-        preCall ~= [elemType.cType ~ "[] _tmp" ~ param.dName ~ ";", "foreach (obj; " ~ param.dName ~ ")",
-          "_tmp" ~ param.dName ~ " ~= " ~ (elemType.cType.endsWith('*') ? ""d : "*"d) ~ "cast(" ~ elemType.cTypeRemPtr
-          ~ "*)obj._cPtr;"];
+        if (param.ownership == Ownership.None)
+          preCall ~= ["auto _" ~ param.dName ~ "_arr = new " ~ elemType.cType ~ "[](" ~ param.dName ~ ".length"
+            ~ zeroTerm ~ ");", "auto _" ~ param.dName ~ " = " ~ "_" ~ param.dName ~ "_arr.ptr" ~ ";"];
+        else // Ownership Full
+          preCall ~= ["auto _" ~ param.dName ~ " = cast(" ~ param.cType.stripConst ~ ")gMalloc((" ~ param.dName
+            ~ ".length" ~ zeroTerm ~") * (" ~ elemType.cType ~ ").sizeof);"];
 
-        if (param.zeroTerminated)
-          preCall ~= "_tmp" ~ param.dName ~ ".length++;";
-
-        preCall ~= [param.cType ~ " _" ~ param.dName ~ " = _tmp" ~ param.dName ~ ".ptr" ~ ";", ""];
+        auto ptr = elemType.cType.endsWith('*') ? ""d : "*"d;
+        auto nullval = elemType.cType.endsWith('*') ? "null"d : (elemType.cType ~ ".init");
+        auto dup = param.ownership == Ownership.None ? "No"d : "Yes"d;
+        preCall ~= "foreach (i, obj; " ~ param.dName ~ ") _" ~ param.dName ~ "[i] = obj ? " ~ ptr ~ "cast("
+          ~ elemType.cTypeRemPtr ~ "*)obj._cPtr(" ~ dup ~ ".Dup) : " ~ nullval ~ ";";
         break;
-      case Opaque, Reffed, Object:
-        preCall ~= [elemType.cType ~ "[] _tmp" ~ param.dName ~ ";", "foreach (obj; " ~ param.dName ~ ")",
-          "_tmp" ~ param.dName ~ " ~= obj ? cast(" ~ elemType.cTypeRemPtr.stripConst ~ "*)obj._cPtr : null;"];
+      case Reffed, Object:
+        if (param.ownership == Ownership.None)
+          preCall ~= ["auto _" ~ param.dName ~ "_arr = new " ~ elemType.cType ~ "[](" ~ param.dName ~ ".length"
+            ~ zeroTerm ~ ");", "auto _" ~ param.dName ~ " = cast(" ~ param.cType.stripConst ~ ")" ~ "_" ~ param.dName
+            ~ "_arr.ptr" ~ ";"];
+        else // Ownership Full
+          preCall ~= ["auto _" ~ param.dName ~ " = cast(" ~ param.cType.stripConst ~ ")gMalloc((" ~ param.dName
+            ~ ".length" ~ zeroTerm ~") * (" ~ elemType.cType ~ ").sizeof);"];
 
-        if (param.zeroTerminated)
-          preCall ~= "_tmp" ~ param.dName ~ " ~= null;";
-
-        preCall ~= [param.cType ~ " _" ~ param.dName ~ " = cast(" ~ param.cType ~ ")_tmp"
-          ~ param.dName ~ ".ptr" ~ ";", ""];
+        auto dup = param.ownership == Ownership.None ? "No"d : "Yes"d;
+        preCall ~= "foreach (i, obj; " ~ param.dName ~ ") _" ~ param.dName ~ "[i] = obj ? cast(" ~ elemType.cType
+          ~ ")obj._cPtr(" ~ dup ~ ".Dup) : null;";
+        break;
+      case Opaque:
+        preCall ~= ["auto _" ~ param.dName ~ "_arr = new " ~ elemType.cType ~ "[](" ~ param.dName ~ ".length"
+          ~ zeroTerm ~ ");", "auto _" ~ param.dName ~ " = " ~ "_" ~ param.dName ~ "_arr.ptr" ~ ";"];
+        preCall ~= "foreach (i, obj; " ~ param.dName ~ ") _" ~ param.dName ~ "[i] = obj ? cast(" ~ elemType.cType
+          ~ ")obj._cPtr: null;";
         break;
       case Interface:
         addImport("gobject.object");
-        preCall ~= [elemType.cType ~ "[] _tmp" ~ param.dName ~ ";", "foreach (obj; " ~ param.dName ~ ")",
-          "_tmp" ~ param.dName ~ " ~= obj ? cast(" ~ elemType.cTypeRemPtr.stripConst
-          ~ "*)(cast(gobject.object.ObjectWrap)obj)._cPtr : null;"];
 
-        if (param.zeroTerminated)
-          preCall ~= "_tmp" ~ param.dName ~ " ~= null;";
+        if (param.ownership == Ownership.None)
+          preCall ~= ["auto _" ~ param.dName ~ "_arr = new " ~ elemType.cType ~ "[](" ~ param.dName ~ ".length"
+            ~ zeroTerm ~ ");", "auto _" ~ param.dName ~ " = " ~ "_" ~ param.dName ~ "_arr.ptr" ~ ";"];
+        else // Ownership Full
+          preCall ~= ["auto _" ~ param.dName ~ " = cast(" ~ param.cType.stripConst ~ ")gMalloc((" ~ param.dName
+            ~ ".length" ~ zeroTerm ~") * (" ~ elemType.cType ~ ").sizeof);"];
 
-        preCall ~= [param.cType ~ " _" ~ param.dName ~ " = _tmp" ~ param.dName ~ ".ptr" ~ ";", ""];
+        auto dup = param.ownership == Ownership.None ? "No"d : "Yes"d;
+        preCall ~= "foreach (i, obj; " ~ param.dName ~ ") _" ~ param.dName ~ "[i] = obj ? cast("
+          ~ elemType.cType ~ ")(cast(gobject.object.ObjectWrap)obj)._cPtr(" ~ dup ~ ".Dup): null;";
         break;
       case Unknown, Callback, Container, Namespace:
         assert(0, "Unsupported parameter array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType.kind.to!string

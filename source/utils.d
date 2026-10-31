@@ -201,6 +201,32 @@ dstring stripConstPtr(dstring type)
 }
 
 /**
+ * Strip a comment from the end of a line.
+ * Params:
+ *   line = The line of text
+ * Returns: Line of text with any trailing comment stripped
+ */
+dstring stripComment(dstring line)
+{
+  if (line.length > 0)
+  {
+    bool lastWasBackSlash;
+    bool inStringLiteral;
+
+    foreach (i; 0 .. cast(long)line.length - 1)
+    {
+      if (!inStringLiteral && line[i] == '/' && (line[i + 1] == '/' || line[i + 1] == '*'))
+        return line[0 .. i].stripRight;
+
+      inStringLiteral ^= !lastWasBackSlash && line[i] == '"';
+      lastWasBackSlash = line[i] == '\\';
+    }
+  }
+
+  return line;
+}
+
+/**
  * Split a string by whitespace with double quoted substring support.
  * Params:
  *   s = The string to split

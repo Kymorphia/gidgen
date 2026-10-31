@@ -224,9 +224,19 @@ final class Param : TypeNode
       throw new Exception("Unsupported input " ~ kind.to!string
         ~ " parameter with full ownership transfer and no copy function");
 
-    if (containerType != ContainerType.None)
+    if (containerType != ContainerType.None && ownership != Ownership.None)
     {
-      if ((direction == ParamDirection.In || direction == ParamDirection.InOut) && ownership != Ownership.None)
+      if (containerType == ContainerType.Array)
+      {
+        if (direction == ParamDirection.In && ownership == Ownership.Container)
+          throw new Exception("Array input parameter Container ownership not supported");
+
+        with (TypeKind) if (direction == ParamDirection.In && (elemTypes[0].kind.among(Pointer, Opaque)
+            || (elemTypes[0].kind == Wrap && !elemTypes[0].typeObjectRoot.isPlainData)))
+          throw new Exception("Array input " ~ elemTypes[0].kind.to!string ~ " parameter Full ownership not supported");
+      }
+
+      if (direction == ParamDirection.InOut)
         throw new Exception("Container " ~ containerType.to!string ~ " parameter with direction "
           ~ direction.to!string ~ " ownership " ~ ownership.to!string ~ " not supported");
     }
@@ -406,8 +416,8 @@ final class Param : TypeNode
       throw new Exception("Parameter without a closure has a destroy notify");
 
     if (auto cb = cast(Func)typeObjectRoot)
-      if (!isDestroy && !cb.closureParam && scope_ != ParamScope.Call)
-        throw new Exception ("Callback parameters with scope '" ~ scope_.to!string
+      if (!isDestroy && scope_ != ParamScope.Call && (!cb.closureParam || closureIndex == NoClosure))
+        throw new Exception("Callback parameters with scope '" ~ scope_.to!string
           ~ "' should have a closure parameter");
   }
 

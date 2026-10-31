@@ -203,6 +203,15 @@ class TypeNode : Base
   }
 
   /**
+   * Check if a type node is plain ol' data.
+   * Returns: true if this type node can be copied as plain data
+   */
+  bool isPlainData()
+  {
+    return kind.isPlainData;
+  }
+
+  /**
    * Check if other type node is the same type.
    * Returns: true if TypeNode objects are the same type, false otherwise
    */
@@ -584,10 +593,9 @@ class TypeNode : Base
 
         // Wrap elements are freed shallow, can't deep free structures with pointer fields
         if (ownership == Ownership.Full && elemTypes[0].kind == TypeKind.Wrap)
-          if (auto st = cast(Structure)elemTypes[0].typeObjectRoot)
-            if (st.fields.canFind!(f => f.cType.countStars > 0 || f.kind == TypeKind.String))
-              throw new Exception("Transfer full " ~ containerType.to!string ~ " of " ~ elemTypes[0].dType.to!string
-                ~ " (" ~ elemTypes[0].kind.to!string ~ ") with pointer fields not supported");
+          if (!elemTypes[0].typeObjectRoot.isPlainData)
+            throw new Exception("Transfer full " ~ containerType.to!string ~ " of " ~ elemTypes[0].dType.to!string
+              ~ " (" ~ elemTypes[0].kind.to!string ~ ") with pointer fields not supported");
       }
     }
 

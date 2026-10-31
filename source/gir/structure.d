@@ -45,6 +45,27 @@ final class Structure : TypeNode
       return moduleName;
   }
 
+  override bool isPlainData()
+  {
+    if (!_isPlainDataSet && resolved)
+    {
+      if (kind == TypeKind.Wrap)
+      {
+        _isPlainData = true;
+
+        foreach (f; fields)
+          _isPlainData &= f.isPlainData;
+
+      }
+      else if (kind != TypeKind.Unknown)
+        _isPlainData = kind.isPlainData;
+
+      _isPlainDataSet = true;
+    }
+
+    return _isPlainData;
+  }
+
   override @property bool inModule()
   {
     with (TypeKind) return kind.among(Struct, Opaque, Wrap, Boxed, Reffed, Object, Interface, Namespace) != 0;
@@ -1396,6 +1417,8 @@ final class Structure : TypeNode
   Func[dstring] funcNameHash; /// Hash of functions by GIR name (snake_case)
   TypeNode[dstring] dMethodHash; /// Hash of methods by D name, includes function methods and properties
 
+  bool _isPlainDataSet; /// true when _isPlainData has been set
+  bool _isPlainData; /// Cached value indicating if kind.isPlainData or Wrap and all fields are POD
   bool abstract_; /// Is abstract type?
   bool deprecated_; /// Deprecated?
   bool opaque; /// Opaque structure type
