@@ -478,15 +478,16 @@ final class Structure : TypeNode
     if (defCode.classDecl.empty)
     {
       if (kind == TypeKind.Interface)
-        writer ~= [isIfaceTemplate ? ("template " ~ dType ~ "T()") : ("interface " ~ dType), "{"];
+        writer ~= [isIfaceTemplate ? ("template " ~ dType ~ "T()") : ("interface " ~ dType ~ " : GidWrap"), "{"];
       else if (moduleType == ModuleType.Struct) // Struct module?
         writeStructDef(writer, true);  // Write structure definition using D types
       else if (kind != TypeKind.Namespace)
       { // Create range of parent type and implemented interface types, but filter out interfaces already implemented by ancestors
         objIfaces = implementStructs.filter!(x => !getIfaceAncestor(x)).array;
-        auto parentAndIfaces = (parentStruct ? [parentStruct] : []) ~ objIfaces;
-        writer ~= ["class " ~ dType ~ (!parentAndIfaces.empty ? " : " ~ parentAndIfaces.map!(x => x.fullDType)
-          .join(", ") : ""), "{"];
+        auto parentAndIfaces = ((parentStruct && !usesBoxedWrap) ? [parentStruct.fullDType]
+          : ((usesBoxedWrap || kind.among(TypeKind.Opaque, TypeKind.Reffed, TypeKind.Wrap)) ? [wrapBaseClass] : []))
+          ~ objIfaces.map!(x => x.fullDType).array;
+        writer ~= ["class " ~ dType ~ (!parentAndIfaces.empty ? " : " ~ parentAndIfaces.join(", ") : ""), "{"];
       }
     }
     else
@@ -587,21 +588,40 @@ final class Structure : TypeNode
     writer.write();
   }
 
+  /**
+   * Check if this is a Boxed type which derives directly from the root Boxed class and therefore uses the BoxedWrap
+   * template base class, which provides the GType and static C copy/free functions.
+   * Returns: true if the BoxedWrap template base class is used
+   */
+  bool usesBoxedWrap()
+  {
+    return kind == TypeKind.Boxed && parentStruct && parentStruct.kind == TypeKind.Boxed && !parentStruct.parentStruct
+      && !glibGetType.empty && glibGetType != "intern";
+  }
+
+  /// Opaque, root Reffed, Wrap or root Boxed base class template instance (OpaqueWrap, ReffedWrap, StructWrap or BoxedWrap)
+  dstring wrapBaseClass()
+  {
+    if (kind == TypeKind.Boxed)
+      return parentStruct.fullModuleName ~ ".BoxedWrap!(" ~ glibGetType ~ ")";
+
+    auto ptrType = pointer ? cType : cTypeRemPtr ~ "*";
+
+    if (kind == TypeKind.Wrap)
+      return "StructWrap!(" ~ cTypeRemPtr ~ (copyFunction ? ", " ~ copyFunction : "") ~ ")";
+
+    if (kind == TypeKind.Reffed)
+      return "ReffedWrap!(" ~ ptrType ~ ", " ~ glibRefFunc ~ ", " ~ glibUnrefFunc ~ ")";
+
+    return "OpaqueWrap!(" ~ ptrType ~ ", " ~ (freeFunction ? freeFunction : "void") ~ ", "
+      ~ (copyFunction ? copyFunction : "void") ~ ")";
+  }
+
   // Write class init code
   private void writeInitCode(CodeWriter writer, ModuleType moduleType)
   {
     if (kind == TypeKind.Struct && glibGetType.length == 0) // Struct without a glibGetType function is not a boxed type
       return;
-
-    if ((kind == TypeKind.Opaque && !pointer) || (kind == TypeKind.Reffed && !parentStruct))
-      writer ~= [cTypeRemPtr ~ "* _cInstancePtr;"];
-    else if (kind == TypeKind.Opaque && pointer)
-      writer ~= [cType ~ " _cInstancePtr;"];
-    else if (kind == TypeKind.Wrap)
-      writer ~= [cTypeRemPtr ~ " _cInstance;"];
-
-    if (kind == TypeKind.Opaque)
-      writer ~= "bool owned;";
 
     // Boxed structures with defined structures can be allocated, add ctor without args
     if (kind == TypeKind.Boxed && !ctorFunc && !opaque && !pointer && !fields.empty)
@@ -611,67 +631,33 @@ final class Structure : TypeNode
     if (kind == TypeKind.Wrap && !ctorFunc && !fields.empty)
       writer ~= writeBoxedOrWrapCtor!"wrap";
 
-    if (kind == TypeKind.Opaque)
-      writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take) nothrow", "{"];
-    else if (kind == TypeKind.Wrap || kind == TypeKind.Reffed)
-      writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take) nothrow", "{"];
-    else if (kind == TypeKind.Boxed || kind == TypeKind.Object)
-      writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take) nothrow", "{",
-        "super(cast(void*)ptr, take);", "}"];
+    with (TypeKind) if (kind.among(Opaque, Reffed, Wrap, Boxed, Object))
+      writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take) nothrow", "{", "super(ptr, take);", "}"];
 
-    if (kind == TypeKind.Opaque && !pointer)
-      writer ~= ["_cInstancePtr = cast(" ~ cTypeRemPtr ~ "*)ptr;", "", "owned = take;", "}"];
-    else if (kind == TypeKind.Opaque && pointer)
-      writer ~= ["_cInstancePtr = cast(" ~ cType ~ ")ptr;", "", "owned = take;", "}"];
-    else if (kind == TypeKind.Wrap)
-      writer ~= ["_cInstance = *cast(" ~ cTypeRemPtr ~ "*)ptr;", "", "if (take)", "gFree(ptr);", "}"];
-    else if (kind == TypeKind.Reffed && !parentStruct)
-      writer ~= ["_cInstancePtr = cast(" ~ cTypeRemPtr ~ "*)ptr;", "", "if (!take && ptr)", glibRefFunc
-        ~ "(_cInstancePtr);", "}", "", "~this() nothrow", "{", "if (_cInstancePtr)",
-        "cValueFreeInMainContext(cast(void*)_cInstancePtr, cast(GDestroyNotify)cFuncPtr!(" ~ glibUnrefFunc ~ ")());",
-        "}", ""];
-    else if (kind == TypeKind.Reffed && parentStruct)
-      writer ~= ["super(cast(" ~ parentStruct.cType ~ "*)ptr, take);", "}"];
+    // Reffed types with a GType (not "intern" fundamental types, which are handled in definitions)
+    auto reffedGType = kind == TypeKind.Reffed && !glibGetType.empty && glibGetType != "intern";
 
-    if (kind == TypeKind.Opaque && freeFunction)
-      writer ~= ["", "~this() nothrow", "{", "if (owned && _cInstancePtr)",
-        "cValueFreeInMainContext(cast(void*)_cInstancePtr, cast(GDestroyNotify)cFuncPtr!(" ~ freeFunction ~ ")());",
-        "}"];
+    // Boxed types using the BoxedWrap template get _getGType, _gType, _cDup and _cFree from it
+    auto boxedGType = kind == TypeKind.Boxed && !usesBoxedWrap;
 
-    if (kind == TypeKind.Opaque && copyFunction)
-      writer ~= ["", "/** */", "void* _cPtr(Flag!\"Dup\" dup = No.Dup) nothrow", "{",
-        "return dup ? cast(void*)" ~ copyFunction ~ "(_cInstancePtr) : cast(void*)_cInstancePtr;", "}"];
-    else if (kind == TypeKind.Opaque)
-      writer ~= ["", "/** */", "void* _cPtr() nothrow", "{", "return cast(void*)_cInstancePtr;", "}"];
-    else if (kind == TypeKind.Reffed && !parentStruct)
-      writer ~= ["", "/** */", "void* _cPtr(Flag!\"Dup\" dup = No.Dup) nothrow", "{", "if (dup)", glibRefFunc
-        ~ "(_cInstancePtr);", "", "return _cInstancePtr;", "}"];
-    else if (kind == TypeKind.Boxed)
-      writer ~= ["", "/** */", "void* _cPtr(Flag!\"Dup\" dup = No.Dup) nothrow", "{",
-        "return dup ? boxCopy : _cInstancePtr;", "}"];
-    else if (kind == TypeKind.Wrap)
-      writer ~= ["", "/** */", "void* _cPtr(Flag!\"Dup\" dup = No.Dup) nothrow", "{",
-        "return cast(void*)(dup ? " ~ (copyFunction ? copyFunction ~ "(&_cInstance)"d : "mallocDup(&_cInstance)"d)
-        ~ " : &_cInstance);", "}"];
-
-    if (kind.among(TypeKind.Struct, TypeKind.Boxed, TypeKind.Object)
-        || (kind == TypeKind.Interface && moduleType == ModuleType.Iface))
+    with (TypeKind) if (kind.among(Struct, Object) || boxedGType || reffedGType
+        || (kind == Interface && moduleType == ModuleType.Iface))
       writer ~= ["", "/** */", "static GType _getGType() nothrow", "{", "import gid.loader : gidSymbolNotFound;",
         "return cast(void function())" ~ glibGetType
         ~ " != &gidSymbolNotFound ? " ~ glibGetType ~ "() : cast(GType)0;", "}"]; // Return 0 if get_type() function was not resolved
 
-    auto overrideStr = (kind == TypeKind.Object || kind == TypeKind.Boxed) ? "override "d : ""d;
+    auto overrideStr = (kind.among(TypeKind.Object, TypeKind.Boxed) || reffedGType) ? "override "d : ""d;
 
-    if (kind.among(TypeKind.Struct, TypeKind.Boxed, TypeKind.Object))
+    if (kind.among(TypeKind.Struct, TypeKind.Object) || boxedGType || reffedGType)
       writer ~= ["", "/** */", overrideStr ~ "@property GType _gType() nothrow", "{", "return _getGType();", "}"];
+
+    if (boxedGType || kind == TypeKind.Struct) // Boxed copy and free functions require the type's GType
+      writer ~= ["", "/** */", "static void* _cDup(void* ptr) nothrow", "{", "return boxedCopy(_getGType, ptr);", "}",
+        "", "/** */", "static void _cFree(void* ptr) nothrow", "{", "boxedFree(_getGType, ptr);", "}"];
 
     if (kind.among(TypeKind.Boxed, TypeKind.Object))
       writer ~= ["", "/** Returns `this`, for use in `with` statements. */", overrideStr ~ dType ~ " self() nothrow",
         "{", "return this;", "}"];
-
-    if (kind == TypeKind.Struct)
-      writer ~= ["", "void* boxCopy() nothrow", "{", "import gobject.c.functions : g_boxed_copy;",
-        "return g_boxed_copy(_gType, cast(void*)&this);", "}"];
 
     if (kind == TypeKind.Object)
       writer ~= ["", "/**", "    Get builder for [" ~ fullDType ~ "]", "    Returns: New builder object", "*/",
@@ -681,7 +667,7 @@ final class Structure : TypeNode
   // Write a Boxed type constructor with all fields as parameters with default values (optional)
   private dstring writeBoxedOrWrapCtor(string BoxedOrWrap)()
   {
-    dstring s = "\n/**\n    Create a `" ~ dName ~ "` " ~ BoxedOrWrap ~ " type.\n";
+    dstring s = "/**\n    Create a `" ~ dName ~ "` " ~ BoxedOrWrap ~ " type.\n";
     bool paramsShown;
 
     bool isFieldCandidate(Field f) { return f.active == Active.Enabled && f.writable && !f.arrayFields; }

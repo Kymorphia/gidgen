@@ -121,8 +121,10 @@ class Defs : Base
       auto defCode = curRepo.modDefCode[curModName];
 
       if (classState == ClassState.Pre) // Not inside class?
-      { // Is this a class declaration?
-        if (line.startsWith("class") || line.startsWith("abstract class"))
+      { // Is this a class declaration? Namespace modules have no class, so any class declarations are pre class code
+        auto kind = curModName in curRepo.kindSubs;
+
+        if ((!kind || *kind != TypeKind.Namespace) && (line.startsWith("class") || line.startsWith("abstract class")))
         {
           defCode.classDecl = line;
           classState = ClassState.Start;
