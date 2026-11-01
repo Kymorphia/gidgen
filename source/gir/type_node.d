@@ -577,7 +577,8 @@ class TypeNode : Base
           throw new Exception("Unsupported hash table key type " ~ elemTypes[0].dType.to!string ~ " ("
             ~ elemTypes[0].kind.to!string ~ ")");
 
-        with (TypeKind) if (!elemTypes[1].kind.among(Object, Interface, String, Pointer))
+        // Enum and Flags values are stored directly in the pointer (GINT_TO_POINTER)
+        with (TypeKind) if (!elemTypes[1].kind.among(Object, Interface, String, Pointer, Enum, Flags, Boxed, Reffed))
           throw new Exception("Unsupported hash table value type " ~ elemTypes[1].dType.to!string ~ " ("
             ~ elemTypes[1].kind.to!string ~ ")");
       }
