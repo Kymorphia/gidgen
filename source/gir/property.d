@@ -72,7 +72,7 @@ final class Property : TypeNode
     super.fixup;
 
     if (!introspectable)
-      active = Active.Disabled;
+      active = Active.Ignored;
   }
 
   protected override void verify()

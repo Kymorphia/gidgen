@@ -33,7 +33,7 @@ int main(string[] args)
   bool dumpKinds;
   bool enableReport;
   string reportFile;
-  string reportOptions = "AllUnsupported";
+  string reportOptions = "AllUncovered";
   bool displayVersion;
   bool dumpJson;
   bool dumpJsonWithDocs;
@@ -51,7 +51,7 @@ int main(string[] args)
         "log-level", "Log level (" ~ [EnumMembers!LogLevel].map!(x => x.to!string).join(", ") ~ ")", &logLevel,
         "log-gir-locs", "Log GIR file locations in warnings", &Repo.logGirLoc,
         "log-code-locs", "Log code locations in warnings", &Repo.logCodeLoc,
-        "report", "Output binding coverage statistics (defaults to --report-options AllUnsupported)", &enableReport,
+        "report", "Output binding coverage statistics (defaults to --report-options AllUncovered)", &enableReport,
         "report-file", "File to output report to (defaults to stdout if not specified)", &reportFile,
         "report-options", "Customize report output (logically OR'd flags with '|' character, 'help' for flag list)", &reportOptions,
         "suggest", "Output definition file command suggestions", &suggest,

@@ -281,9 +281,9 @@ abstract class Base
 enum Active : ubyte
 {
   Enabled, /// Object is enabled
-  Disabled, /// Object was explicitly disabled
-  Ignored, /// Object was explicitly ignored (does not appear in stats table)
-  Unsupported, /// Object is not supported by gidgen currently
+  Disabled, /// Object was explicitly disabled because it is not currently supported (counts against coverage, no warning)
+  Ignored, /// Object was explicitly ignored because it is not wanted in the D binding (does not appear in stats table)
+  Unsupported, /// Object was automatically disabled because it is not supported by gidgen currently (generates a warning)
 }
 
 /**

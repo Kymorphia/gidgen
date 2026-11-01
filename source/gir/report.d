@@ -83,7 +83,8 @@ class Report
               continue;
 
             auto total = report.objs[cast(int)Active.Enabled][objNdx].length
-              + report.objs[cast(int)Active.Unsupported][objNdx].length; // Don't include explicitly disabled objects in total
+              + report.objs[cast(int)Active.Disabled][objNdx].length
+              + report.objs[cast(int)Active.Unsupported][objNdx].length; // Ignored objects are not included in total
             auto perc = (total > 0 && report.objs[cast(int)Active.Enabled][objNdx].length < total) // Calculate coverage percentage
               ? format("%.1f", (report.objs[cast(int)Active.Enabled][objNdx].length * 100.0) / total) : "100";
 
@@ -166,6 +167,7 @@ enum ReportFlags
   AllDisabled = Summary | Disabled | Structs | Funcs | Signals | Fields, /// Output report with explicitly disabled object names only
   AllIgnored = Summary | Ignored | Structs | Funcs | Signals | Fields, /// Output report with ignored object names only
   AllUnsupported = Summary | Unsupported | Structs | Funcs | Signals | Fields, /// Output report with unsupported object names only
+  AllUncovered = Summary | Disabled | Unsupported | Structs | Funcs | Signals | Fields, /// Output report with disabled and unsupported object names (API not covered by the binding)
 }
 
 string[] reportFlagDescriptions = [
@@ -182,7 +184,8 @@ string[] reportFlagDescriptions = [
   "Generate a report of all Enabled items", // AllEnabled
   "Generate a report of all Disabled items", // AllDisabled
   "Generate a report of all Ignored items", // AllIgnored
-  "Generate a report of all Unsupported items (default)", // AllUnsupported
+  "Generate a report of all Unsupported items", // AllUnsupported
+  "Generate a report of all Disabled and Unsupported items (default)", // AllUncovered
 ];
 
 void displayReportOptionsHelp()

@@ -53,8 +53,9 @@ Some of the features of **gidgen** include:
   * Command line options for identifying and resolving GIR issues.
   * Support for debugging gidgen using traps in gdb, to set breakpoints when specific parts of the binding are processed.
 * Binding coverage reports:
-  * A differentiation is made between intentionally disabled API (Disabled) vs gidgen limitations/GIR issues (Unsupported).
-    Disabled items aren't included in the coverage statistics and are either not useful for the binding or are replaced by custom code.
+  * A differentiation is made between API which is explicitly disabled with a def rule because it is not currently supported (Disabled),
+    API which is automatically disabled by gidgen because of gidgen limitations/GIR issues (Unsupported), and API which is not wanted in the binding (Ignored).
+    Ignored items aren't included in the coverage statistics and are either not useful for the binding or are replaced by custom code.
   * The report can be customized to output items of different types and their Active state.
 * API documentation
   * Converts Gtk-Doc documentation to [adrdox](https://github.com/adamdruppe/adrdox)
@@ -74,7 +75,7 @@ GObject Introspection Dlang binding generator
         --log-level Log level (all, trace, info, warning, error, critical, fatal, off)
      --log-gir-locs Log GIR file locations in warnings
     --log-code-locs Log code locations in warnings
-           --report Output binding coverage statistics (defaults to --report-options AllUnsupported)
+           --report Output binding coverage statistics (defaults to --report-options AllUncovered)
       --report-file File to output report to (defaults to stdout if not specified)
    --report-options Customize report output (logically OR'd flags with '|' character, 'help' for flag list)
           --suggest Output definition file command suggestions
@@ -106,7 +107,7 @@ A binding coverage report can be created and is configurable with the following 
 * **--report-file** Specify a file to write the report to. Uses stdout by default if not specified.
 * **--report-options** Can be used to customize the report output.
   Consists of one or more flags which are logically OR'd with the '|' pipe character.
-  The default is **AllUnsupported** if not specified.
+  The default is **AllUncovered** if not specified.
 
 #### Report Options
 
@@ -128,7 +129,8 @@ All            Generate a full report
 AllEnabled     Generate a report of all Enabled items
 AllDisabled    Generate a report of all Disabled items
 AllIgnored     Generate a report of all Ignored items
-AllUnsupported Generate a report of all Unsupported items (default)
+AllUnsupported Generate a report of all Unsupported items
+AllUncovered   Generate a report of all Disabled and Unsupported items (default)
 ```
 
 The **Summary** flag outputs a table of coverage statistics, described in more detail below.
@@ -136,9 +138,9 @@ The **Summary** flag outputs a table of coverage statistics, described in more d
 There are four flags which determine the active state of items whose names will be output:
 
 * **Enabled** Displays names of items which are enabled and present in the generated binding.
-* **Disabled** Displays names of items which are intentionally disabled, not due to gidgen limitations or GIR issues.
-* **Ignored** Displays names of items which are intentionally ignored and not considered to be relevant to D bindings.
-* **Unsupported** Displays names of items which are inactive because of a limitation in gidgen or an issue with the GIR specification.
+* **Disabled** Displays names of items which are explicitly disabled with a def rule because they are not currently supported (no warning is generated).
+* **Ignored** Displays names of items which are intentionally ignored and not considered to be relevant to D bindings (not useful, redundant, or replaced by custom code).
+* **Unsupported** Displays names of items which are automatically disabled because of a limitation in gidgen or an issue with the GIR specification (a warning is generated).
 
 Four of the flags determine the types of items whose names will be output:
 
@@ -155,6 +157,8 @@ The remaining flags are for convenience and are combinations of the previous fla
 * **AllIgnored** All four of the item type flags and the Ignored flag, which outputs the names of all of the ignored items.
 * **AllUnsupported** All four of the item type flags and the Unsupported flag, which outputs the names of all of the unsupported API items which are not covered.
   These count against the total coverage scores.
+* **AllUncovered** All four of the item type flags and the Disabled and Unsupported flags, which outputs the names of all API items which are not covered,
+  whether explicitly disabled or automatically marked as unsupported. This is the default.
 
 #### Summary
 
@@ -182,8 +186,8 @@ freetype2  |    5    0    0   100 |    0    0    0   100 |    0    0    0   100 
 
 The **Package** column contains the package name. Additional columns are shown for the enabled item types (Structs, Funcs, Signals, Fields).
 Each of the additional columns contains sub columns for the number of Active (Act), Disabled (Dis), and Unsupported (Uns) items.
-The final sub-column contains the percentage coverage, which is the count of Active items from the total Active and Unsupported items.
-Disabled and Ignored items are not included in the coverage percentage calculation as they are not considered to be a part of the API binding.
+The final sub-column contains the percentage coverage, which is the count of Active items from the total Active, Disabled, and Unsupported items.
+Ignored items are not included in the coverage percentage calculation as they are not considered to be a part of the API binding.
 
 ### Binding Debugging Commands
 
