@@ -51,7 +51,7 @@ class FuncWriter
     {
       if (param.kind == TypeKind.Callback && !param.isDestroy)
       { // Use a static delegate pointer if there is no closure data argument and scope is Call
-        auto staticDelegatePtr = (!param.typeObjectRoot || !(cast(Func)param.typeObjectRoot).closureParam);
+        auto staticDelegatePtr = (!param.typeObjectRoot || !(cast(Func)param.typeObjectRoot).hasClosure);
 
         assert(!staticDelegatePtr || param.scope_ == ParamScope.Call,
           "Static delegate path requires Call scope (Param.verify should have rejected this)");

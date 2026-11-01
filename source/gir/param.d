@@ -403,9 +403,26 @@ final class Param : TypeNode
       if (closureParam.direction != ParamDirection.In || closureParam.dType != "void*")
         throw new Exception("Closure data should be a void* input parameter");
 
-      auto closureCount = (cast(Func)typeObjectRoot).params.count!(x => x.isClosure);
-      if (closureCount != 1)
-        throw new Exception("Parameter callback must have one closure argument");
+      auto cbType = cast(Func)typeObjectRoot;
+      auto closureCount = cbType.params.count!(x => x.isClosure);
+
+      if (!cbType.closureField.empty)
+      { // Closure data is read from a structure field of a callback parameter (gid-closure-field attribute)
+        if (closureCount != 0)
+          throw new Exception("Callback type '" ~ cbType.name.to!string
+            ~ "' has a 'gid-closure-field' attribute and also a closure (user_data) parameter");
+
+        auto fieldParamName = cbType.closureField.findSplit(".")[0];
+        if (!cbType.params.canFind!(x => x.name == fieldParamName))
+          throw new Exception("Callback type '" ~ cbType.name.to!string ~ "' 'gid-closure-field' parameter '"
+            ~ fieldParamName.to!string ~ "' not found");
+      }
+      else if (closureCount == 0)
+        throw new Exception("Callback type '" ~ cbType.name.to!string
+          ~ "' has no closure (user_data) parameter (use a 'gid-closure-field' def rule if the closure data is stored in a structure field)");
+      else if (closureCount > 1)
+        throw new Exception("Callback type '" ~ cbType.name.to!string ~ "' has " ~ closureCount.to!string
+          ~ " closure (user_data) parameters, only one is supported");
 
       if (destroyIndex != NoDestroy)
       {
@@ -423,9 +440,9 @@ final class Param : TypeNode
       throw new Exception("Parameter without a closure has a destroy notify");
 
     if (auto cb = cast(Func)typeObjectRoot)
-      if (!isDestroy && scope_ != ParamScope.Call && (!cb.closureParam || closureIndex == NoClosure))
+      if (!isDestroy && scope_ != ParamScope.Call && (!cb.hasClosure || closureIndex == NoClosure))
         throw new Exception("Callback parameters with scope '" ~ scope_.to!string
-          ~ "' should have a closure parameter");
+          ~ "' should have a closure parameter (callback type '" ~ cb.name.to!string ~ "')");
   }
 
   override void toJson(ref JSONValue js)

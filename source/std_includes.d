@@ -1,7 +1,7 @@
 module std_includes;
 
 public import core.exception : RangeError;
-public import std.algorithm : among, canFind, count, countUntil, each, endsWith, equal, find, filter, fold,
+public import std.algorithm : among, canFind, count, countUntil, each, endsWith, equal, find, findSplit, filter, fold,
   map, max, remove, sort, splitter, startsWith, uniq;
 public import std.array : appender, array, assocArray, byPair, replace, replaceFirst, replicate, split;
 public import std.conv : ConvException, to;

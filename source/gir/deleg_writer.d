@@ -36,7 +36,7 @@ class DelegWriter
     decl ~= "extern(C) ";
 
     if (delegParam.scope_ == ParamScope.Async)
-      preCall ~= "ptrThawGC(" ~ callback.closureParam.dName ~ ");"; // If it is an asynchronous callback, delegate can be thawed immediately (will continue to exist so long as it is in use)
+      preCall ~= "ptrThawGC(" ~ callback.closureExpr ~ ");"; // If it is an asynchronous callback, delegate can be thawed immediately (will continue to exist so long as it is in use)
 
     processReturn();
 
@@ -44,7 +44,7 @@ class DelegWriter
 
     if (!staticDelegatePtr)
     {
-      preCall ~= "auto _dlg = cast(" ~ delegParam.fullDType ~ "*)" ~ callback.closureParam.dName ~ ";";
+      preCall ~= "auto _dlg = cast(" ~ delegParam.fullDType ~ "*)" ~ callback.closureExpr ~ ";";
       call ~= "(*_dlg)(";
     }
     else

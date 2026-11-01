@@ -92,6 +92,27 @@ final class Func : TypeNode
     return funcType != FuncType.Method && !isCtor && parent !is repo.globalStruct;
   }
 
+  /// Returns true if the callback has closure data (closure parameter or closure field)
+  @property bool hasClosure()
+  {
+    return closureParam || !closureField.empty;
+  }
+
+  /**
+   * Get a D expression for accessing the closure data from within a C callback trampoline.
+   * Returns: D code expression or null if the callback has no closure
+   */
+  dstring closureExpr()
+  {
+    if (closureParam)
+      return closureParam.dName;
+
+    if (closureFieldParam)
+      return "(cast(" ~ closureFieldParam.cType ~ ")" ~ closureFieldParam.dName ~ ")." ~ closureFieldName;
+
+    return null;
+  }
+
   override void fromXml(XmlNode node)
   {
     super.fromXml(node);
@@ -117,6 +138,7 @@ final class Func : TypeNode
     deprecated_ = node.get("deprecated") == "1";
     deprecatedVersion = node.get("deprecated-version");
     when = cast(SignalWhen)SignalWhenValues.countUntil(node.get("when"));
+    closureField = node.get("gid-closure-field"); // Custom gid attribute set by def rule: "<paramName>.<fieldName>"
   }
 
   override dstring genDocs()
@@ -242,7 +264,7 @@ final class Func : TypeNode
         closureParam = pa;
     }
 
-    if (funcType == FuncType.Callback && !closureParam)
+    if (funcType == FuncType.Callback && !closureParam && closureField.empty)
     { // Search for closure parameter if it is not explicitly designated
       foreach (pa; params.retro) // Look in reverse, since it is more likely to be an end parameter
       {
@@ -278,6 +300,56 @@ final class Func : TypeNode
       warnWithLoc(file, line, xmlLocation, "Disabling " ~ (funcType == FuncType.Signal ? "signal '" : "function '" )
         ~ fullDName.to!string ~ "': " ~ msg);
       TypeNode.dumpSelectorOnWarning(errorNode ? errorNode : this);
+    }
+
+    if (!closureField.empty)
+    {
+      if (funcType != FuncType.Callback)
+      {
+        disableFunc(__FILE__, __LINE__, "'gid-closure-field' attribute is only valid on callback types");
+        return;
+      }
+
+      if (closureParam)
+      {
+        disableFunc(__FILE__, __LINE__, "callback has both a closure parameter '" ~ closureParam.name.to!string
+          ~ "' and a 'gid-closure-field' attribute");
+        return;
+      }
+
+      auto parts = closureField.findSplit(".");
+      if (parts[0].empty || parts[2].empty || parts[2].canFind('.'))
+      {
+        disableFunc(__FILE__, __LINE__, "invalid 'gid-closure-field' value '" ~ closureField.to!string
+          ~ "', expected '<paramName>.<fieldName>'");
+        return;
+      }
+
+      auto paIndex = params.countUntil!(x => x.name == parts[0]);
+      if (paIndex < 0)
+      {
+        disableFunc(__FILE__, __LINE__, "'gid-closure-field' parameter '" ~ parts[0].to!string ~ "' not found");
+        return;
+      }
+
+      auto pa = params[paIndex];
+      auto st = cast(Structure)pa.typeObjectRoot;
+      if (!st || pa.cType.countStars != 1 || pa.direction != ParamDirection.In)
+      {
+        disableFunc(__FILE__, __LINE__, "'gid-closure-field' parameter '" ~ parts[0].to!string
+          ~ "' must be an input pointer to a structure or class", pa);
+        return;
+      }
+
+      if (!st.fields.canFind!(x => x.name == parts[2]))
+      {
+        disableFunc(__FILE__, __LINE__, "'gid-closure-field' field '" ~ parts[2].to!string ~ "' not found in '"
+          ~ st.fullDName.to!string ~ "'", pa);
+        return;
+      }
+
+      closureFieldParam = pa;
+      closureFieldName = parts[2];
     }
 
     if (!shadows.empty && !shadowsFunc)
@@ -608,6 +680,7 @@ final class Func : TypeNode
     js.jsonSetNonDefault("returnVal", returnVal);
     js.jsonSetNonDefault("params", params);
     js.jsonSetNonDefault("closureParam", closureParam);
+    js.jsonSetNonDefault("closureField", closureField);
     js.jsonSetNonDefault("isCtor", isCtor);
     if (shadowedByFunc) js["shadowedByFunc"] = shadowedByFunc.fullDName;
     if (shadowsFunc) js["shadowsFunc"] = shadowsFunc.fullDName;
@@ -641,6 +714,9 @@ final class Func : TypeNode
   ReturnValue returnVal; /// Return value type
   Param[] params; /// Parameters
   Param closureParam; /// Closure data parameter or null (Callback only)
+  dstring closureField; /// Custom "gid-closure-field" attribute "<paramName>.<fieldName>": closure data is read from a C struct field of a callback parameter instead of a closure parameter (Callback only)
+  Param closureFieldParam; /// Resolved parameter for closureField (set in verify)
+  dstring closureFieldName; /// Resolved structure field name for closureField (set in verify)
   bool isCtor; /// Set for the primary constructor of an instance (not a Gir field)
   Func shadowedByFunc; /// Resolved function object for shadowedBy
   Func shadowsFunc; /// Resolved function object for shadows
