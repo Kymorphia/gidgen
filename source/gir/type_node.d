@@ -194,6 +194,17 @@ class TypeNode : Base
   }
 
   /**
+   * Get the pointer depth of an array C type, counting a pointer typedef element type (GdkAtom for example) as an
+   * additional pointer level, since its C type has no '*'. Used to determine if array elements are inline structures.
+   * Returns: Number of pointer levels of the array C type
+   */
+  int arrayPtrDepth()
+  {
+    auto st = elemTypes.length == 1 ? cast(Structure)elemTypes[0].typeObjectRoot : null;
+    return cast(int)cType.countStars + (st && st.pointer ? 1 : 0);
+  }
+
+  /**
    * Check if a node is a fixed size static array type.
    * Returns: true if node is a fixed size static array with empty array cType.
    */
@@ -584,13 +595,18 @@ class TypeNode : Base
       }
       else if (containerType != ContainerType.None)
       {
-        with (TypeKind) if (elemTypes[0].kind.among(Unknown, Callback, Container, Opaque, Namespace))
+        with (TypeKind) if (elemTypes[0].kind.among(Unknown, Callback, Container, Namespace))
           throw new Exception("Unsupported " ~ containerType.to!string ~ " container element type "
             ~ elemTypes[0].dType.to!string ~ " (" ~ elemTypes[0].kind.to!string ~ ")");
 
         if (containerType == ContainerType.ArrayG && elemTypes[0].kind == TypeKind.Wrap) // GArray stores structures inline, gid helpers treat non-simple types as pointers
           throw new Exception("Unsupported " ~ containerType.to!string ~ " container element type "
             ~ elemTypes[0].dType.to!string ~ " (" ~ elemTypes[0].kind.to!string ~ ")");
+
+        // Opaque elements are borrowed pointers, they can't be duplicated or freed generically
+        if (ownership == Ownership.Full && elemTypes[0].kind == TypeKind.Opaque && containerType != ContainerType.Array)
+          throw new Exception("Transfer full " ~ containerType.to!string ~ " of " ~ elemTypes[0].dType.to!string
+            ~ " (Opaque) not supported");
 
         // Wrap elements are freed shallow, can't deep free structures with pointer fields
         if (ownership == Ownership.Full && elemTypes[0].kind == TypeKind.Wrap)

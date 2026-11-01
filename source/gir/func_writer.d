@@ -273,7 +273,7 @@ class FuncWriter
       case Opaque, Wrap, Boxed, Reffed:
         postCall ~= ["_retval = new " ~ elemType.fullDType ~ "[" ~ lengthStr ~ "];", "foreach (i; 0 .. "
           ~ lengthStr ~ ")", "_retval[i] = new " ~ elemType.fullDType ~ "(cast(void*)"
-          ~ (retVal.cType.countStars == 1 ? "&_cretval[i], No.Take);"d : "_cretval[i], " ~ retVal.fullOwnerFlag
+          ~ (retVal.arrayPtrDepth == 1 ? "&_cretval[i], No.Take);"d : "_cretval[i], " ~ retVal.fullOwnerFlag
           ~ ".Take);")];
         break;
       case Object, Interface:
@@ -843,7 +843,7 @@ class FuncWriter
         }
         break;
       case Opaque, Wrap, Boxed, Reffed:
-        auto inlineElems = param.cType.countStars == (param.callerAllocates ? 1 : 2);
+        auto inlineElems = param.arrayPtrDepth == (param.callerAllocates ? 1 : 2);
         auto elemExpr = (inlineElems ? "&_"d : "_"d) ~ param.dName ~ "[i]";
         auto takeStr = inlineElems ? "No.Take"d : param.fullOwnerFlag ~ ".Take";
 

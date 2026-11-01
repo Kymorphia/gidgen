@@ -391,9 +391,13 @@ class DelegWriter
             ~ param.dName ~ "[i].fromCString!(" ~ param.fullOwnerFlag ~ ".Free);"];
           break;
         case Opaque, Boxed, Wrap, Reffed:
-          preCall ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_" ~ param.dName ~ "[i] = "
-            ~ "new " ~ elemType.fullDType ~ "(cast(" ~ elemType.cType.stripConst ~ "*)&" ~ param.dName ~ "[i], "
-            ~ param.fullOwnerFlag ~ ".Take);"];
+          if (param.arrayPtrDepth == 1) // Inline structures (not pointers), wrapper copies the structure
+            preCall ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_" ~ param.dName ~ "[i] = "
+              ~ "new " ~ elemType.fullDType ~ "(cast(" ~ elemType.cType.stripConst ~ "*)&" ~ param.dName
+              ~ "[i], No.Take);"];
+          else // Array of pointers (also pointer typedefs, such as GdkAtom)
+            preCall ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_" ~ param.dName ~ "[i] = "
+              ~ "new " ~ elemType.fullDType ~ "(cast(void*)" ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);"];
           break;
         case Object, Interface:
           addImport("gobject.object");
