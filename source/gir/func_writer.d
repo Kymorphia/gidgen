@@ -464,7 +464,14 @@ class FuncWriter
 
           if (!param.callerAllocates)
           {
-            preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";";
+            // Copy for transfer full (Struct kind has a GType and _cDup), callee frees the input and returns a new value
+            if (param.direction == ParamDirection.InOut)
+              preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ " = cast(" ~ param.cTypeRemPtr ~ ")"
+                ~ ((param.ownership == Ownership.Full && param.kind == Struct) ? (param.fullDType ~ "._cDup(cast(void*)&"
+                ~ param.dName ~ ")") : ("&" ~ param.dName)) ~ ";";
+            else
+              preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";";
+
             addCallParam("&_" ~ param.dName);
             postCall ~= "if (_" ~ param.dName ~ ")";
 
@@ -480,12 +487,28 @@ class FuncWriter
         else if ((param.nullable || param.optional) && param.cType.countStars == 1)
         {
           addDeclParam(param.fullDType ~ "* " ~ param.dName);
-          addCallParam("cast(" ~ param.cType ~ ")" ~ param.dName);
+
+          if (param.ownership == Ownership.Full && param.kind == Struct) // Callee takes ownership, pass a copy
+          {
+            preCall ~= param.cType ~ " _" ~ param.dName ~ " = " ~ param.dName ~ " ? cast(" ~ param.cType ~ ")"
+              ~ param.fullDType ~ "._cDup(cast(void*)" ~ param.dName ~ ") : null;";
+            addCallParam("_" ~ param.dName);
+          }
+          else
+            addCallParam("cast(" ~ param.cType ~ ")" ~ param.dName);
         }
         else
         {
           addDeclParam(param.fullDType ~ " " ~ param.dName);
-          addCallParam("cast(" ~ param.cType ~ ")" ~ (param.cType.countStars == 1 ? "&"d : "") ~ param.dName);
+
+          if (param.ownership == Ownership.Full && param.kind == Struct && param.cType.countStars == 1) // Pass a copy
+          {
+            preCall ~= param.cType ~ " _" ~ param.dName ~ " = cast(" ~ param.cType ~ ")" ~ param.fullDType
+              ~ "._cDup(cast(void*)&" ~ param.dName ~ ");";
+            addCallParam("_" ~ param.dName);
+          }
+          else
+            addCallParam("cast(" ~ param.cType ~ ")" ~ (param.cType.countStars == 1 ? "&"d : "") ~ param.dName);
         }
 
         break;
@@ -670,7 +693,9 @@ class FuncWriter
         else // Ownership Full
           preCall ~= ["auto _" ~ param.dName ~ " = cast(" ~ param.cType.stripConst ~ ")gMalloc((" ~ param.dName
             ~ ".length" ~ zeroTerm ~ ") * (" ~ elemType.cType ~ ").sizeof);", "_" ~ param.dName ~ "[0 .. " ~ param.dName
-            ~ ".length] = " ~ param.dName ~ "[];"];
+            ~ ".length] = " ~ (elemType.kind == Struct // D Struct types have the C layout, copy as the C type
+            ? "(cast(" ~ elemType.cType ~ "*)" ~ param.dName ~ ".ptr)[0 .. " ~ param.dName ~ ".length];"
+            : param.dName ~ "[];")];
         break;
       case String:
         if (param.ownership == Ownership.None)
@@ -794,9 +819,13 @@ class FuncWriter
         preCall ~= ["auto _" ~ n ~ " = cast(char**)gMalloc((" ~ n ~ ".length" ~ zeroTerm ~ ") * (char*).sizeof);",
           "foreach (i, s; " ~ n ~ ") _" ~ n ~ "[i] = s.toCString!(Yes.Malloc);"];
       else
-        preCall ~= ["auto _" ~ n ~ " = cast(" ~ param.cTypeRemPtr ~ ")gMalloc((" ~ n ~ ".length" ~ zeroTerm
-          ~ ") * (" ~ elemType.cType ~ ").sizeof);", "_" ~ n ~ "[0 .. " ~ n ~ ".length] = (cast(" ~ elemType.cType
+      { // Element C type from the array C type (the GIR element c:type of InOut arrays can include the out pointer)
+        auto arrCType = param.cTypeRemPtr;
+        auto elemCType = arrCType.endsWith("*") ? arrCType[0 .. $ - 1] : elemType.cType;
+        preCall ~= ["auto _" ~ n ~ " = cast(" ~ arrCType ~ ")gMalloc((" ~ n ~ ".length" ~ zeroTerm
+          ~ ") * (" ~ elemCType ~ ").sizeof);", "_" ~ n ~ "[0 .. " ~ n ~ ".length] = (cast(" ~ elemCType
           ~ "*)" ~ n ~ ".ptr)[0 .. " ~ n ~ ".length];"];
+      }
     }
 
     final switch (elemType.kind) with (TypeKind)
@@ -815,8 +844,10 @@ class FuncWriter
             postCall ~= "gFree(cast(void*)_" ~ param.dName ~ ");";
         }
         else // Caller allocated array
-        { // If there is a length parameter and it is not another array (gidgen extension) - init count to array length
-          if (param.lengthParam && param.lengthParam.containerType != ContainerType.Array)
+        { // Out array with a length parameter which is not another array (gidgen extension): init count to array
+          // length (InOut array lengths are already set above)
+          if (param.direction == ParamDirection.Out && param.lengthParam
+              && param.lengthParam.containerType != ContainerType.Array)
             preCall ~= "_" ~ param.lengthParam.dName ~ " = cast(" ~ param.lengthParam.fullDType ~ ")"
               ~ param.dName ~ ".length;";
 

@@ -1,0 +1,13 @@
+# Valgrind suppressions for the gidgen tests (in addition to GLib's glib.supp)
+
+# The D garbage collector conservatively scans stacks and memory which can contain uninitialized values
+{
+   druntime-gc-conservative-mark
+   Memcheck:Cond
+   fun:_D4core8internal2gc4impl12conservative*Gcx__T4mark*
+}
+{
+   druntime-gc-conservative-mark-value8
+   Memcheck:Value8
+   fun:_D4core8internal2gc4impl12conservative*Gcx__T4mark*
+}

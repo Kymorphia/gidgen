@@ -132,7 +132,8 @@ final class Field : TypeNode
     if (kind == TypeKind.String && starCount > 1)
       throw new Exception("Array of strings not supported");
 
-    with(TypeKind) if ((kind.among(Basic, BasicAlias, Enum, Flags, Callback) && starCount != 0)
+    // Basic types can be pointers themselves (gpointer is void*), so compare with the stars of the D type
+    with(TypeKind) if ((kind.among(Basic, BasicAlias, Enum, Flags, Callback) && starCount != dType.countStars)
         || (kind.among(String, StructAlias, Struct, Pointer, Opaque, Wrap, Boxed, Reffed, Object, Interface)
         && starCount > 1))
       throw new Exception("Unexpected number of pointer references for field " ~ fullDName.to!string);

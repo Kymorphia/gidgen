@@ -117,8 +117,14 @@ class DelegWriter
 
     final switch (retVal.kind) with (TypeKind)
     {
-      case Basic, BasicAlias, Enum, Flags, StructAlias, Struct, Pointer:
+      case Basic, BasicAlias, Enum, Flags, Pointer:
         postCall ~= "auto _retval = cast(" ~ retVal.cType ~ ")_dretval;";
+        break;
+      case StructAlias, Struct:
+        if (retVal.cType.countStars == 0)
+          postCall ~= "auto _retval = cast(" ~ retVal.cType ~ ")_dretval;";
+        else // Copy owned by the caller (Struct has _cDup), other ownership is disabled in Func.verify
+          postCall ~= "auto _retval = cast(" ~ retVal.cType ~ ")" ~ retVal.fullDType ~ "._cDup(cast(void*)&_dretval);";
         break;
       case String:
         postCall ~= "auto _retval = toCString!(Yes.Malloc, " ~ (retVal.nullable ? "Yes"d : "No"d)
@@ -139,6 +145,70 @@ class DelegWriter
     }
   }
 
+  /**
+   * Generate code converting a D array to a new C array (allocated with gMalloc, the caller takes ownership).
+   * Params:
+   *   arr = The array type node (return value or parameter)
+   *   dVar = D array variable
+   *   cVar = Declared C array variable to assign (null if the D array is empty)
+   * Returns: Code lines
+   */
+  private dstring[] dArrayToC(TypeNode arr, dstring dVar, dstring cVar)
+  {
+    dstring[] lines;
+    auto elemType = arr.elemTypes[0];
+
+    if (arr.fixedSize != ArrayNotFixed) // Array is a fixed size? Add an array size assertion.
+    {
+      addImport("std.conv"); // For the to!string in the assertion message
+      lines ~= "assert(!" ~ dVar ~ " || " ~ dVar ~ ".length == " ~ arr.fixedSize.to!dstring
+        ~ `, "Delegate '` ~ callback.fullDName ~ `' array should be of size ` ~ arr.fixedSize.to!dstring
+        ~ ` not " ~ ` ~ dVar ~ `.length.to!string);`;
+    }
+
+    lines ~= ["if (" ~ dVar ~ ".length > 0)", "{"];
+
+    // gMalloc zeroes the memory, which also sets the zero terminator
+    lines ~= cVar ~ " = cast(typeof(" ~ cVar ~ "))gMalloc(" ~ (arr.zeroTerminated ? "(" ~ dVar ~ ".length + 1)"
+      : dVar ~ ".length") ~ " * (*" ~ cVar ~ ").sizeof);";
+
+    with (TypeKind) if (!elemType.kind.among(Basic, BasicAlias, Enum, Flags, StructAlias, Struct, Pointer) // Can array be directly copied?
+        || elemType.dType == "bool")
+    {
+      lines ~= ["", "foreach (i; 0 .. " ~ dVar ~ ".length)"];
+
+      final switch (elemType.kind) with (TypeKind)
+      {
+        case Basic, BasicAlias:
+          lines ~= cVar ~ "[i] = " ~ dVar ~ "[i];"; // Convert between bool and gboolean
+          break;
+        case String:
+          lines ~= cVar ~ "[i] = toCString!(Yes.Malloc)(" ~ dVar ~ "[i]);";
+          break;
+        case Opaque, Wrap, Boxed, Reffed, Object:
+          lines ~= cVar ~ "[i] = " ~ dVar ~ "[i] ? cast(typeof(*" ~ cVar ~ "))" ~ dVar ~ "[i]._cPtr(" ~ arr.fullOwnerFlag
+            ~ ".Dup) : null;";
+          break;
+        case Interface:
+          addImport("gobject.object");
+          lines ~= cVar ~ "[i] = " ~ dVar ~ "[i] ? cast(typeof(*" ~ cVar ~ "))(cast(gobject.object.ObjectWrap)" ~ dVar
+            ~ "[i])._cPtr(" ~ arr.fullOwnerFlag ~ ".Dup) : null;";
+          break;
+        case Enum, Flags, StructAlias, Struct, Pointer, Callback, Unknown, Container, Namespace:
+          assert(0, "Unsupported delegate array type '" ~ elemType.fullDType.to!string
+            ~ "' (" ~ elemType.kind.to!string ~ ") for " ~ callback.fullDName.to!string);
+      }
+    }
+    else if (elemType.kind == TypeKind.Struct) // D Struct types have the C layout, copy as the C type
+      lines ~= cVar ~ "[0 .. " ~ dVar ~ ".length] = (cast(typeof(" ~ cVar ~ "))" ~ dVar ~ ".ptr)[0 .. " ~ dVar
+        ~ ".length];";
+    else // Data is compatible between D and C types, do array copy
+      lines ~= cVar ~ "[0 .. " ~ dVar ~ ".length] = " ~ dVar ~ "[];";
+
+    lines ~= ["}", ""]; // Close of "if (<dVar>.length > 0)" statement
+    return lines;
+  }
+
   /// Process array return value
   private void processReturnArray()
   {
@@ -154,79 +224,50 @@ class DelegWriter
     call ~= "_dretval = ";
     postCall ~= [retVal.cType ~ " _retval;", ""];
 
-    if (retVal.fixedSize != ArrayNotFixed) // Array is a fixed size? Add an array size assertion.
-      postCall ~= "assert(!_dretval || _dretval.length == " ~ retVal.fixedSize.to!dstring
-        ~ `, "Delegate '` ~ retVal.fullDType ~ `' should return array of size ` ~ retVal.fixedSize.to!dstring
-        ~ ` not " ~ _dretval.length.to!string);`;
-
-    postCall ~= ["if (_dretval.length > 0)", "{"];
-
-    if (retVal.zeroTerminated)
-    {
-      postCall ~= ["_retval = cast(" ~ retVal.cType ~ ")gMalloc((_dretval.length + 1) * (*_retval).sizeof);",
-        "zero(cast(void*)&_retval[_dretval.length], (*_retval).sizeof);"];
-    }
-    else
-      postCall ~= "_retval = cast(" ~ retVal.cType ~ ")gMalloc(_dretval.length * (*_retval).sizeof);";
-
-    with (TypeKind) if (!elemType.kind.among(Basic, BasicAlias, Enum, Flags, StructAlias, Struct, Pointer) // Can array be directly copied?
-        || elemType.dType == "bool")
-    {
-      postCall ~= ["", "foreach (i; 0 .. _dretval.length)"];
-
-      final switch (elemType.kind) with (TypeKind)
-      {
-        case Basic, BasicAlias:
-          postCall ~= "_retval[i] = _dretval[i];"; // Convert between bool and gboolean
-          break;
-        case String:
-          postCall ~= "_retval[i] = toCString!(Yes.Malloc)(_dretval[i]);";
-          break;
-        case Opaque, Wrap, Boxed, Reffed, Object, Interface:
-          postCall ~= "_retval[i] = _dretval[i]._cPtr(" ~ retVal.fullOwnerFlag ~ ".Dup);";
-          break;
-        case Enum, Flags, StructAlias, Struct, Pointer, Callback, Unknown, Container, Namespace:
-          assert(0, "Unsupported delegate return value array type '" ~ elemType.fullDType.to!string
-            ~ "' (" ~ elemType.kind.to!string ~ ") for " ~ callback.fullDName.to!string);
-      }
-    }
-    else // Data is compatible between D and C types, do array copy
-      postCall ~= "_retval[0 .. _dretval.length] = _dretval[];";
-
-    postCall ~= ["}", ""]; // Close of "if (_dretval.length > 0)" statement
+    postCall ~= dArrayToC(retVal, "_dretval", "_retval");
 
     if (retVal.lengthParam) // Array has length parameter?
-      postCall ~= "*" ~ retVal.lengthParam.dName ~ " = cast(typeof(" ~ retVal.lengthParam.dName ~ "))_dretval.length;";
+      postCall ~= "*" ~ retVal.lengthParam.dName ~ " = cast(typeof(*" ~ retVal.lengthParam.dName ~ "))_dretval.length;";
+  }
+
+  /// Template parameters of the g<Container>FromD conversion of a container (not Array) passed from D to C
+  private dstring fromDTemplateParams(TypeNode node)
+  {
+    switch (node.containerType) with(ContainerType)
+    {
+      case ByteArray:
+        return "";
+      case ArrayG, PtrArray:
+        return "!(" ~ node.elemTypes[0].fullDType  ~ ", " ~ node.zeroTerminated.to!dstring ~ ")";
+      case List, SList:
+        return "!(" ~ node.elemTypes[0].fullDType ~ ")";
+      case HashTable:
+        return "!(" ~ node.elemTypes[0].fullDType ~ ", " ~ node.elemTypes[1].fullDType ~ ")";
+      default:
+        assert(0, "Unsupported delegate container type '" ~ node.containerType.to!string ~ "' for "
+          ~ node.fullDName.to!string);
+    }
   }
 
   /// Process a return container (not Array)
   private void processReturnContainer()
   {
     auto retVal = callback.returnVal;
-    dstring templateParams;
-
-    switch (retVal.containerType) with(ContainerType)
-    {
-      case ByteArray:
-        break;
-      case ArrayG, PtrArray:
-        templateParams = "!(" ~ retVal.elemTypes[0].fullDType  ~ ", " ~ retVal.zeroTerminated.to!dstring ~ ")";
-        break;
-      case List, SList:
-        templateParams = "!(" ~ retVal.elemTypes[0].fullDType ~ ")";
-        break;
-      case HashTable:
-        templateParams = "!(" ~ retVal.elemTypes[0].fullDType ~ ", " ~ retVal.elemTypes[1].fullDType ~ ")";
-        break;
-      default:
-        assert(0, "Unsupported delegate return container type '" ~ retVal.containerType.to!string ~ "' for "
-          ~ retVal.fullDName.to!string);
-    }
-
     decl ~= retVal.cType ~ " ";
     preCall ~= retVal.dType ~ " _dretval;";
     call ~= "_dretval = ";
-    postCall ~= "auto _retval = g" ~ retVal.containerType.to!dstring ~ "FromD" ~ templateParams ~ "(_dretval);";
+    postCall ~= "auto _retval = g" ~ retVal.containerType.to!dstring ~ "FromD" ~ fromDTemplateParams(retVal)
+      ~ "(_dretval);";
+  }
+
+  /// Process a container output parameter (not Array), the caller takes ownership (see Func.verify)
+  private void processContainerOutParam(Param param)
+  {
+    addDeclParam(param.cType ~ " " ~ param.dName);
+    preCall ~= param.fullDType ~ " _" ~ param.dName ~ ";";
+    addCallParam("_" ~ param.dName);
+    postCall ~= "*" ~ param.dName ~ " = g" ~ param.containerType.to!dstring ~ "FromD" ~ fromDTemplateParams(param)
+      ~ "(_" ~ param.dName ~ ");";
   }
 
   /// Process parameter
@@ -250,6 +291,8 @@ class DelegWriter
     {
       if (param.direction == ParamDirection.In)
         processContainerInParam(param);
+      else if (param.direction == ParamDirection.Out)
+        processContainerOutParam(param);
       else
           assert(0, "Delegate container " ~ param.directionStr.to!string ~ " parameters of type '"
             ~ param.kind.to!string ~ "' not supported");
@@ -262,6 +305,10 @@ class DelegWriter
     if (param is callback.closureParam) // Closure parameter?
       return;
 
+    // Out pointer target (const is cast away for "const T**" out parameters)
+    auto outTarget = param.cType.startsWith("const") ? "cast(" ~ param.cType.stripConst ~ ")" ~ param.dName
+      : param.dName;
+
     final switch (param.kind) with (TypeKind)
     {
       case Basic, BasicAlias, Enum, Flags, Pointer:
@@ -270,7 +317,7 @@ class DelegWriter
           if (param.direction != ParamDirection.In)
           {
             preCall ~= "bool _" ~ param.dName
-              ~ (param.direction == ParamDirection.InOut ? " = cast(bool)" ~ param.dName ~ ";" : ";");
+              ~ (param.direction == ParamDirection.InOut ? " = cast(bool)*" ~ param.dName ~ ";" : ";");
             addCallParam("_" ~ param.dName); // Parameter is "out"
             postCall ~= "*" ~ param.dName ~ " = _" ~  param.dName ~ ";";
           }
@@ -290,7 +337,7 @@ class DelegWriter
         {
           preCall ~= "string _" ~ param.dName ~ ";";
           addCallParam("_" ~ param.dName);
-          postCall ~= "*" ~ param.dName ~ " = _" ~ param.dName ~ ".toCString!(" ~ param.fullOwnerFlag ~ ".Malloc, "
+          postCall ~= "*" ~ outTarget ~ " = _" ~ param.dName ~ ".toCString!(" ~ param.fullOwnerFlag ~ ".Malloc, "
             ~ (param.nullable ? "Yes"d : "No"d) ~ ".Nullable);";
         }
         else // InOut (transfer applies to both directions: with Full the input is freed and a new string is returned)
@@ -298,12 +345,29 @@ class DelegWriter
           preCall ~= "string _" ~ param.dName ~ " = (*" ~ param.dName ~ ").fromCString!(" ~ param.fullOwnerFlag
             ~ ".Free);";
           addCallParam("_" ~ param.dName);
-          postCall ~= "*" ~ param.dName ~ " = _" ~ param.dName ~ ".toCString!(" ~ param.fullOwnerFlag ~ ".Malloc, "
+          postCall ~= "*" ~ outTarget ~ " = _" ~ param.dName ~ ".toCString!(" ~ param.fullOwnerFlag ~ ".Malloc, "
             ~ (param.nullable ? "Yes"d : "No"d) ~ ".Nullable);";
         }
         break;
       case StructAlias, Struct:
-        addCallParam("*cast(" ~ param.fullDType ~ "*)" ~ param.dName);
+        if (param.direction == ParamDirection.Out && param.cType.countStars == 2) // Out pointer to a new structure
+        {
+          preCall ~= param.fullDType ~ " _" ~ param.dName ~ ";";
+          addCallParam("_" ~ param.dName);
+          // Copy owned by the caller (Struct has _cDup), other ownership is disabled in Func.verify
+          postCall ~= "*" ~ param.dName ~ " = cast(" ~ param.cTypeRemPtr ~ ")" ~ param.fullDType ~ "._cDup(cast(void*)&_"
+            ~ param.dName ~ ");";
+        }
+        else
+        {
+          // An InOut pointer to a structure pointer is modified in place (pointer and its ownership remain with C)
+          addCallParam("*cast(" ~ param.fullDType ~ "*)" ~ (param.cType.countStars == 2 ? "*"d : "") ~ param.dName);
+
+          // Free a structure passed with transfer full after it was copied to the D delegate parameter
+          if (param.direction == ParamDirection.In && param.ownership == Ownership.Full && param.kind == Struct
+              && param.cType.countStars == 1)
+            postCall ~= param.fullDType ~ "._cFree(cast(void*)" ~ param.dName ~ ");";
+        }
         break;
       case Opaque, Wrap, Boxed, Reffed, Object, Interface:
         if (param.direction == ParamDirection.In)
@@ -324,8 +388,8 @@ class DelegWriter
           addCallParam("_" ~ param.dName);
 
           if (param.cTypeRemPtr.endsWith('*')) // Out pointer value?
-            postCall ~= "*" ~ param.dName ~ " = _" ~ param.dName ~ " ? cast(" ~ param.cTypeRemPtr ~ ")_" ~ param.dName
-              ~ "._cPtr(" ~ param.fullOwnerFlag ~ ".Dup) : null;";
+            postCall ~= "*" ~ outTarget ~ " = _" ~ param.dName ~ " ? cast(" ~ param.cTypeRemPtr.stripConst ~ ")_"
+              ~ param.dName ~ "._cPtr(" ~ param.fullOwnerFlag ~ ".Dup) : null;";
           else // Out pass by value: if the D Out value is null, leave the C value struct alone (assumes the caller initialized it or knows when the value is valid)
             postCall ~= "if (_" ~ param.dName ~ ")\n{\n auto p_ = _" ~ param.dName ~ "._cPtr(Yes.Dup);\n*" ~ param.dName
               ~ " = *cast(" ~ param.cType ~ ")p_;\ngFree(p_);\n}\n";
@@ -344,7 +408,8 @@ class DelegWriter
   // Process an array parameter
   private void processArrayParam(Param param)
   {
-    if ((param.direction != ParamDirection.Out && param.ownership != Ownership.None)
+    // Input arrays with Full or Container ownership are freed after their elements are converted (see Func.verify)
+    if ((param.direction == ParamDirection.InOut && param.ownership != Ownership.None)
         || (param.direction == ParamDirection.Out && param.ownership != Ownership.Full))
       assert(0, "Unsupported delegate array parameter direction '" ~ param.direction.to!string
         ~ "' and ownership '" ~ param.ownership.to!string ~ "'");
@@ -413,6 +478,10 @@ class DelegWriter
           assert(0, "Unsupported parameter array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType.kind.to!string
               ~ ") for " ~ callback.fullDName.to!string);
       }
+
+      // Free an input array owned by the callee (elements were taken above for Full ownership)
+      if (param.direction == ParamDirection.In && param.ownership != Ownership.None)
+        preCall ~= "gFree(cast(void*)" ~ param.dName ~ ");";
     }
 
     if (param.direction == ParamDirection.Out || param.direction == ParamDirection.InOut)
@@ -421,17 +490,10 @@ class DelegWriter
         postCall ~= "*" ~ param.lengthParam.dName ~ " = cast(typeof(*" ~ param.lengthParam.dName ~ "))_" ~ param.dName
           ~ ".length;";
 
-      final switch (elemType.kind) with (TypeKind)
-      {
-        case Basic, String, BasicAlias, Enum, Flags, StructAlias, Struct, Pointer, Opaque, Wrap, Boxed, Reffed,
-            Object, Interface:
-          postCall ~= "*" ~ param.dName ~ " = arrayDtoC!(" ~ elemType.fullDType ~ ", Yes.Malloc, "
-            ~ (param.zeroTerminated ? "Yes"d : "No"d) ~ ".ZeroTerm)(_" ~ param.dName ~ ");";
-          break;
-        case Unknown, Callback, Container, Namespace:
-          assert(0, "Unsupported parameter array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType.kind.to!string
-            ~ ") for " ~ callback.fullDName.to!string);
-      }
+      // The new C array is owned by the caller (Out arrays require Full ownership, see Func.verify)
+      postCall ~= "typeof(*" ~ param.dName ~ ") _" ~ param.dName ~ "C;";
+      postCall ~= dArrayToC(param, "_" ~ param.dName, "_" ~ param.dName ~ "C");
+      postCall ~= "*" ~ param.dName ~ " = _" ~ param.dName ~ "C;";
     }
   }
 

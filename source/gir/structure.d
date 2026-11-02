@@ -845,9 +845,9 @@ final class Structure : TypeNode
         case String:
           if (kind == Wrap) // Borrowed, GC string is kept alive by the wrapper's _cInstance (scanned by the GC)
             lines ~= cPtr ~ "." ~ f.dName ~ " = cast(" ~ f.cType ~ ")toCString!(No.Malloc, Yes.Nullable)(propval);";
-          else // Owned field (enabled via definitions)
+          else // Owned field (enabled via definitions), null D strings are stored as NULL
             lines ~= ["cValueFree!(string)(cast(void*)" ~ cPtr ~ "." ~ f.dName ~ ");",
-              "dToC(propval, cast(void*)&" ~ cPtr ~ "." ~ f.dName ~ ");"];
+              cPtr ~ "." ~ f.dName ~ " = toCString!(Yes.Malloc, Yes.Nullable)(propval);"];
           break;
         case Boxed, Reffed, Object, Interface:
           if (kind == Wrap) // Borrowed pointer, D object kept alive by _<field>Ref

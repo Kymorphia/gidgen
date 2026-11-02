@@ -277,7 +277,7 @@ final class Param : TypeNode
         throw new Exception("Unsupported InOut " ~ kind.to!string ~ " pointer parameter (unknown memory management)");
 
       bool isPtrInOut; // Pointer to an object/struct/string pointer, GIR transfer applies to both directions
-      with (TypeKind) isPtrInOut = kind.among(String, Boxed, Reffed, Object, Interface) && cType.countStars == 2;
+      with (TypeKind) isPtrInOut = kind.among(String, Struct, Boxed, Reffed, Object, Interface) && cType.countStars == 2;
 
       // Ownership other than None does not make sense for other InOut non-container parameters
       if (ownership != Ownership.None && !isPtrInOut && containerType == ContainerType.None)
@@ -287,8 +287,10 @@ final class Param : TypeNode
         ownership = Ownership.None;
       }
 
-      // Identify incorrect caller-allocates=0 for structured types, warn, and set callerAllocates to true
-      with (TypeKind) if (!callerAllocates && cType.countStars == 1 && kind.typeKindIsStructured)
+      // Identify incorrect caller-allocates=0 for structured types and C arrays passed by a single pointer (the
+      // callee can only modify them in place) and set callerAllocates to true
+      with (TypeKind) if (!callerAllocates && cType.countStars == 1
+        && (kind.typeKindIsStructured || containerType == ContainerType.Array))
       {
         info("Changing InOut parameter '" ~ fullDName.to!string ~ "' caller-allocates to true");
         callerAllocates = true;

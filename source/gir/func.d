@@ -402,6 +402,13 @@ final class Func : TypeNode
           disableFunc(__FILE__, __LINE__, "callback string return value with transfer none is not supported", returnVal);
           return;
         }
+        else if (returnVal.cType.countStars > 0 && (returnVal.kind == TypeKind.StructAlias
+            || (returnVal.kind.among(TypeKind.Struct, TypeKind.Wrap) && returnVal.ownership != Ownership.Full)))
+        { // No D owner can keep a returned structure (Wrap structures are D GC memory) alive for C, only full transfer. Struct and Wrap values can be copied
+          disableFunc(__FILE__, __LINE__, "callback structure pointer return value with ownership '"
+            ~ returnVal.ownership.to!string ~ "' is not supported", returnVal);
+          return;
+        }
       }
     }
 
@@ -473,6 +480,28 @@ final class Func : TypeNode
         if (pa.direction == ParamDirection.InOut && pa.kind.among(Opaque, Wrap, Boxed, Reffed, Object, Interface))
           disableFunc(__FILE__, __LINE__, "Unsupported InOut param '" ~ pa.name.to!string ~ "' of type '"
             ~ pa.dType.to!string ~ "'", pa);
+
+        // Callback output arrays are allocated by the delegate wrapper, so the caller must take full ownership.
+        // InOut arrays and input arrays of inline structures are only supported without ownership transfer.
+        if (pa.containerType == ContainerType.Array && !pa.callerAllocates
+            && ((pa.direction == ParamDirection.Out && pa.ownership != Ownership.Full)
+            || (pa.direction == ParamDirection.InOut && pa.ownership != Ownership.None)
+            || (pa.direction == ParamDirection.In && pa.ownership != Ownership.None && pa.elemTypes.length == 1
+            && pa.elemTypes[0].kind.among(Opaque, Boxed, Wrap, Reffed) && pa.arrayPtrDepth == 1)))
+          disableFunc(__FILE__, __LINE__, pa.direction.to!string ~ " array parameter '" ~ pa.name.to!string
+            ~ "' in callback with ownership '" ~ pa.ownership.to!string ~ "' is not supported", pa);
+
+        // Callback output containers are created by the delegate wrapper, so the caller must take full ownership
+        if (pa.containerType != ContainerType.None && pa.containerType != ContainerType.Array
+            && pa.direction != ParamDirection.In && (pa.direction == ParamDirection.InOut || pa.ownership != Ownership.Full))
+          disableFunc(__FILE__, __LINE__, pa.direction.to!string ~ " container parameter '" ~ pa.name.to!string
+            ~ "' in callback with ownership '" ~ pa.ownership.to!string ~ "' is not supported", pa);
+
+        // No D owner can keep an output structure (Wrap structures are D GC memory) alive for C, only full transfer. Struct and Wrap values can be copied
+        if (pa.direction == ParamDirection.Out && pa.cType.countStars == 2
+            && (pa.kind == StructAlias || (pa.kind.among(Struct, Wrap) && pa.ownership != Ownership.Full)))
+          disableFunc(__FILE__, __LINE__, "Out structure pointer parameter '" ~ pa.name.to!string
+            ~ "' in callback with ownership '" ~ pa.ownership.to!string ~ "' is not supported", pa);
 
         if (pa.containerType == ContainerType.Array && pa.direction != ParamDirection.In && pa.callerAllocates)
           disableFunc(__FILE__, __LINE__, "caller allocated output array parameter '" ~ pa.name.to!string

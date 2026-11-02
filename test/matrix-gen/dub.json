@@ -1,0 +1,7 @@
+{
+  "name": "matrix-gen",
+  "description": "Generates the GidgenMatrix C test library functions and D test manifest from the type and position tables",
+  "license": "MIT",
+  "targetType": "executable",
+  "targetName": "matrix-gen"
+}
