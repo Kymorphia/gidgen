@@ -293,10 +293,14 @@ class DelegWriter
           postCall ~= "*" ~ param.dName ~ " = _" ~ param.dName ~ ".toCString!(" ~ param.fullOwnerFlag ~ ".Malloc, "
             ~ (param.nullable ? "Yes"d : "No"d) ~ ".Nullable);";
         }
-        else // InOut
-          // InOut string parameters are rejected by Param.verify() so this should never be reached.
-          // GIR does not define InOut semantics for string ownership transfer.
-          assert(0, "InOut string arguments not supported");
+        else // InOut (transfer applies to both directions: with Full the input is freed and a new string is returned)
+        {
+          preCall ~= "string _" ~ param.dName ~ " = (*" ~ param.dName ~ ").fromCString!(" ~ param.fullOwnerFlag
+            ~ ".Free);";
+          addCallParam("_" ~ param.dName);
+          postCall ~= "*" ~ param.dName ~ " = _" ~ param.dName ~ ".toCString!(" ~ param.fullOwnerFlag ~ ".Malloc, "
+            ~ (param.nullable ? "Yes"d : "No"d) ~ ".Nullable);";
+        }
         break;
       case StructAlias, Struct:
         addCallParam("*cast(" ~ param.fullDType ~ "*)" ~ param.dName);

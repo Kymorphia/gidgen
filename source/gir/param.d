@@ -273,14 +273,11 @@ final class Param : TypeNode
 
     if (direction == ParamDirection.InOut)
     {
-      if (kind == TypeKind.String)
-        throw new Exception("Unsupported string InOut parameter");
-
       with (TypeKind) if (kind.among(Opaque, Wrap) && cType.countStars == 2)
         throw new Exception("Unsupported InOut " ~ kind.to!string ~ " pointer parameter (unknown memory management)");
 
-      bool isPtrInOut; // Pointer to an object/struct pointer, GIR transfer applies to both directions
-      with (TypeKind) isPtrInOut = kind.among(Boxed, Reffed, Object, Interface) && cType.countStars == 2;
+      bool isPtrInOut; // Pointer to an object/struct/string pointer, GIR transfer applies to both directions
+      with (TypeKind) isPtrInOut = kind.among(String, Boxed, Reffed, Object, Interface) && cType.countStars == 2;
 
       // Ownership other than None does not make sense for other InOut non-container parameters
       if (ownership != Ownership.None && !isPtrInOut && containerType == ContainerType.None)

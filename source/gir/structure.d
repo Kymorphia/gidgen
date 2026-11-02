@@ -280,7 +280,7 @@ final class Structure : TypeNode
     if (!cast(Field)parent) // Don't call super.resolve if this is a direct structure of a field
       super.resolve;
 
-    if (kind == TypeKind.Boxed && parentType.empty && dType != "Boxed") // Make sure not to set Boxed parent to Boxed
+    if (kind == TypeKind.Boxed && parentType.empty && !(repo.namespace == "GObject" && name == "Boxed")) // Boxed types derive from GObject.Boxed (except GObject.Boxed itself)
       parentType = "GObject.Boxed";
 
     if (!parentType.empty)

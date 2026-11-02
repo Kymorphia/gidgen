@@ -325,9 +325,11 @@ class FuncWriter
     if (param.isInstanceParam) // Instance parameter?
     { // cType pointer types have the "*" as part of the type
       if (moduleType == ModuleType.Struct)
-        call ~= "cast(" ~ param.cType ~ ")&this"d; // Struct is compatible with C struct type
+        call ~= param.cType.countStars == 0 ? "*cast(" ~ param.cType ~ "*)&this"d // Struct passed by value
+          : "cast(" ~ param.cType ~ ")&this"d; // Struct is compatible with C struct type
       else
-        call ~= "cast(" ~ param.cType ~ ")this._cPtr"d; // Other types have pointer to C object
+        call ~= "cast(" ~ param.cType ~ ")this._cPtr"d // Other types have pointer to C object
+          ~ (param.ownership == Ownership.Full ? "(Yes.Dup)"d : ""d); // Callee takes ownership, give it a reference/copy
 
       return;
     }
@@ -446,10 +448,13 @@ class FuncWriter
           addCallParam("&_" ~ param.dName);
           postCall ~= param.dName ~ " = _" ~ param.dName ~ ".fromCString!(" ~ param.fullOwnerFlag ~ ".Free);";
         }
-        else // InOut
-          // InOut string parameters are rejected by Param.verify() so this should never be reached.
-          // GIR does not define InOut semantics for string ownership transfer.
-          assert(0, "InOut string arguments not supported");
+        else // InOut (transfer applies to both directions: with Full the callee frees the input and returns a new string)
+        {
+          preCall ~= "char* _" ~ param.dName ~ " = cast(char*)" ~ param.dName ~ ".toCString!(" ~ param.fullOwnerFlag
+            ~ ".Malloc, " ~ (param.nullable ? "Yes"d : "No"d) ~ ".Nullable);";
+          addCallParam("&_" ~ param.dName);
+          postCall ~= param.dName ~ " = _" ~ param.dName ~ ".fromCString!(" ~ param.fullOwnerFlag ~ ".Free);";
+        }
 
         break;
       case Struct, StructAlias:
