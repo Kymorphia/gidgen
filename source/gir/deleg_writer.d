@@ -394,10 +394,27 @@ class DelegWriter
             postCall ~= "if (_" ~ param.dName ~ ")\n{\n auto p_ = _" ~ param.dName ~ "._cPtr(Yes.Dup);\n*" ~ param.dName
               ~ " = *cast(" ~ param.cType ~ ")p_;\ngFree(p_);\n}\n";
         }
-        else // InOut
-          // InOut parameters for structured types (Opaque, Wrap, Boxed, Reffed, Object, Interface)
-          // are uncommon in GIR. If encountered, they would require bidirectional ownership handling.
-          assert(0, "InOut arguments of type '" ~ param.kind.to!string ~ "' not supported");
+        else // InOut pointer with full transfer (see Func.verify): the D object takes the C instance and the C side
+        { // receives a new reference or copy of the resulting D object (which may be the same object, another or null)
+          if (param.kind == TypeKind.Object || param.kind == TypeKind.Interface)
+          {
+            addImport("gobject.object");
+            preCall ~= "auto _" ~ param.dName ~ " = gobject.object.ObjectWrap._getDObject!(" ~ param.fullDType
+              ~ ")(cast(void*)*" ~ param.dName ~ ", " ~ param.fullOwnerFlag ~ ".Take);";
+          }
+          else
+            preCall ~= "auto _" ~ param.dName ~ " = *" ~ param.dName ~ " ? new " ~ param.fullDType ~ "(cast(void*)*"
+              ~ param.dName ~ ", " ~ param.fullOwnerFlag ~ ".Take) : null;";
+
+          addCallParam("_" ~ param.dName);
+
+          if (param.kind == TypeKind.Interface)
+            postCall ~= "*" ~ outTarget ~ " = _" ~ param.dName ~ " ? cast(" ~ param.cTypeRemPtr.stripConst
+              ~ ")(cast(gobject.object.ObjectWrap)_" ~ param.dName ~ ")._cPtr(" ~ param.fullOwnerFlag ~ ".Dup) : null;";
+          else
+            postCall ~= "*" ~ outTarget ~ " = _" ~ param.dName ~ " ? cast(" ~ param.cTypeRemPtr.stripConst ~ ")_"
+              ~ param.dName ~ "._cPtr(" ~ param.fullOwnerFlag ~ ".Dup) : null;";
+        }
         break;
       case Callback, Unknown, Container, Namespace:
         assert(0, "Unsupported parameter type '" ~ param.fullDType.to!string ~ "' (" ~ param.kind.to!string ~ ") for "

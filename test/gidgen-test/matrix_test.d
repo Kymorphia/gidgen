@@ -105,6 +105,14 @@ private bool elemsEq(T, V)(T a, V vals)
   return true;
 }
 
+/// What the delegate of a cb_inout cell does with the value (GM_INOUT_* in gidgen-matrix-private.h)
+private enum InOutMode : int
+{
+  Replace = 0, /// Replace it with the In value
+  Keep = 1, /// Keep it
+  SetNull = 2, /// Set it to null
+}
+
 /// Live instance count of the cell type's C instances (0 for types without a counter)
 private int typeLive(MatrixCell c)()
 {
@@ -201,6 +209,22 @@ private void testCell(MatrixCell c)()
       fn(true); // Trailing nullable parameters default to null
     }
     release(v);
+
+    static if (is(T == class) && c.transfer == "full" && !c.nullable)
+    { // Steal the C instance of a new D value: owning wrappers hand over their instance and are left empty, GObject
+      // wrappers return a new reference (see GidWrap._cSteal), freeing the stolen instance releases it
+      auto stealBase = typeLive!c;
+      T s = mixin(c.makeIn);
+      void* p = s._cSteal;
+      assert(p !is null, c.func ~ ": stole null instance");
+      static if (is(T : ObjectWrap))
+        assert(s._cPtr is p, c.func ~ ": object wrapper changed by steal");
+      else
+        assert(s._cPtr is null, c.func ~ ": wrapper not empty after steal");
+      T._cFree(p);
+      release(s);
+      assert(typeLive!c == stealBase, c.func ~ ": steal live count " ~ (typeLive!c - stealBase).to!string);
+    }
   }
   else static if (c.pos == "out" || c.pos == "out_ca")
   { // Receive the Out value
@@ -284,13 +308,72 @@ private void testCell(MatrixCell c)()
     release(v);
   }
   else static if (c.pos == "cb_inout")
-  { // The delegate receives the Out value and replaces it with the In value
+  { // The delegate receives the Out value (null for nullable cells with isNull) and replaces it with the In value,
+    // keeps it or sets it to null (nullable cells), the C function checks the resulting value (see InOutMode)
     alias T = Parameters!(Params[$ - 1])[0];
-    T v = mixin(c.makeIn);
+    enum nullable = c.nullable;
     int calls;
-    fn((ref T a) { assert(mixin(c.eqOut), c.func ~ ": unexpected callback value"); release(a); a = v; calls++; });
-    assert(calls == 1, c.func ~ ": callback not called");
-    release(v);
+
+    foreach (isNull; nullable ? [false, true] : [false])
+    {
+      foreach (mode; nullable ? [InOutMode.Replace, InOutMode.Keep, InOutMode.SetNull]
+        : [InOutMode.Replace, InOutMode.Keep])
+      {
+        releaseKept; // Release the library value of a previous call
+        auto base = typeLive!c;
+        T v = mixin(c.makeIn);
+        auto receiveBase = typeLive!c;
+        T keptVal;
+
+        void dlg(ref T a)
+        {
+          static if (nullable)
+            assert(isNull ? a is null : mixin(c.eqOut), c.func ~ ": unexpected callback value");
+          else
+            assert(mixin(c.eqOut), c.func ~ ": unexpected callback value");
+
+          static if (is(T == class)) // Value structs are modified in place (C keeps the instance)
+            if (!isNull)
+              checkReceived!c(a, receiveBase);
+
+          final switch (mode)
+          {
+            case InOutMode.Replace:
+              release(a);
+              a = v;
+              break;
+            case InOutMode.Keep:
+              keptVal = a;
+              break;
+            case InOutMode.SetNull:
+              static if (nullable)
+              {
+                release(a);
+                a = null;
+              }
+              break;
+          }
+
+          calls++;
+        }
+
+        static if (nullable)
+          fn(isNull, mode, &dlg);
+        else
+          fn(mode, &dlg);
+
+        // The C function released its value (a reference or copy of the D value), D still owns its own instances
+        static if (c.own == "Ref")
+          assert(!keptVal || keptVal.getRefCount == 1, c.func ~ ": kept object ref count " ~ keptVal.getRefCount.to!string);
+        release(keptVal);
+        checkPassed!c(v, base + (c.transfer == "none" && c.own == "Value" ? 1 : 0), false);
+        release(v);
+        releaseKept; // Release the library's transfer none value
+        assert(typeLive!c == base, c.func ~ ": callback inout live count " ~ (typeLive!c - base).to!string);
+      }
+    }
+
+    assert(calls == (nullable ? 6 : 2), c.func ~ ": callback not called");
   }
   else static if (c.pos == "ret_len_in" || c.pos == "out_len_in")
   { // Receive an array with a size passed by the caller (an empty or null array for nullable cells with isNull)
@@ -368,6 +451,18 @@ private void testCell(MatrixCell c)()
       release(v);
     }
 
+    release(o);
+  }
+  else static if (c.pos == "field_array")
+  { // Read the array field set by the C function (read-only, the length is another field)
+    alias O = Params[$ - 1];
+    auto o = new O();
+    fn(o);
+    auto base = typeLive!c;
+    auto a = mixin("o." ~ c.member);
+    assert(mixin(c.eqOut), c.func ~ ": unexpected field array value");
+    checkReceived!c(a, base);
+    release(a);
     release(o);
   }
   else static if (c.pos == "cb_arg" || c.pos == "cb_notified" || c.pos == "cb_async")

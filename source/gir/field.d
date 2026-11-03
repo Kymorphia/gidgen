@@ -144,13 +144,15 @@ final class Field : TypeNode
     if (containerType == ContainerType.Array)
     {
       auto isScalar = typeKindIsScalar(elemTypes[0].kind);
-      auto elemStars = elemTypes[0].cType.countStars;
+      auto elemDStars = isScalar ? elemTypes[0].dType.countStars : 0; // Basic types can be pointers (gpointer is void*)
+      auto elemStars = elemTypes[0].cType.countStars - elemDStars;
+      auto arrayStars = starCount - elemDStars;
 
       if (arrayLengthIndex >= 0 && (!lengthField || lengthField.cType.countStars > 0)) // Array has invalid length argument?
         throw new Exception("Invalid array length parameter");
 
       if (!isStaticArray // Allow fixed size array fields
-          && (starCount < 1 || (isScalar && starCount > 1) || (!isScalar && starCount > 2)))
+          && (arrayStars < 1 || (isScalar && arrayStars > 1) || (!isScalar && arrayStars > 2)))
         throw new Exception("Array has unexpected C type '" ~ cType.to!string ~ "'");
 
       if ((isScalar && elemStars > 0) || (!isScalar && elemStars > 1))

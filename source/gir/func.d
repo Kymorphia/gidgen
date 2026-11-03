@@ -480,9 +480,13 @@ final class Func : TypeNode
 
       with (TypeKind) if (funcType == FuncType.Callback)
       {
-        if (pa.direction == ParamDirection.InOut && pa.kind.among(Opaque, Wrap, Boxed, Reffed, Object, Interface))
-          disableFunc(__FILE__, __LINE__, "Unsupported InOut param '" ~ pa.name.to!string ~ "' of type '"
-            ~ pa.dType.to!string ~ "'", pa);
+        // The callback wraps an InOut instance pointer and returns a new reference or copy of the resulting D object,
+        // which requires full transfer (no D owner can keep a returned borrowed instance alive for C)
+        if (pa.direction == ParamDirection.InOut && pa.kind.among(Opaque, Wrap, Boxed, Reffed, Object, Interface)
+            && (pa.cType.countStars != 2 || pa.ownership != Ownership.Full))
+          disableFunc(__FILE__, __LINE__, "InOut param '" ~ pa.name.to!string ~ "' of type '" ~ pa.dType.to!string
+            ~ "' in callback with C type '" ~ pa.cType.to!string ~ "' and ownership '" ~ pa.ownership.to!string
+            ~ "' is not supported (requires a pointer to an instance pointer with full ownership)", pa);
 
         // Callback output arrays are allocated by the delegate wrapper, so the caller must take full ownership.
         // InOut arrays and input arrays of inline structures are only supported without ownership transfer.

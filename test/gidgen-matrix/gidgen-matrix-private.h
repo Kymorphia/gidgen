@@ -18,6 +18,11 @@ gpointer gidgen_matrix_kept (void);
  * transfer none out and return values which have to stay valid after the function returns */
 #define KEEP(ptr, free_func) gidgen_matrix_keep ((ptr), (GDestroyNotify)(free_func))
 
+/* Callback InOut modes (what the D callback does with the value, see the cb_inout position) */
+#define GM_INOUT_REPLACE 0 /* Replace it with the In value */
+#define GM_INOUT_KEEP 1 /* Keep it */
+#define GM_INOUT_SET_NULL 2 /* Set it to NULL */
+
 /* Container helpers used by the container type table entries. Element values are passed as an array of gintptr
  * (integers, or string pointers for GM_STR), objects are created with the integer value. Hash table values are
  * key/value pairs (keys are strings). */

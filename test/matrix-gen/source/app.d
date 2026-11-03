@@ -103,7 +103,7 @@ string[string] cellVars(const Cell c)
 
   // C value helpers
   bool hasLen = t.lenType.length > 0;
-  auto lenName = c.pos.lenName.length ? c.pos.lenName : "n";
+  auto lenName = c.pos.lenName.length ? fill(c.pos.lenName, ["id": t.id]) : "n";
   auto n = c.pos.lenLocal || !c.pos.lenPtr ? lenName : "(*" ~ lenName ~ ")"; // Length value expression
   string make(Role role) => fill(full ? t.cMake : t.makeNone, ["v": t.cVals[role], "n": n]);
   string eq(string x, Role role) => fill(t.cEq, ["x": x, "v": "(" ~ t.cVals[role] ~ ")", "n": n]);
@@ -135,6 +135,7 @@ string[string] cellVars(const Cell c)
   v["lenParamB"] = hasLen ? lenParam ~ ", " : ""; // Length parameter preceding the others (no array parameter)
   v["lenArgB"] = hasLen ? lenArg ~ ", " : "";
   v["n"] = n;
+  v["lenType"] = t.lenType;
   v["nRet"] = "(" ~ t.cVals[Role.Ret] ~ ")->n"; // Array length of the values (C arrays with a separate length)
   v["nOut"] = "(" ~ t.cVals[Role.Out] ~ ")->n";
   v["fixedElem"] = t.fixedElem;
@@ -181,6 +182,11 @@ string[string] cellVars(const Cell c)
   if (v["sigAnnots"].length) v["sigAnnots"] = v["sigAnnots"][0 .. $ - 1] ~ ": ";
   v["checkIn"] = c.nullable ? format!"is_null ? %s == NULL : (%s != NULL && %s)"(val, val, eq(val, Role.In))
     : eq(val, Role.In);
+  v["checkOut"] = c.nullable ? format!"is_null ? %s == NULL : (%s != NULL && %s)"(val, val, eq(val, Role.Out))
+    : eq(val, Role.Out);
+  v["eqIn"] = eq(val, Role.In);
+  v["isNull"] = t.pointer ? val ~ " == NULL" : "FALSE";
+  v["keptSame"] = !t.pointer || t.own == Own.Ref ? " && " ~ val ~ " == orig" : "";
   v["release"] = !full ? "" : t.cFreeN.length ? format!"  %s;\n  %s = NULL;\n"(fill(t.cFreeN, ["x": val, "n": n]), val)
     : format!"  g_clear_pointer (&%s, %s);\n"(val, t.cFree);
   v["makeOut"] = orNull(make(Role.Out));

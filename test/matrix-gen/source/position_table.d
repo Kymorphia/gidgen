@@ -13,6 +13,11 @@
  *   ${nullDoc}   Doc line for is_null for nullable cells (empty otherwise)
  *   ${retArgs}   Argument list for functions with no value parameter ("gboolean is_null" or "void")
  *   ${checkIn}   C expression checking that ${val} is the In role value (or NULL when is_null)
+ *   ${checkOut}  C expression checking that ${val} is the Out role value (or NULL when is_null)
+ *   ${eqIn}      C expression checking that ${val} is the In role value (not NULL)
+ *   ${isNull}    C expression checking that ${val} is NULL (FALSE for non-pointer types)
+ *   ${keptSame}  " && ${val} == orig" for values which are kept unchanged (non-pointer and reference counted
+ *                types), empty for types which are copied
  *   ${release}   Statement freeing ${val} if ownership was transferred to the callee (empty otherwise)
  *   ${makeOut}   C expression creating the Out role value (or NULL when is_null)
  *   ${makeRet}   C expression creating the Ret role value (or NULL when is_null)
@@ -159,16 +164,19 @@ immutable Unsupported[] unsupportedCells = [
   {"inout", "carray_obj", "full", "InOut full object arrays not supported by gidgen"},
   {"inout", "carray_plain", "full", "InOut full structure arrays not supported by gidgen"},
 
-  // gidgen disables callback InOut containers and arrays, and InOut instance (wrapped pointer) types
+  // gidgen disables callback InOut containers and arrays
   {"cb_inout", "container", "*", "callback InOut containers and arrays not supported by gidgen"},
-  {"cb_inout", "obj", "*", "callback InOut instance parameters not supported by gidgen"},
-  {"cb_inout", "rec", "*", "callback InOut instance parameters not supported by gidgen"},
-  {"cb_inout", "reffed", "*", "callback InOut instance parameters not supported by gidgen"},
-  {"cb_inout", "opaque", "*", "callback InOut instance parameters not supported by gidgen"},
-  {"cb_inout", "plainwrap", "*", "callback InOut instance parameters not supported by gidgen"},
-  {"cb_inout", "bytes", "*", "callback InOut instance parameters not supported by gidgen"},
-  {"cb_inout", "variant", "*", "callback InOut instance parameters not supported by gidgen"},
-  {"cb_inout", "gvalue", "*", "callback InOut instance parameters not supported by gidgen"},
+
+  // gidgen disables callback InOut instance parameters without full ownership transfer (the C side would borrow the
+  // resulting instance, which no D owner can keep alive), and of records without a GType (unknown memory management)
+  {"cb_inout", "obj", "none", "callback InOut instance parameters without full ownership not supported by gidgen"},
+  {"cb_inout", "rec", "none", "callback InOut instance parameters without full ownership not supported by gidgen"},
+  {"cb_inout", "reffed", "none", "callback InOut instance parameters without full ownership not supported by gidgen"},
+  {"cb_inout", "bytes", "none", "callback InOut instance parameters without full ownership not supported by gidgen"},
+  {"cb_inout", "variant", "none", "callback InOut instance parameters without full ownership not supported by gidgen"},
+  {"cb_inout", "gvalue", "none", "callback InOut instance parameters without full ownership not supported by gidgen"},
+  {"cb_inout", "opaque", "*", "InOut Opaque pointer parameters not supported by gidgen"},
+  {"cb_inout", "plainwrap", "*", "InOut Wrap pointer parameters not supported by gidgen"},
 
   // KNOWN GIDGEN BUG (not fixed): g-ir-scanner omits zero-terminated="1" since it is the GIR default for arrays
   // without a length or fixed size, but gidgen defaults it to 0 (only string arrays are assumed zero terminated),
@@ -276,6 +284,19 @@ immutable Position[] positions = [
     sections: [
       {"fieldsMember", "  ${embed} ${id}_efield;\n"},
       {"fieldsDoc", " * @${id}_efield: Embedded structure field of type ${id}\n"},
+    ] },
+
+  // Read-only record field array with a length field: the C function sets the array (borrowed from the library)
+  // and its length, D reads it back
+  { id: "field_array", val: "rec->${id}_afield", lenName: "rec->n_${id}_afield", supports: &lenTypes,
+    transfers: &noneTransfer, member: "${id}_afield", ret: "void", args: "GidgenMatrixFields *rec",
+    paramDocs: " * @rec: The fields record\n",
+    body: "  ${val} = ${makeOut};\n",
+    sections: [
+      {"fieldsMember", "  ${cType} ${id}_afield;\n  ${lenType} n_${id}_afield;\n"},
+      {"fieldsDoc", " * @${id}_afield: (array length=n_${id}_afield): Array field of type ${id}\n"
+        ~ " * @n_${id}_afield: Length of ${id}_afield\n"},
+      {"defs", "//!set record[Fields].field[${id}_afield][writable] 0\n"}, // Array field setters not supported
     ] },
 
   // Inline fixed size array record field: D sets the In value, the C function checks it and sets the Out value
@@ -397,12 +418,18 @@ immutable Position[] positions = [
       ~ " * @user_data: (closure): User data\n *\n * Matrix callback.\n */\n"
       ~ "typedef void (*${cbType}) (${lenB}${type} *value${lenA}, gpointer user_data);\n\n"}] },
 
-  // Callback inout parameter: C calls a D delegate with the Out value which it replaces with the In value
+  // Callback inout parameter: C calls a D delegate with the Out value (or NULL for nullable cells with is_null) which
+  // it replaces with the In value, keeps (the same instance for reference counted types) or sets to NULL according
+  // to mode (GM_INOUT_REPLACE, GM_INOUT_KEEP or GM_INOUT_SET_NULL, see gidgen-matrix-private.h)
   { id: "cb_inout", lenName: "n", lenLocal: true, lenPtr: true, lenDir: "(inout)", direction: "(inout)", val: "value",
-    supports: &allTypes, transfers: &anyTransfer,
-    ret: "void", args: "${cbType} func, gpointer user_data",
-    paramDocs: " * @func: (scope call) (closure user_data): Callback\n * @user_data: User data\n",
-    body: "${lenDecl}  ${type} value = ${makeOut};\n  func (${lenCallB}&value${lenCallA}, user_data);\n  CHECK (${checkIn});\n${release}",
+    supports: &allTypes, transfers: &anyTransfer, nullable: true,
+    ret: "void", args: "${nullArg}gint mode, ${cbType} func, gpointer user_data",
+    paramDocs: "${nullDoc} * @mode: What the callback does with the value (0 = replace, 1 = keep, 2 = set to %NULL)\n"
+      ~ " * @func: (scope call) (closure user_data): Callback\n * @user_data: User data\n",
+    body: "${lenDecl}  ${type} value = ${makeOut};\n  G_GNUC_UNUSED ${type} orig = value;\n\n"
+      ~ "  func (${lenCallB}&value${lenCallA}, user_data);\n"
+      ~ "  CHECK (mode == GM_INOUT_KEEP ? (${checkOut})${keptSame} : mode == GM_INOUT_SET_NULL ? ${isNull} : ${eqIn});\n"
+      ~ "${release}",
     sections: [{"cbTypedef", "/**\n * ${cbType}:\n * @value: ${annots}Value replaced by the callback\n${lenDoc}"
       ~ " * @user_data: (closure): User data\n *\n * Matrix callback.\n */\n"
       ~ "typedef void (*${cbType}) (${lenB}${type} *value${lenA}, gpointer user_data);\n\n"}] },

@@ -882,8 +882,11 @@ final class Structure : TypeNode
     dstring[] lines;
     dstring lengthStr;
 
-    if (field.lengthField) // Array has length field?
+    if (field.lengthField) // Array has length field? (the array can be null, regardless of the length)
+    {
+      lines ~= ["if (!" ~ cPtr ~ "." ~ field.dName ~ ")", "return null;", ""];
       lengthStr = cPtr ~ "." ~ field.lengthField.dName;
+    }
     else if (field.fixedSize != ArrayNotFixed) // Array is a fixed size?
       lengthStr = field.fixedSize.to!dstring;
     else if (field.zeroTerminated) // Array is zero terminated?
@@ -912,6 +915,9 @@ final class Structure : TypeNode
             ~ field.dName ~ "[i];", "return _retval;"];
         else if (field.fixedSize != ArrayNotFixed)
           lines ~= "return *cast(" ~ field.fullDType ~ "*)&" ~ cPtr ~ "." ~ field.dName ~ ";";
+        else if (elemType.kind == Struct) // D Struct types have the C layout
+          lines ~= "return (cast(" ~ elemType.fullDType ~ "*)" ~ cPtr ~ "." ~ field.dName ~ ")[0 .. " ~ lengthStr
+            ~ "].dup;";
         else
           lines ~= "return " ~ cPtr ~ "." ~ field.dName ~ "[0 .. " ~ lengthStr ~ "].dup;";
         break;
