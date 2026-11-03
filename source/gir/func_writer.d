@@ -231,7 +231,9 @@ class FuncWriter
 
     postCall ~= ["", "if (_cretval)", "{"];
 
-    if (retVal.lengthParam) // Array has length parameter?
+    if (retVal.lengthParam && retVal.lengthParam.isArraySize) // Length is an input parameter?
+      lengthStr = retVal.lengthParam.dName;
+    else if (retVal.lengthParam) // Array has length parameter?
     {
       preCall ~= retVal.lengthParam.fullDType ~ " _cretlength;";
       lengthStr = "_cretlength";
@@ -334,21 +336,17 @@ class FuncWriter
       return;
     }
 
-    if (param.isLengthReturnArray) // Return array length parameter is handled in processReturnArray()
+    if (param.isArrayLength) // Array length parameter? (return array length is handled in processReturnArray())
     {
-      addCallParam("&_cretlength");
-      return;
-    }
-
-    if (param.lengthArrayParams.length > 0) // Array length parameter?
-    {
-      addCallParam((param.direction == ParamDirection.In ? "_"d : "&_"d) ~ param.dName);
+      addCallParam(param.isLengthReturnArray ? "&_cretlength"d
+        : (param.direction == ParamDirection.In ? "_"d : "&_"d) ~ param.dName);
       return;
     }
 
     if (param.containerType == ContainerType.Array) // Array container?
     { // Declare length variable before the array in case it is used by the array
-      if (param.lengthParam && param.lengthParam.containerType != ContainerType.Array) // Skip length parameters which are other arrays (a gidgen extension)
+      // Skip length parameters which are other arrays (a gidgen extension) or input array sizes
+      if (param.lengthParam && param.lengthParam.containerType != ContainerType.Array && !param.lengthParam.isArraySize)
       {
         // Only declare length parameter for first array
         if (param == param.lengthParam.lengthArrayParams[0])
@@ -791,6 +789,8 @@ class FuncWriter
     { // gidgen extension which allows another zero-terminated array to be used for the output array length
       if (param.lengthParam.containerType == ContainerType.Array)
         lengthStr = param.lengthParam.dName ~ ".length";
+      else if (param.lengthParam.isArraySize) // Input size, the array is not set if the function fails
+        lengthStr = "(_" ~ param.dName ~ " ? " ~ param.lengthParam.dName ~ " : 0)";
       else
         lengthStr = "_" ~ param.lengthParam.dName;
     }

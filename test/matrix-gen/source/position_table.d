@@ -81,6 +81,7 @@ private string[] fullTransfer(const TypeEntry t) => t.pointer && t.transferFull 
 private string[] noneTransfer(const TypeEntry t) => ["none"];
 private bool allTypes(const TypeEntry t) => true;
 private bool callerAllocTypes(const TypeEntry t) => t.cFill.length > 0;
+private bool lenTypes(const TypeEntry t) => t.lenType.length > 0;
 private bool fieldTypes(const TypeEntry t) => (!t.pointer || t.nullable) && !t.container;
 private bool fixedFieldTypes(const TypeEntry t) => t.fixedElem.length > 0;
 private bool embedTypes(const TypeEntry t) => t.embed.length > 0;
@@ -221,6 +222,17 @@ immutable Position[] positions = [
     ret: "${type}", args: "${retArgs}",
     paramDocs: "${nullDoc}${lenDoc}", returnDoc: " * Returns: ${annots}Return value\n",
     body: "  return ${makeRet};\n" },
+
+  // Arrays with a size given by the caller: the length is an input parameter passed by value
+  { id: "ret_len_in", lenName: "n_ret", supports: &lenTypes, transfers: &anyTransfer, nullable: true,
+    ret: "${type}", args: "${retArgs}",
+    paramDocs: "${nullDoc}${lenDoc}", returnDoc: " * Returns: ${annots}Return value\n",
+    body: "  CHECK (${n} == ${nRet});\n  return ${makeRet};\n" },
+
+  { id: "out_len_in", direction: "(out)", supports: &lenTypes, transfers: &anyTransfer, nullable: true,
+    ret: "void", args: "${nullArg}${lenB}${type} *value${lenA}",
+    paramDocs: "${nullDoc} * @value: ${annots}Output value\n${lenDoc}",
+    body: "  CHECK (${n} == ${nOut});\n  *value = ${makeOut};\n" },
 
   // Transfer none return value of an instance which the library keeps (the same instance is returned by each call
   // until the kept value is released): D copies or references it, independent of other calls

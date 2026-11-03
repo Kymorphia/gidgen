@@ -10,6 +10,8 @@
 module matrix_test;
 
 import std.algorithm : startsWith;
+import std.array : join;
+import std.meta : Filter;
 import std.traits : isDynamicArray, Parameters, ReturnType;
 import std.conv : to;
 
@@ -150,6 +152,25 @@ private void checkPassed(MatrixCell c, T)(T v, int base, bool stored)
     assert(typeLive!c - base == (stored ? 1 : 0), c.func ~ ": passed struct live count " ~ (typeLive!c - base).to!string);
 }
 
+/**
+ * Arguments of a function with an array size parameter: the array argument for the array parameter, the size for
+ * the integral parameter and isNull for the leading null flag (nullable cells).
+ */
+private string sizeArgs(Ps...)(string array)
+{
+  string[] args;
+  static foreach (i, P; Ps)
+  {
+    static if (is(P == bool))
+      args ~= "isNull";
+    else static if (isDynamicArray!P)
+      args ~= array;
+    else
+      args ~= "cast(Params[" ~ i.to!string ~ "])len";
+  }
+  return args.join(", ");
+}
+
 /// Test a single matrix cell
 private void testCell(MatrixCell c)()
 {
@@ -270,6 +291,43 @@ private void testCell(MatrixCell c)()
     fn((ref T a) { assert(mixin(c.eqOut), c.func ~ ": unexpected callback value"); release(a); a = v; calls++; });
     assert(calls == 1, c.func ~ ": callback not called");
     release(v);
+  }
+  else static if (c.pos == "ret_len_in" || c.pos == "out_len_in")
+  { // Receive an array with a size passed by the caller (an empty or null array for nullable cells with isNull)
+    static if (c.pos == "ret_len_in")
+      alias T = ReturnType!fn;
+    else
+      alias T = Filter!(isDynamicArray, Params)[0];
+
+    T e = mixin(c.pos == "ret_len_in" ? c.makeRet : c.makeOut);
+    immutable valLen = e.length; // Array size passed to the function
+    release(e);
+
+    foreach (isNull; c.nullable ? [false, true] : [false])
+    {
+      auto len = isNull ? 0 : valLen;
+      auto base = typeLive!c;
+
+      static if (c.pos == "ret_len_in")
+        mixin("T a = fn(" ~ sizeArgs!Params("") ~ ");");
+      else
+      {
+        T a;
+        mixin("fn(" ~ sizeArgs!Params("a") ~ ");");
+      }
+
+      if (isNull)
+        assert(a.length == 0, c.func ~ ": expected empty array");
+      else
+      {
+        static if (c.pos == "ret_len_in")
+          assert(mixin(c.eqRet), c.func ~ ": unexpected return value");
+        else
+          assert(mixin(c.eqOut), c.func ~ ": unexpected out value");
+        checkReceived!c(a, base);
+      }
+      release(a);
+    }
   }
   else static if (c.pos == "ret")
   { // Receive the Ret value

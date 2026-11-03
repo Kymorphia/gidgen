@@ -135,6 +135,8 @@ string[string] cellVars(const Cell c)
   v["lenParamB"] = hasLen ? lenParam ~ ", " : ""; // Length parameter preceding the others (no array parameter)
   v["lenArgB"] = hasLen ? lenArg ~ ", " : "";
   v["n"] = n;
+  v["nRet"] = "(" ~ t.cVals[Role.Ret] ~ ")->n"; // Array length of the values (C arrays with a separate length)
+  v["nOut"] = "(" ~ t.cVals[Role.Out] ~ ")->n";
   v["fixedElem"] = t.fixedElem;
   v["embed"] = t.embed;
   string[] retArgs;

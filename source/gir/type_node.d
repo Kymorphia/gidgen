@@ -623,7 +623,11 @@ class TypeNode : Base
       if (cType.empty && kind != TypeKind.Callback) // Has no C type and not a callback?
       {
         auto parentTypeNode = cast(TypeNode)parent;
-        if (!parentTypeNode || parentTypeNode.containerType != ContainerType.Array) // Warn if not an array container type (handled separately)
+        auto st = cast(Structure)this;
+        auto isDefClass = st && !st.defCode.classDecl.empty; // D classes declared in definition files have no C type
+
+        // Warn if not an array container type (handled separately)
+        if (!isDefClass && (!parentTypeNode || parentTypeNode.containerType != ContainerType.Array))
         {
           warnWithLoc(__FILE__, __LINE__, xmlLocation, "No c:type for D type '" ~ _dType.to!string ~ "' in '" ~ fullDName.to!string ~ "'");
           dumpSelectorOnWarning(this);

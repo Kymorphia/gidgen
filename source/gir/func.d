@@ -296,6 +296,9 @@ final class Func : TypeNode
 
     void disableFunc(string file, size_t line, string msg, TypeNode errorNode = null)
     {
+      if (active == Active.Unsupported) // Only warn about the first reason a function is disabled
+        return;
+
       active = Active.Unsupported;
       warnWithLoc(file, line, xmlLocation, "Disabling " ~ (funcType == FuncType.Signal ? "signal '" : "function '" )
         ~ fullDName.to!string ~ "': " ~ msg);
@@ -507,6 +510,11 @@ final class Func : TypeNode
           disableFunc(__FILE__, __LINE__, "caller allocated output array parameter '" ~ pa.name.to!string
             ~ "' in callback is not supported", pa);
       }
+
+      // Delegate wrappers would need to create arrays of a C requested size
+      with (FuncType) if (pa.isArraySize && funcType.among(Callback, Signal))
+        disableFunc(__FILE__, __LINE__, "array size parameter '" ~ pa.name.to!string ~ "' in "
+          ~ funcType.to!string.toLower ~ " is not supported", pa);
 
       // Signal array parameters are passed as a gpointer, so an element C type can't distinguish inline structures from pointers
       with (TypeKind) if (funcType == FuncType.Signal && pa.containerType == ContainerType.Array

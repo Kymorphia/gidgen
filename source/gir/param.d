@@ -64,7 +64,17 @@ final class Param : TypeNode
   /// Is this parameter a length for a return array and/or one or more array parameters
   @property bool isArrayLength()
   {
-    return isLengthReturnArray || lengthArrayParams.length > 0;
+    return (isLengthReturnArray || lengthArrayParams.length > 0) && !isArraySize;
+  }
+
+  /**
+   * Check if this is an array size parameter: a length passed by value which sets the size of a return array or
+   * callee allocated output arrays. It is passed to the D function as a regular input parameter.
+   */
+  @property bool isArraySize()
+  {
+    return cType.countStars == 0 && (isLengthReturnArray || (lengthArrayParams.length > 0
+      && !lengthArrayParams.canFind!(p => p.direction != ParamDirection.Out || p.callerAllocates)));
   }
 
   /**
@@ -73,7 +83,7 @@ final class Param : TypeNode
    */
   @property bool isDParam()
   {
-    return !isInstanceParam && !isLengthReturnArray && lengthArrayParams.length == 0 && !isClosure && !isDestroy;
+    return !isInstanceParam && !isArrayLength && !isClosure && !isDestroy;
   }
 
   /**
@@ -245,6 +255,9 @@ final class Param : TypeNode
 
     with (TypeKind) if (containerType == ContainerType.None && kind.among(Basic, BasicAlias, Enum, Flags))
     {
+      if (isArraySize) // GIR can mark array sizes as out, but they are inputs passed by value
+        direction = ParamDirection.In;
+
       if (direction == ParamDirection.In && cType.countStars > 0 && cType != "void*" && cType != "const(void)*")
         throw new Exception("Basic input parameter type '" ~ dType.to!string ~ "' has unexpected C type '"
           ~ cType.to!string ~ "'");
@@ -352,7 +365,7 @@ final class Param : TypeNode
             if (!lengthParam.zeroTerminated || lengthParam.direction != In)
               throw new Exception("Using another array for length requires that it is a zero terminated input array");
           }
-          else if (lengthParam && lengthParam.direction != Out)
+          else if (lengthParam && lengthParam.direction != Out && !lengthParam.isArraySize)
             throw new Exception("Callee allocated output array has unsupported length parameter direction '"
               ~ lengthParam.direction.to!string ~ "'");
         }
