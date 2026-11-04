@@ -27,13 +27,23 @@ gpointer gidgen_matrix_kept (void);
  * (integers, or string pointers for GM_STR), objects are created with the integer value. Hash table values are
  * key/value pairs (keys are strings). */
 
-typedef enum { GM_INT, GM_STR, GM_OBJ, GM_REC, GM_REFFED } GmKind;
+typedef enum { GM_INT, GM_STR, GM_OBJ, GM_REC, GM_REFFED, GM_PLAIN, GM_PLAINWRAP } GmKind;
 
 /* Plain structure helpers (transfer full plain structures are freed with g_free()) */
 GidgenMatrixPlain *gm_plain_new (gint value);
 GidgenMatrixPlainWrap *gm_plainwrap_new (gint value);
 GidgenMatrixPlainWrap *gm_plainwrap_copy (const GidgenMatrixPlainWrap *pw);
 void gm_plainwrap_free (GidgenMatrixPlainWrap *pw);
+void gm_plainwrap_copy_into (GidgenMatrixPlainWrap *dest, const GidgenMatrixPlainWrap *src);
+void gm_plainwrap_clear (GidgenMatrixPlainWrap *pw);
+GidgenMatrixAllocWrap *gm_allocwrap_new (gint value);
+#define gm_allocwrap_copy gidgen_matrix_alloc_wrap_copy
+#define gm_allocwrap_free gidgen_matrix_alloc_wrap_free
+void gm_allocwrap_copy_into (GidgenMatrixAllocWrap *dest, const GidgenMatrixAllocWrap *src);
+void gm_allocwrap_clear (GidgenMatrixAllocWrap *aw);
+
+/* Add to a live instance counter (instances created and freed by generated code) */
+void gm_live_add (GidgenMatrixCounter counter, gint delta);
 
 /* GBytes (string contents without the terminator), GValue (holding an int) helpers */
 GBytes *gm_bytes_new (const gchar *str);
@@ -67,6 +77,8 @@ void gm_ptrarray_free_reffed (GPtrArray *array);
 GArray *gm_garray_new (GmKind kind, const GmVals *gv);
 gboolean gm_garray_eq (GmKind kind, const GArray *array, const GmVals *gv);
 void gm_garray_free_int (GArray *array);
+void gm_garray_free_plain (GArray *array);
+void gm_garray_free_plainwrap (GArray *array);
 gpointer gm_zt_new (GmKind kind, const GmVals *gv);
 gboolean gm_zt_eq (GmKind kind, gconstpointer array, const GmVals *gv);
 void gm_zt_free_str (gpointer array);

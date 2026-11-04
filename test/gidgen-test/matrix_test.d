@@ -16,7 +16,7 @@ import std.traits : isDynamicArray, Parameters, ReturnType;
 import std.conv : to;
 
 import glib.c.functions : g_quark_from_string, g_set_error_literal;
-import glib.c.types : GError;
+import glib.c.types : GError, GLogLevelFlags;
 import gobject.object : ObjectWrap;
 import gidgenmatrix.global;
 import gidgenmatrix.types : Counter;
@@ -179,10 +179,201 @@ private string sizeArgs(Ps...)(string array)
   return args.join(", ");
 }
 
+/**
+ * Test a structure borrowed from the fields record (see the borrow positions in position_table.d): the D wrapper must
+ * point at the C structure, writes must reach it and it must keep the record alive after the record's D object is
+ * dropped, until the wrapper is dropped too. Separate function frames keep dropped references off the scanned stack.
+ */
+private void testBorrow(MatrixCell c, T)()
+{
+  import core.memory : GC;
+  import gidgenmatrix.types : Counter;
+
+  auto base = liveCount(Counter.Fields);
+  auto a = getBorrowed!(c, T);
+  GC.collect;
+  assert(liveCount(Counter.Fields) == base + 1, c.func ~ ": owning record not kept alive by the borrowed structure");
+  assert(a.value == mixin(c.makeOut).value, c.func ~ ": borrowed structure value invalid after its owner was dropped");
+  a = null;
+  clearStack;
+  GC.collect;
+  assert(liveCount(Counter.Fields) == base, c.func ~ ": owning record not freed after the borrowed structure");
+}
+
+/// Get a borrowed structure from a new fields record (dropped on return) and check identity and writes (see testBorrow)
+private T getBorrowed(MatrixCell c, T)()
+{
+  import gidgenmatrix.fields : Fields;
+
+  auto o = new Fields;
+  T a;
+
+  static if (c.pos == "borrow_field")
+    a = mixin("o." ~ c.member);
+  else static if (c.pos == "borrow_out")
+    mixin("o." ~ c.func ~ "(a);");
+  else static if (c.pos == "borrow_owner_ret") // Function (not a method) with an owner parameter
+    a = mixin(c.func ~ "(o)");
+  else
+    a = mixin("o." ~ c.func ~ "()");
+
+  assert(a._cPtr is o.addr(c.member), c.func ~ ": borrowed structure is not the C structure");
+  testRefusedStore!c(a);
+  a.value = mixin(c.makeIn).value;
+
+  static if (c.pos == "borrow_field") // C checks the In value and sets the Out value
+    mixin("o." ~ c.func ~ "();");
+  else
+  {
+    assert((cast(typeof(T._cInstance)*)o.addr(c.member)).value == a.value, c.func ~ ": write did not reach C");
+    a.value = mixin(c.makeOut).value;
+  }
+
+  assert(a.value == mixin(c.makeOut).value, c.func ~ ": C write not visible through the borrowed structure");
+  return a;
+}
+
+/// Test a caller allocated out structure filled by a method: the copy keeps the instance alive (see fill_out_ca)
+private void testFillOut(MatrixCell c, T)()
+{
+  import core.memory : GC;
+
+  auto base = liveCount(Counter.Fields);
+  auto a = getFilled!(c, T);
+  GC.collect;
+  assert(liveCount(Counter.Fields) == base + 1, c.func ~ ": instance not kept alive by the filled structure");
+  a = null;
+  clearStack;
+  GC.collect;
+  assert(liveCount(Counter.Fields) == base, c.func ~ ": instance not freed after the filled structure");
+}
+
+/// Fill a structure from a new fields record (dropped on return, see testFillOut)
+private T getFilled(MatrixCell c, T)()
+{
+  import gidgenmatrix.fields : Fields;
+
+  auto o = new Fields;
+  T a;
+  mixin("o." ~ c.func ~ "(a);");
+  assert(mixin(c.eqOut) && !a._cBorrowed && a._owner is o, c.func ~ ": unexpected filled structure");
+  return a;
+}
+
+/**
+ * Test a map position: the MapScope holds the mapped structure, keeps the source fields record alive while mapped
+ * and unmaps it once, on explicit unmap or at scope exit (the C unmap fails a check if called twice).
+ */
+private void testMap(MatrixCell c)()
+{
+  import core.memory : GC;
+
+  auto maps = liveCount(Counter.Maps);
+  auto fields = liveCount(Counter.Fields);
+  mapExplicit!c(maps, fields); // Separate function frames keep dropped references off the scanned stack
+  mapScoped!c();
+  assert(liveCount(Counter.Maps) == maps, c.func ~ ": not unmapped at scope exit");
+  clearStack;
+  GC.collect;
+  assert(liveCount(Counter.Fields) == fields, c.func ~ ": source not freed after unmap");
+}
+
+/// MapScope type of a map position cell
+private template MapScopeOf(MatrixCell c)
+{
+  import gidgenmatrix.fields : Fields;
+
+  import std.uni : toUpper;
+
+  static if (c.pos == "map_method") // Fields has map functions of several types: "<FuncName>Scope" aliases
+    alias MapScopeOf = mixin("Fields." ~ c.func[0 .. 1].toUpper ~ c.func[1 .. $] ~ "Scope");
+  else // Global map function: "MapScope" alias of the mapped structure class
+    alias MapScopeOf = Parameters!(__traits(getMember, gidgenmatrix.global, c.inFunc))[$ - 1].MapScope;
+}
+
+/// Map a new fields record with a map position cell
+private bool doMap(MatrixCell c)(out MapScopeOf!c m)
+{
+  import gidgenmatrix.fields : Fields;
+
+  auto o = new Fields;
+
+  static if (c.pos == "map_method")
+    return mixin("o." ~ c.func ~ "(m)");
+  else
+    return mixin(c.func ~ "(o, m)");
+}
+
+/// Map with explicit unmap (see testMap)
+private void mapExplicit(MatrixCell c)(int maps, int fields)
+{
+  import core.memory : GC;
+
+  MapScopeOf!c m;
+  assert(doMap!c(m) && m.mapped, c.func ~ ": map failed");
+  {
+    auto a = m.value;
+    assert(mixin(c.eqOut), c.func ~ ": unexpected mapped value");
+  }
+  assert(liveCount(Counter.Maps) == maps + 1, c.func ~ ": not mapped");
+  clearStack;
+  GC.collect;
+  assert(liveCount(Counter.Fields) == fields + 1, c.func ~ ": source not kept alive while mapped");
+  m.unmap;
+  assert(!m.mapped && liveCount(Counter.Maps) == maps, c.func ~ ": not unmapped");
+  m.unmap; // No second unmap (the C unmap check would fail)
+}
+
+/// Map and unmap at scope exit (see testMap)
+private void mapScoped(MatrixCell c)()
+{
+  MapScopeOf!c m;
+  assert(doMap!c(m), c.func ~ ": map failed");
+}
+
+/// Count of critical "Gid" log messages (see refusedStoreHandler)
+private __gshared int refusedStores;
+
+private extern(C) void refusedStoreHandler(const(char)* domain, GLogLevelFlags level, const(char)* msg, void* data) nothrow
+{
+  refusedStores++;
+}
+
+/**
+ * A borrowed structure must refuse setters which store D memory (only kept alive by the wrapper, which the C structure
+ * may outlive): a critical message is logged and the C field is left unchanged.
+ */
+private void testRefusedStore(MatrixCell c, T)(T a)
+{
+  import glib.c.functions : g_log_remove_handler, g_log_set_always_fatal, g_log_set_handler;
+
+  static if (__traits(compiles, a.name = ""))
+  {
+    auto cStruct = cast(typeof(T._cInstance)*)a._cPtr;
+    auto cName = cStruct.name;
+    auto count = refusedStores;
+    auto fatalMask = g_log_set_always_fatal(GLogLevelFlags.LevelError); // Not fatal with G_DEBUG=fatal-criticals
+    auto id = g_log_set_handler("Gid", GLogLevelFlags.LevelCritical, &refusedStoreHandler, null);
+    a.name = "refused";
+    g_log_remove_handler("Gid", id);
+    g_log_set_always_fatal(fatalMask);
+    assert(cStruct.name is cName && refusedStores == count + 1, c.func ~ ": borrowed structure stored D memory");
+  }
+}
+
+/// Overwrite unused stack below the caller with zeros, so stale references aren't found by the conservative GC
+private void clearStack()
+{
+  ubyte[4096] buf = 0;
+  import core.volatile : volatileStore;
+  volatileStore(&buf[0], 0);
+}
+
 /// Test a single matrix cell
 private void testCell(MatrixCell c)()
 {
-  static if (c.pos.startsWith("self_")) // Methods of the type (c.member), T is the D value type of the type's in cell
+  static if (c.pos.startsWith("self_") || c.pos.startsWith("borrow_") || c.pos == "map_method" || c.pos == "fill_out_ca") // Methods of the type (c.member) or the
+    // fields record (c.func), T is the D value type of the type's in cell
     alias T = Parameters!(__traits(getMember, gidgenmatrix.global, c.inFunc))[$ - 1];
   else
   {
@@ -307,6 +498,8 @@ private void testCell(MatrixCell c)()
     checkPassed!c(v, base, false);
     release(v);
   }
+  else static if (c.pos == "self_borrow" || c.pos.startsWith("borrow_"))
+    testBorrow!(c, T);
   else static if (c.pos == "cb_inout")
   { // The delegate receives the Out value (null for nullable cells with isNull) and replaces it with the In value,
     // keeps it or sets it to null (nullable cells), the C function checks the resulting value (see InOutMode)
@@ -473,6 +666,53 @@ private void testCell(MatrixCell c)()
     static if (c.nullable)
       fn(true, (T a) { assert(a is null, c.func ~ ": expected null callback value"); calls++; });
     assert(calls == (c.nullable ? 2 : 1), c.func ~ ": callback not called");
+  }
+  else static if (c.pos == "fill_out_ca")
+    testFillOut!(c, T);
+  else static if (c.pos == "map_method" || c.pos == "map_func")
+    testMap!c;
+  else static if (c.pos == "static_borrow")
+  { // Static C structure: borrowed without an owner (the same C structure each call), a dup is an owned copy
+    auto a = fn();
+    assert(mixin(c.eqRet), c.func ~ ": unexpected static value");
+    assert(a._cBorrowed && !a._owner && a._cPtr is fn()._cPtr, c.func ~ ": static structure is not borrowed");
+    auto kept = a._dup;
+    assert(!kept._cBorrowed && kept._cPtr !is a._cPtr && kept.value == a.value, c.func ~ ": dup is not an owned copy");
+
+    // A D constructed (inline) structure is copied inline (not by the copy function), keeping the source alive
+    alias T = ReturnType!fn;
+    T local = mixin(c.makeIn);
+    auto localDup = local._dup;
+    assert(!localDup._cBorrowed && !localDup._cOwned && localDup._owner is local
+      && localDup._cPtr !is local._cPtr && localDup.value == local.value && localDup.name == "pw",
+      c.func ~ ": dup of a D structure is not an inline copy");
+  }
+  else static if (c.pos == "cb_borrow" || c.pos == "sig_borrow")
+  { // C passes a borrowed structure (Out value) which D writes the In value to (checked by C) and dups
+    alias O = Params[0];
+    alias T = Parameters!(mixin(c.inFunc))[$ - 1];
+    T kept;
+    auto dg = (T a) {
+      assert(mixin(c.eqOut), c.func ~ ": unexpected borrowed value");
+      assert(a._cBorrowed && !a._owner, c.func ~ ": argument is not borrowed without an owner");
+      a.value = mixin(c.makeIn).value;
+      kept = a._dup;
+      assert(!kept._cBorrowed && kept._cPtr !is a._cPtr, c.func ~ ": dup is not an owned copy");
+    };
+
+    static if (c.pos == "cb_borrow")
+      fn(dg);
+    else
+    {
+      auto o = new O();
+      mixin("o." ~ c.member ~ "(dg);");
+      fn(o);
+    }
+
+    assert(kept && kept.value == mixin(c.makeIn).value, c.func ~ ": dup did not survive the C structure");
+
+    static if (T._cAllocated) // Deep copy (copy function), its pointer fields are valid after the original was freed
+      assert(kept._cOwned && kept.name == "pw", c.func ~ ": dup is not a deep copy");
   }
   else static if (c.pos == "cb_ret")
   { // The delegate returns the In value (nullable cells additionally return null)

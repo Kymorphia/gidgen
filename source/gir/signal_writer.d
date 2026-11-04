@@ -111,7 +111,12 @@ class SignalWriter
 
     auto cbIndex = cast(int)callbackTypes.length - 1;
 
-    if (param.direction == ParamDirection.In)
+    if (param.isBorrowedArg) // Borrowed for the duration of the signal emission (no owner, not copied)
+      preCall ~= ["", "static if (Parameters!T.length > " ~ cbIndex.to!dstring ~ ")", "{",
+        "auto _" ~ param.dName ~ " = getVal!(void*)(&_paramVals[" ~ (paramIndex + 1).to!dstring ~ "]);",
+        "_paramTuple[" ~ cbIndex.to!dstring ~ "] = _" ~ param.dName ~ " ? new " ~ param.fullDType ~ "(_"
+        ~ param.dName ~ ", null) : null;", "}"];
+    else if (param.direction == ParamDirection.In)
       preCall ~= ["", "static if (Parameters!T.length > " ~ cbIndex.to!dstring ~ ")", // Only process parameters which are included in the callback
         "_paramTuple[" ~ cbIndex.to!dstring ~ "] = getVal!(Parameters!T[" ~ cbIndex.to!dstring
         ~ "])(&_paramVals[" ~ (paramIndex + 1).to!dstring ~ "]);"]; // The parameter index is +1 because the first one is the object instance
@@ -327,7 +332,8 @@ class SignalWriter
     docs ~= ["", "        `" ~ callbackProto ~ "`"];
 
     docs ~= signal.params.filter!(pa => pa.isDParam).map!(pa => [""d] ~ ("        `" ~ pa.dName ~ "` "
-      ~ signal.gdocToDDocFunc(pa.docContent, "          ").stripLeft ~ " (optional)").splitLines).join.array;
+      ~ signal.gdocToDDocFunc(pa.docContent, "          ").stripLeft ~ (pa.isBorrowedArg ? Param.borrowedArgDoc : "")
+      ~ " (optional)").splitLines).join.array;
 
     docs ~= ["", "        `" ~ signal.signalDelegInstanceParam ~ "`"
       ~ " the instance the signal is connected to (optional)", ""];

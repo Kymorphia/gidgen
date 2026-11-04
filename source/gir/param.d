@@ -87,6 +87,22 @@ final class Param : TypeNode
   }
 
   /**
+   * Is this a callback or signal In parameter of a borrowed structure type (see Structure.borrowed) without ownership
+   * transfer, which D borrows for the duration of the call (wrapper with no owner) instead of copying.
+   */
+  @property bool isBorrowedArg()
+  {
+    auto st = cast(Structure)typeObjectRoot;
+    auto func = getParentByType!Func;
+    return st && st.borrowed && kind == TypeKind.Wrap && containerType == ContainerType.None
+      && direction == ParamDirection.In && ownership == Ownership.None
+      && func && func.funcType.among(FuncType.Callback, FuncType.Signal);
+  }
+
+  /// Documentation note appended to borrowed parameters (see isBorrowedArg)
+  enum dstring borrowedArgDoc = " (borrowed, only valid during the callback, use `_dup` to keep a copy)";
+
+  /**
    * Check if a parameter can fully transfer its memory to another user.
    * Returns: true if parameter can be fully transferred, false otherwise
    */

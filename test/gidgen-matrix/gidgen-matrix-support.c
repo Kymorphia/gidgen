@@ -26,6 +26,12 @@ gidgen_matrix_live_count (GidgenMatrixCounter counter)
   return g_atomic_int_get (&live_counts[counter]);
 }
 
+void
+gm_live_add (GidgenMatrixCounter counter, gint delta)
+{
+  g_atomic_int_add (&live_counts[counter], delta);
+}
+
 /**
  * gidgen_matrix_failure_count:
  *
@@ -489,32 +495,88 @@ void gm_ptrarray_free_obj (GPtrArray *array) { g_ptr_array_set_free_func (array,
 void gm_ptrarray_free_rec (GPtrArray *array) { g_ptr_array_set_free_func (array, gm_elem_free (GM_REC)); g_ptr_array_unref (array); }
 void gm_ptrarray_free_reffed (GPtrArray *array) { g_ptr_array_set_free_func (array, gm_elem_free (GM_REFFED)); g_ptr_array_unref (array); }
 
+/* GArray elements are stored inline: gint (GM_INT), GidgenMatrixPlain (GM_PLAIN) or GidgenMatrixPlainWrap
+ * (GM_PLAINWRAP, the array owns the name strings and frees them with its clear function) */
+static guint
+gm_garray_elem_size (GmKind kind)
+{
+  switch (kind)
+  {
+    case GM_PLAIN: return sizeof (GidgenMatrixPlain);
+    case GM_PLAINWRAP: return sizeof (GidgenMatrixPlainWrap);
+    default: return sizeof (gint);
+  }
+}
+
+void
+gm_plainwrap_clear (GidgenMatrixPlainWrap *pw)
+{
+  g_clear_pointer (&pw->name, g_free);
+}
+
+void
+gm_plainwrap_copy_into (GidgenMatrixPlainWrap *dest, const GidgenMatrixPlainWrap *src)
+{
+  dest->value = src->value;
+  dest->name = g_strdup (src->name);
+}
+
 GArray *
 gm_garray_new (GmKind kind, const GmVals *gv)
 {
   gsize n = gv->n; const gintptr *vals = gv->v;
-  GArray *array = g_array_sized_new (FALSE, FALSE, sizeof (gint), n);
+  GArray *array = g_array_sized_new (FALSE, TRUE, gm_garray_elem_size (kind), n);
+  if (kind == GM_PLAINWRAP)
+    g_array_set_clear_func (array, (GDestroyNotify)gm_plainwrap_clear);
   for (gsize i = 0; i < n; i++)
   {
     gint v = (gint)vals[i];
-    g_array_append_val (array, v);
+    GidgenMatrixPlain plain = { v };
+    GidgenMatrixPlainWrap pw = { v, NULL };
+
+    switch (kind)
+    {
+      case GM_PLAIN:
+        g_array_append_val (array, plain);
+        break;
+      case GM_PLAINWRAP:
+        pw.name = g_strdup ("pw");
+        g_array_append_val (array, pw);
+        break;
+      default:
+        g_array_append_val (array, v);
+    }
   }
   return array;
 }
 
+/* PlainWrap element names are not compared (D creates elements from their values only) */
 gboolean
 gm_garray_eq (GmKind kind, const GArray *array, const GmVals *gv)
 {
   gsize n = gv->n; const gintptr *vals = gv->v;
-  if (!array || array->len != n || g_array_get_element_size ((GArray *)array) != sizeof (gint))
+  if (!array || array->len != n || g_array_get_element_size ((GArray *)array) != gm_garray_elem_size (kind))
     return FALSE;
   for (gsize i = 0; i < n; i++)
-    if (g_array_index (array, gint, i) != vals[i])
+  {
+    gint v;
+
+    switch (kind)
+    {
+      case GM_PLAIN: v = g_array_index (array, GidgenMatrixPlain, i).value; break;
+      case GM_PLAINWRAP: v = g_array_index (array, GidgenMatrixPlainWrap, i).value; break;
+      default: v = g_array_index (array, gint, i);
+    }
+
+    if (v != vals[i])
       return FALSE;
+  }
   return TRUE;
 }
 
 void gm_garray_free_int (GArray *array) { g_array_unref (array); }
+void gm_garray_free_plain (GArray *array) { g_array_unref (array); }
+void gm_garray_free_plainwrap (GArray *array) { g_array_set_clear_func (array, (GDestroyNotify)gm_plainwrap_clear); g_array_unref (array); }
 
 gpointer
 gm_zt_new (GmKind kind, const GmVals *gv)
@@ -687,6 +749,59 @@ gm_plainwrap_free (GidgenMatrixPlainWrap *pw)
 {
   g_free (pw->name);
   g_free (pw);
+}
+
+/* ---- Wrap structure with copy/free functions ---- */
+
+GidgenMatrixAllocWrap *
+gm_allocwrap_new (gint value)
+{
+  GidgenMatrixAllocWrap *aw = g_new (GidgenMatrixAllocWrap, 1);
+  aw->value = value;
+  aw->name = g_strdup ("pw");
+  return aw;
+}
+
+/**
+ * gidgen_matrix_alloc_wrap_copy:
+ * @self: The structure
+ *
+ * Deep copy a structure.
+ *
+ * Returns: (transfer full): The copy
+ */
+GidgenMatrixAllocWrap *
+gidgen_matrix_alloc_wrap_copy (const GidgenMatrixAllocWrap *self)
+{
+  GidgenMatrixAllocWrap *copy = g_new (GidgenMatrixAllocWrap, 1);
+  gm_allocwrap_copy_into (copy, self);
+  return copy;
+}
+
+/**
+ * gidgen_matrix_alloc_wrap_free:
+ * @self: The structure
+ *
+ * Free a structure and its name.
+ */
+void
+gidgen_matrix_alloc_wrap_free (GidgenMatrixAllocWrap *self)
+{
+  gm_allocwrap_clear (self);
+  g_free (self);
+}
+
+void
+gm_allocwrap_copy_into (GidgenMatrixAllocWrap *dest, const GidgenMatrixAllocWrap *src)
+{
+  dest->value = src->value;
+  dest->name = g_strdup (src->name);
+}
+
+void
+gm_allocwrap_clear (GidgenMatrixAllocWrap *aw)
+{
+  g_clear_pointer (&aw->name, g_free);
 }
 
 /* ---- Opaque record ---- */

@@ -21,6 +21,8 @@ G_BEGIN_DECLS
  * @GIDGEN_MATRIX_COUNTER_REC: Live #GidgenMatrixRec instances
  * @GIDGEN_MATRIX_COUNTER_REFFED: Live #GidgenMatrixReffed instances
  * @GIDGEN_MATRIX_COUNTER_OPAQUE: Live #GidgenMatrixOpaque instances
+ * @GIDGEN_MATRIX_COUNTER_FIELDS: Live #GidgenMatrixFields instances
+ * @GIDGEN_MATRIX_COUNTER_MAPS: Live mappings of the map positions
  * @GIDGEN_MATRIX_COUNTER_LAST: Number of counters
  *
  * Live instance counters.
@@ -32,6 +34,8 @@ typedef enum
   GIDGEN_MATRIX_COUNTER_REC,
   GIDGEN_MATRIX_COUNTER_REFFED,
   GIDGEN_MATRIX_COUNTER_OPAQUE,
+  GIDGEN_MATRIX_COUNTER_FIELDS,
+  GIDGEN_MATRIX_COUNTER_MAPS,
   GIDGEN_MATRIX_COUNTER_LAST,
 } GidgenMatrixCounter;
 
@@ -168,6 +172,23 @@ typedef struct
   gint value;
   gchar *name;
 } GidgenMatrixPlainWrap;
+
+/**
+ * GidgenMatrixAllocWrap: (copy-func gidgen_matrix_alloc_wrap_copy) (free-func gidgen_matrix_alloc_wrap_free)
+ * @value: The value
+ * @name: A name string
+ *
+ * Plain C structure test type with a pointer field and copy/free functions (no GType, bound as a D class which holds
+ * owned instances as C allocated deep copies, see the gid-wrap StructWrap freeFunc).
+ */
+typedef struct
+{
+  gint value;
+  gchar *name;
+} GidgenMatrixAllocWrap;
+
+GidgenMatrixAllocWrap *gidgen_matrix_alloc_wrap_copy (const GidgenMatrixAllocWrap *self);
+void gidgen_matrix_alloc_wrap_free (GidgenMatrixAllocWrap *self);
 
 /* Opaque record with copy and free functions and no GType */
 

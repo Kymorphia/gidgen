@@ -139,6 +139,69 @@ final class Func : TypeNode
     deprecatedVersion = node.get("deprecated-version");
     when = cast(SignalWhen)SignalWhenValues.countUntil(node.get("when"));
     closureField = node.get("gid-closure-field"); // Custom gid attribute set by def rule: "<paramName>.<fieldName>"
+    unmapFunc = node.get("gid-unmap"); // Custom gid attribute set by def rule: C unmap function of a map function
+    mapSourceName = node.get("gid-map-source"); // Custom gid attribute set by def rule: mapped source parameter
+  }
+
+  /**
+   * Get the mapped structure parameter of a map function (see unmapFunc).
+   * Returns: The Out caller allocated Wrap structure parameter, null if none
+   */
+  Param mapParam()
+  {
+    auto found = params.find!(p => p.direction == ParamDirection.Out && p.callerAllocates
+      && p.kind == TypeKind.Wrap);
+    return found.empty ? null : found.front;
+  }
+
+  /**
+   * Get the mapped source parameter of a map function (see mapSourceName).
+   * Returns: The In object or structure parameter named by mapSourceName, null if not set or not found
+   */
+  Param mapSource()
+  {
+    auto found = params.find!(p => p.name == mapSourceName && p.direction == ParamDirection.In
+      && p.kind.among(TypeKind.Opaque, TypeKind.Wrap, TypeKind.Boxed, TypeKind.Reffed, TypeKind.Object));
+    return found.empty ? null : found.front;
+  }
+
+  /**
+   * Get the class which has the MapScope alias of a map function (see unmapFunc): the class of the function, or the
+   * class of the mapped structure for global functions.
+   */
+  Structure mapScopeClass()
+  {
+    auto st = cast(Structure)parent;
+    return st && st.kind != TypeKind.Namespace ? st : cast(Structure)mapParam.typeObject;
+  }
+
+  /// Get the gid.wrap.MapScope template instance type of a map function (see unmapFunc)
+  dstring mapScopeTemplate()
+  {
+    auto source = mapSource;
+    return "gid.wrap.MapScope!(" ~ mapParam.fullDType ~ ", " ~ unmapFunc ~ ", "
+      ~ (source ? source.fullDType : (cast(Structure)parent).fullDType) ~ ")";
+  }
+
+  /**
+   * Get the MapScope alias name of a map function in its mapScopeClass: "MapScope" if all the map functions of the
+   * class use the same MapScope type, otherwise "<FuncName>Scope".
+   */
+  dstring mapScopeName()
+  {
+    auto distinct = mapScopeClass.mapScopeFuncs.map!(f => f.mapScopeTemplate).array.sort.uniq.count;
+    return distinct == 1 ? "MapScope"d : dName.camelCase(true) ~ "Scope";
+  }
+
+  /**
+   * Get the parameter which owns a borrowed structure return value (see ReturnValue.borrowAttr).
+   * Returns: The In object or structure parameter named by the return value "gid-borrow" attribute, null if none
+   */
+  Param returnBorrowOwner()
+  {
+    auto found = params.find!(p => p.name == returnVal.borrowAttr && p.direction == ParamDirection.In
+      && p.kind.among(TypeKind.Opaque, TypeKind.Wrap, TypeKind.Boxed, TypeKind.Reffed, TypeKind.Object));
+    return found.empty ? null : found.front;
   }
 
   override dstring genDocs()
@@ -149,7 +212,11 @@ final class Func : TypeNode
     auto s = "/**\n    "d ~ gdocToDDocFunc(docContent, "    ").stripLeft ~ "\n";
 
     auto paramDescrs = params.filter!(pa => !(pa.isInstanceParam || pa.isArrayLength || pa.isClosure || pa.isDestroy))
-      .map!(pa => "      " ~ pa.dName ~ " = " ~ gdocToDDocFunc(pa.docContent, "        ").stripLeft).array;
+      .map!(pa => "      " ~ pa.dName ~ " = " ~ gdocToDDocFunc(pa.docContent, "        ").stripLeft
+        ~ (pa.isBorrowedArg ? Param.borrowedArgDoc : "")
+        ~ (unmapFunc.length > 0 && pa is mapParam ? " (mapped structure scope, unmapped by its `unmap()` or when it goes"
+        ~ " out of scope, use a local variable: `" ~ mapScopeClass.dType ~ "." ~ mapScopeName ~ " " ~ pa.dName ~ ";`)"d
+        : "")).array;
 
     if (!paramDescrs.empty)
     {
@@ -369,6 +436,28 @@ final class Func : TypeNode
       {
         disableFunc(e.file, e.line, "Return type error: " ~ e.msg, returnVal);
         return;
+      }
+
+      if (unmapFunc.length > 0)
+      {
+        if (!mapParam || returnVal.dType != "bool")
+          disableFunc(__FILE__, __LINE__, "'gid-unmap' map function requires a boolean return value and an Out"
+            ~ " caller allocated structure parameter", returnVal);
+        else if (mapSourceName.length > 0 ? !mapSource : funcType != FuncType.Method)
+          disableFunc(__FILE__, __LINE__, "'gid-unmap' map function source must be the instance or an In object or"
+            ~ " structure parameter named by 'gid-map-source'", returnVal);
+      }
+
+      if (returnVal.borrowAttr.length > 0)
+      {
+        auto st = cast(Structure)returnVal.typeObject;
+
+        if (!st || !st.borrowed || returnVal.ownership != Ownership.None)
+          disableFunc(__FILE__, __LINE__, "'gid-borrow' return value requires a borrowed structure type without"
+            ~ " ownership transfer", returnVal);
+        else if (returnVal.borrowAttr != "static" && !returnBorrowOwner)
+          disableFunc(__FILE__, __LINE__, "'gid-borrow' return value owner '" ~ returnVal.borrowAttr.to!string
+            ~ "' is not an In object or structure parameter", returnVal);
       }
     }
 
@@ -755,6 +844,8 @@ final class Func : TypeNode
   ReturnValue returnVal; /// Return value type
   Param[] params; /// Parameters
   Param closureParam; /// Closure data parameter or null (Callback only)
+  dstring unmapFunc; /// Custom "gid-unmap" attribute: C function which unmaps the structure filled by this map function (see mapParam)
+  dstring mapSourceName; /// Custom "gid-map-source" attribute: name of the mapped source parameter (instance if not set)
   dstring closureField; /// Custom "gid-closure-field" attribute "<paramName>.<fieldName>": closure data is read from a C struct field of a callback parameter instead of a closure parameter (Callback only)
   Param closureFieldParam; /// Resolved parameter for closureField (set in verify)
   dstring closureFieldName; /// Resolved structure field name for closureField (set in verify)

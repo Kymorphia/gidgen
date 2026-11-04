@@ -60,6 +60,9 @@ struct TypeEntry
   Own own; /// How D owns received C instances (see Own)
   bool transferFull = true; /// Pointer type which supports transfer full (false if C has no way to free it)
   string embed; /// C type of an embedded (non-pointer) record field of the type (empty if not embeddable)
+  string borrow; /// C structure type which D borrows from an owning record (Wrap with pointer fields, which has an
+                 /// int value field and gm_<id>_new/copy_into/clear/free helpers), empty if not borrowed
+  string defs; /// gidgen definitions for the type (added to the definitions file)
 
   /// Set cFill (caller allocated values)
   TypeEntry withFill(string cFill) const
@@ -328,7 +331,16 @@ immutable TypeEntry[] types = [
     cMakeNone: "KEEP (gm_plainwrap_new (${v}), gm_plainwrap_free)",
     cEq: "${x}->value == ${v} && g_strcmp0 (${x}->name, \"pw\") == 0", cFree: "gm_plainwrap_free",
     cCopy: "gm_plainwrap_copy (${x})", dMake: "new T(${v}, \"pw\")", dEq: "${a}.value == ${v} && ${a}.name == \"pw\"",
-    transferFull: false }, // g-ir-scanner rejects non-const returns of bare structures
+    borrow: "GidgenMatrixPlainWrap", transferFull: false }, // g-ir-scanner rejects non-const returns of bare structures
+
+  // Plain C structure with a pointer field and copy/free functions: D holds owned instances as C allocated deep copies
+  { id: "allocwrap", cType: "GidgenMatrixAllocWrap *", cConstType: "const GidgenMatrixAllocWrap *", pointer: true,
+    cVals: ["17", "28", "39"], dVals: ["17", "28", "39"], cMake: "gm_allocwrap_new (${v})",
+    cMakeNone: "KEEP (gm_allocwrap_new (${v}), gm_allocwrap_free)",
+    cEq: "${x}->value == ${v} && g_strcmp0 (${x}->name, \"pw\") == 0", cFree: "gm_allocwrap_free",
+    cCopy: "gm_allocwrap_copy (${x})", dMake: "new T(${v}, \"pw\")", dEq: "${a}.value == ${v} && ${a}.name == \"pw\"",
+    borrow: "GidgenMatrixAllocWrap", transferFull: false,
+    defs: "//!kind AllocWrap Wrap\n" }, // GIR copy/free functions (from annotations) otherwise make it opaque
 
   // Opaque record with copy and free functions and no GType (no properties or signals)
   { id: "opaque", cType: "GidgenMatrixOpaque *", pointer: true, cVals: ["16", "27", "38"], dVals: ["16", "27", "38"],
@@ -372,6 +384,10 @@ immutable TypeEntry[] types = [
   container("ptrarray_reffed", "GPtrArray *", "(element-type GidgenMatrixReffed)", "ptrarray", "REFFED", intElems,
     intDVals),
   container("garray_int", "GArray *", "(element-type gint)", "garray", "INT", intElems, intDVals),
+  // GArrays of inline structures (D value structs and Wrap classes)
+  container("garray_plain", "GArray *", "(element-type GidgenMatrixPlain)", "garray", "PLAIN", intElems, intDVals),
+  container("garray_plainwrap", "GArray *", "(element-type GidgenMatrixPlainWrap)", "garray", "PLAINWRAP", intElems,
+    intDVals),
   container("strv", "gchar **", "(array zero-terminated=1)", "zt", "STR", strElems, strDVals)
     .g("G_TYPE_STRV", "boxed", "boxed", "G_TYPE_STRV"),
   container("ztarray_obj", "GidgenMatrixObj **", "(array zero-terminated=1)", "zt", "OBJ", intElems, intDVals),

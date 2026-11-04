@@ -601,10 +601,6 @@ class TypeNode : Base
           throw new Exception("Unsupported " ~ containerType.to!string ~ " container element type "
             ~ elemTypes[0].dType.to!string ~ " (" ~ elemTypes[0].kind.to!string ~ ")");
 
-        if (containerType == ContainerType.ArrayG && elemTypes[0].kind == TypeKind.Wrap) // GArray stores structures inline, gid helpers treat non-simple types as pointers
-          throw new Exception("Unsupported " ~ containerType.to!string ~ " container element type "
-            ~ elemTypes[0].dType.to!string ~ " (" ~ elemTypes[0].kind.to!string ~ ")");
-
         // Opaque elements are borrowed pointers, they can't be duplicated or freed generically
         if (ownership == Ownership.Full && elemTypes[0].kind == TypeKind.Opaque && containerType != ContainerType.Array)
           throw new Exception("Transfer full " ~ containerType.to!string ~ " of " ~ elemTypes[0].dType.to!string

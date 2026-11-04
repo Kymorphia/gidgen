@@ -11,3 +11,9 @@
    Memcheck:Value8
    fun:_D4core8internal2gc4impl12conservative*Gcx__T4mark*
 }
+{
+   druntime-gc-conservative-mark-bits-value8
+   Memcheck:Value8
+   fun:_D4core8internal2gc4bits6GCBits*
+   fun:_D4core8internal2gc4impl12conservative*Gcx__T4mark*
+}

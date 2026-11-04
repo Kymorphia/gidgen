@@ -25,6 +25,7 @@ final class ReturnValue : TypeNode
 
     ownership = cast(Ownership)OwnershipValues.countUntil(node.get("transfer-ownership"));
     nullable = node.get("nullable") == "1";
+    borrowAttr = node.get("gid-borrow"); // Custom gid attribute set by def rule (see borrowAttr)
   }
 
   protected override void resolve()
@@ -59,4 +60,8 @@ final class ReturnValue : TypeNode
   bool nullable; /// Pointer can be null
   Param lengthParam; /// If this is an array return value, this can be set to an array length parameter
   Param[] lengthArrayParams; /// Array parameters which use return value as length
+
+  /// Custom "gid-borrow" attribute (definitions) of a transfer none borrowed structure (see Structure.borrowed) return
+  /// value of a function: the name of the In parameter which owns it or "static" for static/long-lived data (no owner)
+  dstring borrowAttr;
 }

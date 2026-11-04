@@ -66,6 +66,19 @@ final class Structure : TypeNode
     return _isPlainData;
   }
 
+  /**
+   * Are values of this type borrowed (D wrapper points at the C structure and keeps its owner alive) when passed from
+   * C to D without ownership transfer, rather than copied. Wrap structures with pointer fields are borrowed by default
+   * (a copy would share pointers which the C owner may free), can be overridden with the "gid-borrow" def attribute.
+   */
+  @property bool borrowed()
+  {
+    if (borrowAttr.length > 0)
+      return borrowAttr == "1";
+
+    return kind == TypeKind.Wrap && !isPlainData;
+  }
+
   override @property bool inModule()
   {
     with (TypeKind) return kind.among(Struct, Opaque, Wrap, Boxed, Reffed, Object, Interface, Namespace) != 0;
@@ -98,6 +111,7 @@ final class Structure : TypeNode
 
     deprecatedVersion = node.get("deprecated-version");
     glibGetType = node.get("glib:get-type");
+    borrowAttr = node.get("gid-borrow"); // Custom gid attribute set by def rule: "1" to force borrowing, "0" to copy
     glibTypeName = node.get("glib:type-name");
     glibGetValueFunc = node.get("glib:get-value-func");
     glibSetValueFunc = node.get("glib:set-value-func");
@@ -608,7 +622,8 @@ final class Structure : TypeNode
     auto ptrType = pointer ? cType : cTypeRemPtr ~ "*";
 
     if (kind == TypeKind.Wrap)
-      return "StructWrap!(" ~ cTypeRemPtr ~ (copyFunction ? ", " ~ copyFunction : "") ~ ")";
+      return "StructWrap!(" ~ cTypeRemPtr ~ (copyFunction ? ", " ~ copyFunction : "")
+        ~ (freeFunction ? ", " ~ freeFunction : "") ~ ")";
 
     if (kind == TypeKind.Reffed)
       return "ReffedWrap!(" ~ ptrType ~ ", " ~ glibRefFunc ~ ", " ~ glibUnrefFunc ~ ")";
@@ -634,6 +649,9 @@ final class Structure : TypeNode
     with (TypeKind) if (kind.among(Opaque, Reffed, Wrap, Boxed, Object))
       writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take) nothrow", "{", "super(ptr, take);", "}"];
 
+    with (TypeKind) if (kind.among(Opaque, Wrap)) // Borrowed structure constructor (see StructWrap/OpaqueWrap)
+      writer ~= ["", "/** */", "this(void* ptr, Object owner) nothrow", "{", "super(ptr, owner);", "}"];
+
     // Reffed types with a GType (not "intern" fundamental types, which are handled in definitions)
     auto reffedGType = kind == TypeKind.Reffed && !glibGetType.empty && glibGetType != "intern";
 
@@ -655,6 +673,18 @@ final class Structure : TypeNode
       writer ~= ["", "/** */", "static void* _cDup(void* ptr) nothrow", "{", "return boxedCopy(_getGType, ptr);", "}",
         "", "/** */", "static void _cFree(void* ptr) nothrow", "{", "boxedFree(_getGType, ptr);", "}"];
 
+    dstring[] mapAliases; // MapScope aliases of map functions (see Func.mapScopeName)
+    foreach (f; mapScopeFuncs)
+    {
+      auto name = f.mapScopeName;
+      if (!mapAliases.canFind(name))
+      {
+        mapAliases ~= name;
+        writer ~= ["", "/** Scope of a structure mapped by [" ~ f.fullDName ~ "] (see [gid.wrap.MapScope]) */",
+          "alias " ~ name ~ " = " ~ f.mapScopeTemplate ~ ";"];
+      }
+    }
+
     if (kind.among(TypeKind.Boxed, TypeKind.Object))
       writer ~= ["", "/** Returns `this`, for use in `with` statements. */", overrideStr ~ dType ~ " self() nothrow",
         "{", "return this;", "}"];
@@ -662,6 +692,13 @@ final class Structure : TypeNode
     if (kind == TypeKind.Object)
       writer ~= ["", "/**", "    Get builder for [" ~ fullDType ~ "]", "    Returns: New builder object", "*/",
         "static " ~ dType ~ "GidBuilder builder() nothrow", "{", "return new " ~ dType ~ "GidBuilder;", "}"];
+  }
+
+  /// Get the active map functions which have their MapScope alias in this class (see Func.mapScopeClass)
+  Func[] mapScopeFuncs()
+  {
+    return chain(functions, repo.globalStruct.functions).filter!(f => f.active == Active.Enabled
+      && f.unmapFunc.length > 0 && f.mapScopeClass is this).array;
   }
 
   // Write a Boxed type constructor with all fields as parameters with default values (optional)
@@ -744,6 +781,8 @@ final class Structure : TypeNode
       if (kind == TypeKind.Wrap && f.writable
           && f.kind.among(TypeKind.Boxed, TypeKind.Reffed, TypeKind.Object, TypeKind.Interface))
         lines ~= ["", "private " ~ f.fullDType ~ " _" ~ f.dName ~ "Ref; // Keeps borrowed field value alive"];
+      else if (kind == TypeKind.Wrap && f.writable && f.kind == TypeKind.String) // Wrap may be borrowed (C memory not scanned by the GC)
+        lines ~= ["", "private const(char)* _" ~ f.dName ~ "Ref; // Keeps borrowed GC string alive"];
 
       assert(!f.directStruct, "Unsupported embedded structure field " ~ f.fullDName.to!string);
 
@@ -794,9 +833,14 @@ final class Structure : TypeNode
           auto st = cast(Structure)f.typeObject;
           auto starCount = f.cType.retro.countUntil!(x => x != '*');
 
+          auto ownerArg = st && st.borrowed ? "this"d : "No.Take"d; // Borrowed structures are kept alive by this object
+
           if (starCount < 1 && !(st && st.pointer)) // pointer typedefs (GdkAtom) are already pointers
             lines ~= "return new " ~ f.fullDType ~ "(cast(" ~ f.cType.stripConst ~ "*)&" ~ cPtr ~ "." ~ f.dName
-              ~ ", No.Take);";
+              ~ ", " ~ ownerArg ~ ");";
+          else if (st && st.borrowed) // Null pointer would select the inline structure of a borrowed wrapper
+            lines ~= "return " ~ cPtr ~ "." ~ f.dName ~ " ? new " ~ f.fullDType ~ "(cast(" ~ f.cType.stripConst ~ ")"
+              ~ cPtr ~ "." ~ f.dName ~ ", this) : null;";
           else
             lines ~= "return new " ~ f.fullDType ~ "(cast(" ~ f.cType.stripConst ~ ")" ~ cPtr ~ "." ~ f.dName
               ~ ", No.Take);";
@@ -816,6 +860,10 @@ final class Structure : TypeNode
 
       if (f.kind != TypeKind.Callback) // Callback setter declaration is specially handled below
         lines ~= ["@property void " ~ f.dName ~ "(" ~ f.fullDType ~ " propval) nothrow", "{"];
+
+      // D memory stored in a borrowed C structure is kept alive only by this wrapper, which the structure may outlive
+      if (borrowed && f.kind.among(TypeKind.String, TypeKind.Boxed, TypeKind.Reffed, TypeKind.Object, TypeKind.Interface))
+        lines ~= ["if (_refuseBorrowedStore(\"" ~ f.dName ~ "\"))", "  return;", ""];
 
       final switch (f.kind) with (TypeKind)
       {
@@ -843,8 +891,9 @@ final class Structure : TypeNode
             assert(0, "Write of container fields is not supported"); // Verify should prevent this
           break;
         case String:
-          if (kind == Wrap) // Borrowed, GC string is kept alive by the wrapper's _cInstance (scanned by the GC)
-            lines ~= cPtr ~ "." ~ f.dName ~ " = cast(" ~ f.cType ~ ")toCString!(No.Malloc, Yes.Nullable)(propval);";
+          if (kind == Wrap) // Borrowed GC string, kept alive by _<field>Ref (a borrowed C structure is not scanned by the GC)
+            lines ~= ["_" ~ f.dName ~ "Ref = toCString!(No.Malloc, Yes.Nullable)(propval);",
+              cPtr ~ "." ~ f.dName ~ " = cast(" ~ f.cType ~ ")_" ~ f.dName ~ "Ref;"];
           else // Owned field (enabled via definitions), null D strings are stored as NULL
             lines ~= ["cValueFree!(string)(cast(void*)" ~ cPtr ~ "." ~ f.dName ~ ");",
               cPtr ~ "." ~ f.dName ~ " = toCString!(Yes.Malloc, Yes.Nullable)(propval);"];
@@ -1409,6 +1458,7 @@ final class Structure : TypeNode
   Func[dstring] funcNameHash; /// Hash of functions by GIR name (snake_case)
   TypeNode[dstring] dMethodHash; /// Hash of methods by D name, includes function methods and properties
 
+  dstring borrowAttr; /// Custom "gid-borrow" attribute value ("1" or "0", empty if not set, see borrowed)
   bool _isPlainDataSet; /// true when _isPlainData has been set
   bool _isPlainData; /// Cached value indicating if kind.isPlainData or Wrap and all fields are POD
   bool abstract_; /// Is abstract type?

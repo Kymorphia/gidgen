@@ -378,6 +378,12 @@ class DelegWriter
             addCallParam("gobject.object.ObjectWrap._getDObject!(" ~ param.fullDType ~ ")(cast(void*)" ~ param.dName ~ ", "
               ~ param.fullOwnerFlag ~ ".Take)");
           }
+          else if (param.isBorrowedArg) // Borrowed for the duration of the call (no owner, not copied)
+          {
+            preCall ~= "auto _" ~ param.dName ~ " = " ~ param.dName ~ " ? new " ~ param.fullDType ~ "(cast(void*)"
+              ~ param.dName ~ ", null) : null;";
+            addCallParam("_" ~ param.dName);
+          }
           else
             addCallParam(param.dName ~ " ? new " ~ param.fullDType ~ "(cast(void*)" ~ param.dName ~ ", "
               ~ param.fullOwnerFlag ~ ".Take) : null");

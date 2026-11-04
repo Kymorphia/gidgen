@@ -40,6 +40,9 @@ struct Cell
     if (pos.method)
       return "gidgen_matrix_" ~ type.id ~ "_" ~ pos.id;
 
+    if (pos.fieldsMethod)
+      return "gidgen_matrix_fields_" ~ pos.id ~ "_" ~ type.id;
+
     auto s = "gidgen_matrix_" ~ pos.id ~ "_" ~ type.id;
 
     if (type.pointer)
@@ -51,7 +54,7 @@ struct Cell
   /// D function name as created by gidgen (camelCase of the C name without the namespace prefix)
   string dFunc() const
   {
-    auto parts = cFunc["gidgen_matrix_".length .. $].split("_");
+    auto parts = cFunc[(pos.fieldsMethod ? "gidgen_matrix_fields_" : "gidgen_matrix_").length .. $].split("_");
     foreach (ref p; parts[1 .. $])
       p = p[0 .. 1].toUpper ~ p[1 .. $];
     return parts.join;
@@ -140,6 +143,11 @@ string[string] cellVars(const Cell c)
   v["nOut"] = "(" ~ t.cVals[Role.Out] ~ ")->n";
   v["fixedElem"] = t.fixedElem;
   v["embed"] = t.embed;
+  v["borrow"] = t.borrow;
+  v["dId"] = camel(t.id);
+  v["vIn"] = t.cVals[Role.In];
+  v["vOut"] = t.cVals[Role.Out];
+  v["vRet"] = t.cVals[Role.Ret];
   string[] retArgs;
   if (c.nullable) retArgs ~= "gboolean is_null";
   if (hasLen) retArgs ~= lenParam;
@@ -170,6 +178,7 @@ string[string] cellVars(const Cell c)
     ~ (t.annot.length ? t.annot ~ " " : ""));
   if (v["accAnnots"].length) v["accAnnots"] = v["accAnnots"][0 .. $ - 1] ~ ": ";
   v["cbType"] = "GidgenMatrix" ~ camel(cellName, true) ~ "Func";
+  v["cell"] = cellName;
   v["sigName"] = cellName.replace("_", "-");
   v["SIG"] = "SIG_" ~ cellName.toUpper;
   v["nullAnnot"] = c.nullable ? "(nullable): " : "";
@@ -351,6 +360,9 @@ int main(string[] args)
   write(buildPath(args[1], "gidgen-matrix-gen.h"), header[]);
   write(buildPath(args[1], "gidgen-matrix-gen.c"), source[]);
   write(args[2], manifest[]);
+  foreach (ref t; types)
+    sections["defs"] ~= t.defs;
+
   write(args[3], fill(defsTemplate, sections));
 
   import std.stdio : writefln;

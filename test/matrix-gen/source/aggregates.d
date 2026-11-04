@@ -10,8 +10,8 @@ module aggregates;
 
 /// All section names (each must be used in one of the templates below)
 immutable string[] sectionNames = ["fieldsMember", "fieldsDoc", "fieldsCopy", "fieldsFree", "propsMember",
-  "propsEnum", "propsInstall", "propsSet", "propsGet", "propsFree", "propsProtos", "propsMethods", "sigEnum", "sigNew", "sigDocs", "cbTypedef",
-  "defs"];
+  "propsEnum", "propsInstall", "propsSet", "propsGet", "propsFree", "propsProtos", "propsMethods", "fieldsAddr", "sigEnum", "sigNew", "sigDocs", "cbTypedef",
+  "mapProtos", "mapFuncs", "defs"];
 
 /// C header part, before the cell function prototypes
 enum headerTemplate = `/* Record with a field of each type */
@@ -33,6 +33,7 @@ GType gidgen_matrix_fields_get_type (void) G_GNUC_CONST;
 GidgenMatrixFields *gidgen_matrix_fields_new (void);
 GidgenMatrixFields *gidgen_matrix_fields_copy (const GidgenMatrixFields *rec);
 void gidgen_matrix_fields_free (GidgenMatrixFields *rec);
+gpointer gidgen_matrix_fields_addr (GidgenMatrixFields *rec, const gchar *member);
 
 /* GObject with a property of each type */
 
@@ -41,7 +42,7 @@ G_DECLARE_FINAL_TYPE (GidgenMatrixProps, gidgen_matrix_props, GIDGEN_MATRIX, PRO
 
 GidgenMatrixProps *gidgen_matrix_props_new (void);
 ${propsProtos}
-/* GObject with signals */
+${mapProtos}/* GObject with signals */
 
 #define GIDGEN_MATRIX_TYPE_SIGNALS (gidgen_matrix_signals_get_type ())
 G_DECLARE_FINAL_TYPE (GidgenMatrixSignals, gidgen_matrix_signals, GIDGEN_MATRIX, SIGNALS, GObject)
@@ -65,6 +66,7 @@ G_DEFINE_BOXED_TYPE (GidgenMatrixFields, gidgen_matrix_fields, gidgen_matrix_fie
 GidgenMatrixFields *
 gidgen_matrix_fields_new (void)
 {
+  gm_live_add (GIDGEN_MATRIX_COUNTER_FIELDS, 1);
   return g_new0 (GidgenMatrixFields, 1);
 }
 
@@ -79,7 +81,8 @@ gidgen_matrix_fields_copy (const GidgenMatrixFields *rec)
 {
   GidgenMatrixFields *copy = g_new (GidgenMatrixFields, 1);
   *copy = *rec;
-${fieldsCopy}  return copy;
+${fieldsCopy}  gm_live_add (GIDGEN_MATRIX_COUNTER_FIELDS, 1);
+  return copy;
 }
 
 /**
@@ -90,6 +93,20 @@ void
 gidgen_matrix_fields_free (GidgenMatrixFields *rec)
 {
 ${fieldsFree}  g_free (rec);
+  gm_live_add (GIDGEN_MATRIX_COUNTER_FIELDS, -1);
+}
+
+/**
+ * gidgen_matrix_fields_addr:
+ * @rec: The fields record
+ * @member: D name of a borrowed structure field
+ *
+ * Returns: (transfer none) (nullable): C address of the structure of a borrowed structure field
+ */
+gpointer
+gidgen_matrix_fields_addr (GidgenMatrixFields *rec, const gchar *member)
+{
+${fieldsAddr}  return NULL;
 }
 
 /* ---- Properties object ---- */
@@ -169,7 +186,7 @@ gidgen_matrix_props_new (void)
 }
 
 ${propsMethods}
-/* ---- Signals object ---- */
+${mapFuncs}/* ---- Signals object ---- */
 
 struct _GidgenMatrixSignals
 {

@@ -112,6 +112,13 @@ class FuncWriter
     decl ~= paramStr;
   }
 
+  // Is a value passed from C to D borrowed from the instance (method with a borrowed structure type and no transfer)
+  private bool borrowsFromInstance(TypeNode node)
+  {
+    auto st = cast(Structure)node.typeObject;
+    return st && st.borrowed && node.ownership == Ownership.None && func.funcType == FuncType.Method;
+  }
+
   /// Process return value
   private void processReturn()
   {
@@ -201,6 +208,15 @@ class FuncWriter
               ~ retVal.fullDType ~ ")(cast(" ~ retVal.cType.stripConst ~ ")_cretval, " ~ retVal.fullOwnerFlag
               ~ ".Take);";
           }
+          else if (retVal.borrowAttr.length > 0) // Borrowed structure owned by a parameter or static (definitions)
+          {
+            auto owner = func.returnBorrowOwner;
+            postCall ~= "auto _retval = _cretval ? new " ~ retVal.fullDType ~ "(cast(" ~ retVal.cType.stripConst
+              ~ ")_cretval, " ~ (owner ? owner.dName : "null"d) ~ ") : null;";
+          }
+          else if (borrowsFromInstance(retVal)) // Borrowed structure owned by the instance
+            postCall ~= "auto _retval = _cretval ? new " ~ retVal.fullDType ~ "(cast(" ~ retVal.cType.stripConst
+              ~ ")_cretval, this) : null;";
           else
             postCall ~= "auto _retval = _cretval ? new "
               ~ retVal.fullDType ~ "(cast(" ~ retVal.cType.stripConst ~ ")_cretval, " ~ retVal.fullOwnerFlag
@@ -550,6 +566,15 @@ class FuncWriter
           addCallParam(param.dName ~ " ? cast(" ~ param.cType ~ ")" ~ param.dName ~ "._cPtr"
             ~ (param.canTransferFull ? ("(" ~ param.fullOwnerFlag ~ ".Dup)") : "") ~ " : null");
         }
+        else if (func.unmapFunc.length > 0 && param is func.mapParam) // Mapped structure held by a MapScope
+        {
+          auto source = func.mapSource;
+          addDeclParam("out " ~ func.mapScopeClass.fullDType ~ "." ~ func.mapScopeName ~ " " ~ param.dName);
+          preCall ~= "auto _" ~ param.dName ~ " = cast(" ~ param.cType ~ ")" ~ param.dName ~ "._begin("
+            ~ (source ? source.dName : "this"d) ~ ");";
+          addCallParam("_" ~ param.dName);
+          postCall ~= param.dName ~ "._mapped = _retval;";
+        }
         else // Out
         {
           addDeclParam("out " ~ param.fullDType ~ " " ~ param.dName);
@@ -578,6 +603,9 @@ class FuncWriter
               addCallParam("&_" ~ param.dName);
               postCall ~= param.dName ~ " = " ~ "new " ~ param.fullDType ~ "(cast(void*)&_" ~ param.dName
                 ~ ", No.Take);";
+
+              if (st && st.borrowed && func.funcType == FuncType.Method) // Pointer fields may reference the instance
+                postCall ~= param.dName ~ "._owner = this;";
             }
             else
               assert(0, "Unsupported caller allocates out param of type '" ~ param.fullDType.to!string ~ "' ("
@@ -594,6 +622,9 @@ class FuncWriter
               postCall ~= param.dName ~ " = gobject.object.ObjectWrap._getDObject!(" ~ param.fullDType ~ ")(_"
                 ~ param.dName ~ ", " ~ param.fullOwnerFlag ~ ".Take);";
             }
+            else if (borrowsFromInstance(param)) // Borrowed structure owned by the instance
+              postCall ~= ["if (_" ~ param.dName ~ ")", param.dName ~ " = new " ~ param.fullDType ~ "(cast(void*)_"
+                ~ param.dName ~ ", this);"];
             else
               postCall ~= ["if (_" ~ param.dName ~ ")", param.dName ~ " = new " ~ param.fullDType ~ "(cast(void*)_"
                 ~ param.dName ~ ", " ~ param.fullOwnerFlag ~ ".Take);"];
@@ -715,10 +746,12 @@ class FuncWriter
           preCall ~= ["auto _" ~ param.dName ~ " = cast(" ~ param.cType.stripConst ~ ")gMalloc((" ~ param.dName
             ~ ".length" ~ zeroTerm ~ ") * (" ~ elemType.cType ~ ").sizeof);"];
 
-        preCall ~= "foreach (i, obj; " ~ param.dName ~ ") _" ~ param.dName ~ "[i] = obj._cInstance;";
+        preCall ~= "foreach (i, obj; " ~ param.dName ~ ") _" ~ param.dName ~ "[i] = *cast(" ~ elemType.cType
+          ~ "*)obj._cPtr;";
 
         if (param.ownership == Ownership.None && !param.cType.canFind("const")) // Non-const array, C function may modify the structures, copy them back
-          postCall ~= "foreach (i, obj; " ~ param.dName ~ ") obj._cInstance = _" ~ param.dName ~ "[i];";
+          postCall ~= "foreach (i, obj; " ~ param.dName ~ ") *cast(" ~ elemType.cType ~ "*)obj._cPtr = _"
+            ~ param.dName ~ "[i];";
         break;
       case Boxed:
         if (param.ownership == Ownership.None)

@@ -41,12 +41,12 @@ final class Field : TypeNode
 
   override bool isPlainData()
   {
-    if (kind == TypeKind.Wrap)
-      return typeObjectRoot.isPlainData;
-    else if (kind == TypeKind.Container && isStaticArray)
+    if (kind == TypeKind.Container && isStaticArray)
       return elemTypes[0].kind == TypeKind.Wrap ? elemTypes[0].typeObjectRoot.isPlainData : elemTypes[0].isPlainData;
+    else if (cType.countStars > 0) // Pointers are not plain data (also avoids recursion for linked structures)
+      return false;
     else
-      return super.isPlainData;
+      return kind == TypeKind.Wrap ? typeObjectRoot.isPlainData : super.isPlainData;
   }
 
   override void fromXml(XmlNode node)

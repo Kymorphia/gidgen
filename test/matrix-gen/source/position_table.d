@@ -31,6 +31,7 @@
  *   ${gtype}, ${gvalue}, ${gvGet}, ${pspec} GType, GValue accessor suffix, GValue getter for an owned value
  *                (get_ or dup_ prefixed) and GParamSpec constructor (with the name "${id}-prop")
  *   ${cbType}    C callback typedef name of the cell (GidgenMatrix<CamelCaseCell>Func)
+ *   ${cell}      Cell name (C function name without the gidgen_matrix_ prefix)
  *   ${sigName}, ${SIG} Signal name and signal enum identifier of the cell
  *   ${nullAnnot} "(nullable): " for nullable cells (empty otherwise)
  *
@@ -68,6 +69,7 @@ struct Position
   Section[] sections; /// Additional section templates
   string member; /// C name template of the field, property, signal or method tested by the cell (D name derived from it)
   bool method; /// The cell function is a method of the type (named gidgen_matrix_<type>_<position>)
+  bool fieldsMethod; /// The cell function is a method of the fields record (named gidgen_matrix_fields_<position>_<type>)
 
   // C arrays with a separate length parameter (TypeEntry.lenType): ${lenB}/${lenA} are the length parameter
   // declaration placed before/after the array (function or callback typedef), ${lenDoc} its gtk-doc line,
@@ -90,12 +92,33 @@ private bool lenTypes(const TypeEntry t) => t.lenType.length > 0;
 private bool fieldTypes(const TypeEntry t) => (!t.pointer || t.nullable) && !t.container;
 private bool fixedFieldTypes(const TypeEntry t) => t.fixedElem.length > 0;
 private bool embedTypes(const TypeEntry t) => t.embed.length > 0;
+private bool borrowTypes(const TypeEntry t) => t.borrow.length > 0;
 private bool instanceTypes(const TypeEntry t) => t.own.among(Own.Ref, Own.Copy, Own.Borrow) != 0;
 private bool staticRetTypes(const TypeEntry t) => t.pointer && !t.container;
 private bool gtypeTypes(const TypeEntry t) => t.gtype.length > 0;
 private bool basicTypes(const TypeEntry t) => !t.pointer;
 private bool sigOutTypes(const TypeEntry t) => !t.pointer && t.signalGtype.length > 0;
 private bool signalTypes(const TypeEntry t) => t.signalGtype.length > 0;
+
+/// C body of the map positions (fills the structure with the Out value and a static name)
+private enum mapBody = "  CHECK (rec != NULL);\n  info->value = ${vOut};\n  info->name = (gchar *)\"pw\";\n"
+  ~ "  gm_live_add (GIDGEN_MATRIX_COUNTER_MAPS, 1);\n  return TRUE;\n";
+
+/// C body of the unmap functions of the map positions (checks the structure is mapped and invalidates it)
+private enum unmapBody = "  CHECK (info->value == ${vOut});\n  info->value = -1;\n  gm_live_add (GIDGEN_MATRIX_COUNTER_MAPS, -1);\n";
+
+/// Fields record sections of the borrowed structure positions (shared, so they are added once per type)
+private immutable Section[] borrowSections = [
+  {"fieldsMember", "  ${borrow} ${id}_bfield;\n  ${borrow} *${id}_pfield;\n"},
+  {"fieldsDoc", " * @${id}_bfield: Embedded structure field of type ${id} (borrowed by D)\n"
+    ~ " * @${id}_pfield: Owned structure pointer field of type ${id} (borrowed by D)\n"},
+  {"fieldsCopy", "  gm_${id}_copy_into (&copy->${id}_bfield, &rec->${id}_bfield);\n"
+    ~ "  copy->${id}_pfield = rec->${id}_pfield ? gm_${id}_copy (rec->${id}_pfield) : NULL;\n"},
+  {"fieldsFree", "  gm_${id}_clear (&rec->${id}_bfield);\n  g_clear_pointer (&rec->${id}_pfield, gm_${id}_free);\n"},
+  {"fieldsAddr", "  if (g_strcmp0 (member, \"${dId}Bfield\") == 0)\n    return &rec->${id}_bfield;\n"
+    ~ "  if (g_strcmp0 (member, \"${dId}Pfield\") == 0)\n    return rec->${id}_pfield;\n"},
+  {"defs", "//!set record[Fields].field[${id}_bfield][writable] 0\n//!set record[Fields].field[${id}_pfield][writable] 0\n"},
+];
 
 /// A known unsupported matrix cell combination (not generated), with the reason
 struct Unsupported
@@ -119,7 +142,9 @@ immutable Unsupported[] unsupportedCells = [
   {"cb_ret", "plain", "none", "callback structure pointer return value without full ownership not supported by gidgen"},
   {"cb_out", "plain", "none", "callback out structure pointer without full ownership not supported by gidgen"},
   {"cb_ret", "plainwrap", "none", "callback structure pointer return value without full ownership not supported by gidgen"},
+  {"cb_ret", "allocwrap", "none", "callback structure pointer return value without full ownership not supported by gidgen"},
   {"cb_out", "plainwrap", "none", "callback out structure pointer without full ownership not supported by gidgen"},
+  {"cb_out", "allocwrap", "none", "callback out structure pointer without full ownership not supported by gidgen"},
 
   // Signal values are typed by their GType in the GIR, which differs from the C type of the emitting function
   // for these types (gint8 signals are gchar = D char, gunichar signals are guint = D uint), so the D test can't
@@ -155,10 +180,12 @@ immutable Unsupported[] unsupportedCells = [
   // gidgen disables InOut parameters of records without a GType (the memory management of the D value is unknown)
   {"inout", "opaque", "*", "InOut Opaque pointer parameters not supported by gidgen"},
   {"inout", "plainwrap", "*", "InOut Wrap pointer parameters not supported by gidgen"},
+  {"inout", "allocwrap", "*", "InOut Wrap pointer parameters not supported by gidgen"},
 
   // gidgen makes pointer fields of records without a GType read-only
   {"field", "opaque", "*", "Opaque pointer fields are not writable in gidgen"},
   {"field", "plainwrap", "*", "Wrap pointer fields are not writable in gidgen"},
+  {"field", "allocwrap", "*", "Wrap pointer fields are not writable in gidgen"},
 
   // gidgen only supports InOut full C arrays of basic types and strings
   {"inout", "carray_obj", "full", "InOut full object arrays not supported by gidgen"},
@@ -177,6 +204,10 @@ immutable Unsupported[] unsupportedCells = [
   {"cb_inout", "gvalue", "none", "callback InOut instance parameters without full ownership not supported by gidgen"},
   {"cb_inout", "opaque", "*", "InOut Opaque pointer parameters not supported by gidgen"},
   {"cb_inout", "plainwrap", "*", "InOut Wrap pointer parameters not supported by gidgen"},
+  {"cb_inout", "allocwrap", "*", "InOut Wrap pointer parameters not supported by gidgen"},
+
+  // gidgen disables transfer full containers of Wrap structures with pointer fields (the D copies can't free them)
+  {"*", "garray_plainwrap", "full", "transfer full containers of Wrap structures with pointer fields not supported by gidgen"},
 
   // KNOWN GIDGEN BUG (not fixed): g-ir-scanner omits zero-terminated="1" since it is the GIR default for arrays
   // without a length or fixed size, but gidgen defaults it to 0 (only string arrays are assumed zero terminated),
@@ -273,6 +304,103 @@ immutable Position[] positions = [
       {"fieldsCopy", "  copy->${id}_field = ${copyVal};\n"},
       {"fieldsFree", "${freeVal}"},
       {"defs", "//!set record[Fields].field[${id}_field][owned] 1\n"},
+    ] },
+
+  // Borrowed structures: Wrap structures with pointer fields owned by the fields record (embedded ${id}_bfield
+  // and owned pointer ${id}_pfield) which D borrows (points at the C structure and keeps the record alive) from a
+  // field getter, a transfer none method return or out value, or a method returning a structure embedded in its
+  // instance. gidgen_matrix_fields_addr() returns the C address of a field structure (by the D field name).
+  { id: "borrow_field", fieldsMethod: true, supports: &borrowTypes, transfers: &noneTransfer, member: "${id}_bfield",
+    ret: "void", args: "GidgenMatrixFields *rec", paramDocs: " * @rec: The fields record\n",
+    body: "  CHECK (rec->${id}_bfield.value == ${vIn});\n  rec->${id}_bfield.value = ${vOut};\n",
+    sections: borrowSections },
+
+  { id: "self_borrow", fieldsMethod: true, supports: &borrowTypes, transfers: &noneTransfer, member: "${id}_bfield",
+    ret: "const ${borrow} *", args: "GidgenMatrixFields *rec", paramDocs: " * @rec: The fields record\n",
+    returnDoc: " * Returns: (transfer none): Structure embedded in @rec\n",
+    body: "  return &rec->${id}_bfield;\n", sections: borrowSections },
+
+  { id: "borrow_ret", fieldsMethod: true, supports: &borrowTypes, transfers: &noneTransfer, member: "${id}_pfield",
+    ret: "const ${borrow} *", args: "GidgenMatrixFields *rec", paramDocs: " * @rec: The fields record\n",
+    returnDoc: " * Returns: (transfer none): Structure owned by @rec\n",
+    body: "  if (!rec->${id}_pfield)\n    rec->${id}_pfield = gm_${id}_new (${vRet});\n  return rec->${id}_pfield;\n",
+    sections: borrowSections },
+
+  { id: "borrow_out", fieldsMethod: true, supports: &borrowTypes, transfers: &noneTransfer, member: "${id}_pfield",
+    ret: "void", args: "GidgenMatrixFields *rec, const ${borrow} **value",
+    paramDocs: " * @rec: The fields record\n * @value: (out) (transfer none): Structure owned by @rec\n",
+    body: "  if (!rec->${id}_pfield)\n    rec->${id}_pfield = gm_${id}_new (${vOut});\n  *value = rec->${id}_pfield;\n",
+    sections: borrowSections },
+
+  // Borrowed structure returned (transfer none) by a function from a parameter which owns it (gid-borrow definition)
+  { id: "borrow_owner_ret", supports: &borrowTypes, transfers: &noneTransfer, member: "${id}_pfield",
+    ret: "const ${borrow} *", args: "GidgenMatrixFields *rec", paramDocs: " * @rec: The fields record\n",
+    returnDoc: " * Returns: (transfer none): Structure owned by @rec\n",
+    body: "  if (!rec->${id}_pfield)\n    rec->${id}_pfield = gm_${id}_new (${vRet});\n  return rec->${id}_pfield;\n",
+    sections: borrowSections ~ [Section("defs", "//!set function[${cell}].return-value[][gid-borrow] rec\n")] },
+
+  // Borrowed structure returned (transfer none) by a function from static data (gid-borrow "static" definition)
+  { id: "static_borrow", supports: &borrowTypes, transfers: &noneTransfer,
+    ret: "const ${borrow} *", args: "void", returnDoc: " * Returns: (transfer none): Static structure\n",
+    body: "  static ${borrow} value = { ${vRet}, (gchar *)\"pw\" };\n  return &value;\n",
+    sections: [{"defs", "//!set function[${cell}].return-value[][gid-borrow] static\n"}] },
+
+  // Caller allocated out structure filled by a method of the fields record: the D copy's pointer fields may reference
+  // the instance, so the copy keeps the fields record alive
+  { id: "fill_out_ca", fieldsMethod: true, supports: &borrowTypes, transfers: &noneTransfer,
+    ret: "void", args: "GidgenMatrixFields *rec, ${borrow} *value",
+    paramDocs: " * @rec: The fields record\n * @value: (out caller-allocates): Structure filled from @rec\n",
+    body: "  CHECK (rec != NULL);\n  value->value = ${vOut};\n  value->name = (gchar *)\"pw\";\n" },
+
+  // Map function: fills a caller allocated structure (Out Value, static name) which the D MapScope must unmap once
+  // (explicit unmap or scope exit) with the unmap function named by the gid-unmap definition, keeping the source
+  // fields record alive while mapped. The C unmap checks and invalidates the structure (a second unmap fails).
+  { id: "map_method", fieldsMethod: true, supports: &borrowTypes, transfers: &noneTransfer,
+    ret: "gboolean", args: "GidgenMatrixFields *rec, ${borrow} *info",
+    paramDocs: " * @rec: The fields record\n * @info: (out caller-allocates): Mapped structure\n",
+    returnDoc: " * Returns: %TRUE if mapped\n", body: mapBody,
+    sections: [
+      {"mapProtos", "void gidgen_matrix_fields_unmap_method_${id} (GidgenMatrixFields *rec, ${borrow} *info);\n"},
+      {"mapFuncs", "/**\n * gidgen_matrix_fields_unmap_method_${id}:\n * @rec: The fields record\n * @info: Mapped structure\n"
+        ~ " *\n * Unmap a structure.\n */\nvoid\ngidgen_matrix_fields_unmap_method_${id} (GidgenMatrixFields *rec, ${borrow} *info)\n"
+        ~ "{\n  CHECK (rec != NULL);\n" ~ unmapBody ~ "}\n\n"},
+      {"defs", "//!set record[Fields].method[map_method_${id}][gid-unmap] gidgen_matrix_fields_unmap_method_${id}\n"
+        ~ "//!set record[Fields].method[unmap_method_${id}][disable] 1\n"},
+    ] },
+
+  { id: "map_func", supports: &borrowTypes, transfers: &noneTransfer,
+    ret: "gboolean", args: "GidgenMatrixFields *rec, ${borrow} *info",
+    paramDocs: " * @rec: The fields record\n * @info: (out caller-allocates): Mapped structure\n",
+    returnDoc: " * Returns: %TRUE if mapped\n", body: mapBody,
+    sections: [
+      {"mapProtos", "void gidgen_matrix_un${cell} (${borrow} *info);\n"},
+      {"mapFuncs", "/**\n * gidgen_matrix_un${cell}:\n * @info: Mapped structure\n *\n * Unmap a structure.\n */\n"
+        ~ "void\ngidgen_matrix_un${cell} (${borrow} *info)\n{\n" ~ unmapBody ~ "}\n\n"},
+      {"defs", "//!set function[${cell}][gid-unmap] gidgen_matrix_un${cell}\n//!set function[${cell}][gid-map-source] rec\n"
+        ~ "//!set function[un${cell}][disable] 1\n"},
+    ] },
+
+  // Borrowed structure callback/signal argument (transfer none): D borrows the C structure for the duration of the
+  // call (wrapper with no owner), its write must reach C and a dup taken in D must survive the C structure being freed
+  { id: "cb_borrow", supports: &borrowTypes, transfers: &noneTransfer,
+    ret: "void", args: "${cbType} func, gpointer user_data",
+    paramDocs: " * @func: (scope call) (closure user_data): Callback\n * @user_data: User data\n",
+    body: "  ${borrow} *value = gm_${id}_new (${vOut});\n  func (value, user_data);\n  CHECK (value->value == ${vIn});\n"
+      ~ "  gm_${id}_free (value);\n",
+    sections: [{"cbTypedef", "/**\n * ${cbType}:\n * @value: (transfer none): Borrowed structure\n"
+      ~ " * @user_data: (closure): User data\n *\n * Matrix callback.\n */\n"
+      ~ "typedef void (*${cbType}) (const ${borrow} *value, gpointer user_data);\n\n"}] },
+
+  { id: "sig_borrow", supports: &borrowTypes, transfers: &noneTransfer, member: "${sigName}",
+    ret: "void", args: "GidgenMatrixSignals *self", paramDocs: " * @self: The signals object\n",
+    body: "  ${borrow} *value = gm_${id}_new (${vOut});\n  g_signal_emit (self, matrix_signals[${SIG}], 0, value);\n"
+      ~ "  CHECK (value->value == ${vIn});\n  gm_${id}_free (value);\n",
+    sections: [
+      {"sigEnum", "  ${SIG},\n"},
+      {"sigNew", "  matrix_signals[${SIG}] = g_signal_new (\"${sigName}\", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,"
+        ~ " 0, NULL, NULL, NULL, G_TYPE_NONE, 1, G_TYPE_POINTER);\n"},
+      {"sigDocs", "/**\n * GidgenMatrixSignals::${sigName}:\n * @self: The object\n * @value: (type ${borrow}): Borrowed"
+        ~ " structure\n *\n * Matrix signal.\n */\n\n"},
     ] },
 
   // Embedded (non-pointer) structure record field: D sets the In value, the C function checks it and sets the Out
