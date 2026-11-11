@@ -178,6 +178,7 @@ string[string] cellVars(const Cell c)
     ~ (t.annot.length ? t.annot ~ " " : ""));
   if (v["accAnnots"].length) v["accAnnots"] = v["accAnnots"][0 .. $ - 1] ~ ": ";
   v["cbType"] = "GidgenMatrix" ~ camel(cellName, true) ~ "Func";
+  v["cbGirName"] = camel(cellName, true) ~ "Func"; // GIR name strips namespace prefix
   v["cell"] = cellName;
   v["sigName"] = cellName.replace("_", "-");
   v["SIG"] = "SIG_" ~ cellName.toUpper;

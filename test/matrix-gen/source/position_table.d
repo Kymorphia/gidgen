@@ -391,7 +391,28 @@ immutable Position[] positions = [
       ~ " * @user_data: (closure): User data\n *\n * Matrix callback.\n */\n"
       ~ "typedef void (*${cbType}) (const ${borrow} *value, gpointer user_data);\n\n"}] },
 
-  { id: "sig_borrow", supports: &borrowTypes, transfers: &noneTransfer, member: "${sigName}",
+    // Callback InOut borrowed Wrap** with an owner (gid-borrow): null removes the value, keep leaves the same
+  // pointer. Replacing with a different instance is a programmer error (Gid critical); not exercised here because
+  // G_DEBUG=fatal-criticals would abort. Matches BufferForeachMetaFunc.
+  { id: "cb_inout_borrow", supports: &borrowTypes, transfers: &noneTransfer, nullable: true,
+    ret: "void", args: "gint mode, ${cbType} func, gpointer user_data",
+    paramDocs: " * @mode: What the callback does (1 = keep, 2 = set to %NULL)\n"
+      ~ " * @func: (scope call) (closure user_data): Callback\n * @user_data: User data\n",
+    body: "  GidgenMatrixFields owner = {0};\n  ${borrow} *held = gm_${id}_new (${vOut});\n"
+      ~ "  ${borrow} *value = held;\n\n"
+      ~ "  func (&owner, &value, user_data);\n"
+      ~ "  CHECK (mode == GM_INOUT_KEEP ? (value == held && value->value == ${vOut}) : value == NULL);\n"
+      ~ "  gm_${id}_free (held);\n",
+    sections: [
+      {"cbTypedef", "/**\n * ${cbType}:\n * @owner: Owner of the borrowed structure\n"
+        ~ " * @value: (inout) (nullable) (transfer none) (type ${borrow}): Borrowed structure; set to %NULL to remove\n"
+        ~ " * @user_data: (closure): User data\n *\n * Matrix callback.\n */\n"
+        ~ "typedef void (*${cbType}) (GidgenMatrixFields *owner, ${borrow} **value, gpointer user_data);\n\n"},
+      {"defs", "//!set callback[${cbGirName}].parameters.parameter[value][gid-borrow] owner\n"
+        ~ "//!set callback[${cbGirName}].parameters.parameter[value][transfer-ownership] none\n"},
+    ] },
+
+{ id: "sig_borrow", supports: &borrowTypes, transfers: &noneTransfer, member: "${sigName}",
     ret: "void", args: "GidgenMatrixSignals *self", paramDocs: " * @self: The signals object\n",
     body: "  ${borrow} *value = gm_${id}_new (${vOut});\n  g_signal_emit (self, matrix_signals[${SIG}], 0, value);\n"
       ~ "  CHECK (value->value == ${vIn});\n  gm_${id}_free (value);\n",

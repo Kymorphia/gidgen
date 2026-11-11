@@ -103,6 +103,36 @@ final class Param : TypeNode
   enum dstring borrowedArgDoc = " (borrowed, only valid during the callback, use `_dup` to keep a copy)";
 
   /**
+   * Is this a callback InOut Wrap** parameter borrowed from another parameter named by borrowAttr
+   * (transfer none). The D delegate takes `ref T`; null removes the value, a different non-null pointer is a
+   * programmer error (see DelegWriter).
+   */
+  @property bool isBorrowedInOut()
+  {
+    auto st = cast(Structure)typeObjectRoot;
+    auto func = getParentByType!Func;
+    return st && st.borrowed && kind == TypeKind.Wrap && containerType == ContainerType.None
+      && direction == ParamDirection.InOut && ownership == Ownership.None && cType.countStars == 2
+      && borrowAttr.length > 0 && func && func.funcType == FuncType.Callback;
+  }
+
+  /// Documentation note appended to borrowed InOut parameters (see isBorrowedInOut)
+  enum dstring borrowedInOutDoc = " (borrowed from the owner named by definitions; set to `null` to remove,"
+    ~ " replacing with a different instance is a programmer error)";
+
+  /**
+   * Caller-allocated Out of an opaque boxed type with a complete GIR layout (gid-c-layout) and
+   * transfer none. These are stack-allocated and copied with boxedCopy; other boxed outs keep boxedNew.
+   */
+  @property bool isOpaqueBoxedStackOut()
+  {
+    auto st = cast(Structure)typeObject;
+    return kind == TypeKind.Boxed && direction == ParamDirection.Out && callerAllocates
+      && ownership == Ownership.None && !cTypeRemPtr.endsWith('*')
+      && st && st.opaque && st.cLayout && !st.pointer && st.fields.length > 0;
+  }
+
+  /**
    * Check if a parameter can fully transfer its memory to another user.
    * Returns: true if parameter can be fully transferred, false otherwise
    */
@@ -124,6 +154,8 @@ final class Param : TypeNode
     optional = node.get("optional") == "1";
     allowNone = node.get("allow-none") == "1";
     callerAllocates = node.get("caller-allocates") == "1";
+    borrowAttr = node.get("gid-borrow"); // Custom gid attribute set by def rule (see borrowAttr)
+    validIfReturn = node.get("gid-valid-if-return") == "1"; // Custom gid attribute (see validIfReturn)
     varargs = node.findChild("varargs") !is null;
     closureIndex = node.attrTo!int("closure", NoClosure);
     destroyIndex = node.attrTo!int("destroy", NoDestroy);
@@ -302,7 +334,10 @@ final class Param : TypeNode
 
     if (direction == ParamDirection.InOut)
     {
-      with (TypeKind) if (kind.among(Opaque, Wrap) && cType.countStars == 2)
+      // InOut Wrap** with transfer none is allowed when definitions name the owner with gid-borrow
+      // (see Func.verify and DelegWriter); other Wrap/Opaque pointer InOut remains unsupported
+      with (TypeKind) if (kind.among(Opaque, Wrap) && cType.countStars == 2
+          && !(kind == Wrap && ownership == Ownership.None && borrowAttr.length > 0))
         throw new Exception("Unsupported InOut " ~ kind.to!string ~ " pointer parameter (unknown memory management)");
 
       bool isPtrInOut; // Pointer to an object/struct/string pointer, GIR transfer applies to both directions
@@ -330,9 +365,20 @@ final class Param : TypeNode
     {
       auto st = cast(Structure)typeObject;
 
-      if (!st || (!st.ctorFunc && (st.opaque || st.pointer || st.fields.empty)))
+      // Pointer typedefs and field-less opaques cannot be caller-allocated. An opaque boxed type
+      // also needs gid-c-layout so writeCTypes emits a complete C struct for stack allocation.
+      if (!st || (!st.ctorFunc && (st.pointer || st.fields.empty)))
         throw new Exception("Unsupported boxed type Out parameter of type '" ~ dType.to!string
           ~ "' requiring caller allocation of opaque structure");
+    }
+
+    if (validIfReturn)
+    {
+      auto fn = getParentByType!Func;
+      if (!isOpaqueBoxedStackOut || !fn || !fn.returnVal || fn.returnVal.active != Active.Enabled
+          || fn.returnVal.dType != "bool")
+        throw new Exception("'gid-valid-if-return' is only valid on a transfer-none caller-allocated Out"
+          ~ " of an opaque boxed type with gid-c-layout, on a function that returns a boolean");
     }
 
     if (containerType == ContainerType.Array) with (ParamDirection)
@@ -490,6 +536,7 @@ final class Param : TypeNode
     js.jsonSetNonDefault("optional", optional);
     js.jsonSetNonDefault("allowNone", allowNone);
     js.jsonSetNonDefault("callerAllocates", callerAllocates);
+    js.jsonSetNonDefault("validIfReturn", validIfReturn);
     js.jsonSetNonDefault("varargs", varargs);
     js.jsonSetNonDefault("isClosure", isClosure);
     js.jsonSetNonDefault("isDestroy", isDestroy);
@@ -511,6 +558,8 @@ final class Param : TypeNode
   bool optional; /// Optional pointer
   bool allowNone; /// Allow none (deprecated and replaced with nullable and optional, ignored)
   bool callerAllocates; /// Caller allocates value
+  dstring borrowAttr; /// Custom "gid-borrow" attribute: owning In parameter name of a borrowed InOut Wrap** (Callback)
+  bool validIfReturn; /// Custom "gid-valid-if-return" attribute: wrap a caller-allocated Out only if the function returned true
   bool varargs; /// Indicates a parameter is a varargs ... elipsis
   bool isClosure; /// Is this a closure user_data parameter?
   bool isDestroy; /// Is this a destroy notification callback parameter?

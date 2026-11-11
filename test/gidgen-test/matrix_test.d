@@ -828,6 +828,36 @@ private void testCell(MatrixCell c)()
     assert(calls == 1, c.func ~ ": signal handler not called");
     release(o);
   }
+  else static if (c.pos == "cb_inout_borrow")
+  { // Borrowed InOut Wrap**: keep the same pointer or set null (remove). Owner is a Fields wrapper.
+    import core.memory : GC;
+    import gidgenmatrix.fields : Fields;
+
+    alias T = Parameters!(Params[$ - 1])[1];
+    int calls;
+
+    foreach (mode; [InOutMode.Keep, InOutMode.SetNull])
+    {
+      void dlg(Fields owner, ref T a)
+      {
+        assert(owner !is null, c.func ~ ": missing owner");
+        assert(a !is null && a._cBorrowed && a._owner is owner, c.func ~ ": value is not borrowed from owner");
+        assert(mixin(c.eqOut), c.func ~ ": unexpected borrowed value");
+
+        if (mode == InOutMode.SetNull)
+          a = null;
+
+        calls++;
+      }
+
+      fn(mode, &dlg);
+    }
+
+    assert(calls == 2, c.func ~ ": callback not called");
+    // Owner is Boxed: transfer-none trampoline copies it; collect so the copies are freed before the live check
+    GC.collect;
+    GC.minimize;
+  }
   else
     static assert(false, "Unhandled matrix position " ~ c.pos);
 }

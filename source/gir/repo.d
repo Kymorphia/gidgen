@@ -671,7 +671,9 @@ final class Repo : Base
       if (st.kind == TypeKind.Namespace || st.cType.empty)
         continue;
 
-      if (st.fields.length > 0 && !st.opaque && !st.pointer) // Regular structure?
+      // Regular structures, or opaque types opted in with gid-c-layout so caller-allocated Out
+      // parameters can stack-allocate a complete GIR field layout. Others stay incomplete.
+      if (st.fields.length > 0 && !st.pointer && (!st.opaque || st.cLayout))
         st.writeStructDef(writer);
       else if (st.pointer)
       {

@@ -112,6 +112,7 @@ final class Structure : TypeNode
     deprecatedVersion = node.get("deprecated-version");
     glibGetType = node.get("glib:get-type");
     borrowAttr = node.get("gid-borrow"); // Custom gid attribute set by def rule: "1" to force borrowing, "0" to copy
+    cLayout = node.get("gid-c-layout") == "1"; // Custom gid attribute: emit GIR field layout in c/types.d when opaque
     glibTypeName = node.get("glib:type-name");
     glibGetValueFunc = node.get("glib:get-value-func");
     glibSetValueFunc = node.get("glib:set-value-func");
@@ -1422,6 +1423,7 @@ final class Structure : TypeNode
     js.jsonSetNonDefault("abstract", abstract_);
     js.jsonSetNonDefault("deprecated", deprecated_);
     js.jsonSetNonDefault("opaque", opaque);
+    js.jsonSetNonDefault("cLayout", cLayout);
     js.jsonSetNonDefault("pointer", pointer);
     js.jsonSetNonDefault("version", version_);
     js.jsonSetNonDefault("deprecatedVersion", deprecatedVersion);
@@ -1459,6 +1461,7 @@ final class Structure : TypeNode
   TypeNode[dstring] dMethodHash; /// Hash of methods by D name, includes function methods and properties
 
   dstring borrowAttr; /// Custom "gid-borrow" attribute value ("1" or "0", empty if not set, see borrowed)
+  bool cLayout; /// Custom "gid-c-layout" attribute: emit the GIR field layout in c/types.d even when opaque
   bool _isPlainDataSet; /// true when _isPlainData has been set
   bool _isPlainData; /// Cached value indicating if kind.isPlainData or Wrap and all fields are POD
   bool abstract_; /// Is abstract type?

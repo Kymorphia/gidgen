@@ -204,6 +204,26 @@ final class Func : TypeNode
     return found.empty ? null : found.front;
   }
 
+  /**
+   * Get the parameter which owns a borrowed InOut Wrap** callback parameter (see Param.borrowAttr).
+   * Returns: The In object or structure parameter named by the parameter "gid-borrow" attribute, null if none
+   */
+  Param paramBorrowOwner(Param pa)
+  {
+    if (pa.borrowAttr.length == 0)
+      return null;
+
+    auto found = params.find!(p => p.name == pa.borrowAttr && p.direction == ParamDirection.In
+      && p.kind.among(TypeKind.Opaque, TypeKind.Wrap, TypeKind.Boxed, TypeKind.Reffed, TypeKind.Object));
+    return found.empty ? null : found.front;
+  }
+
+  /// Returns true if any callback parameter borrows from this In parameter (see Param.borrowAttr)
+  bool isParamBorrowOwner(Param pa)
+  {
+    return params.canFind!(p => p.borrowAttr == pa.name && p.isBorrowedInOut);
+  }
+
   override dstring genDocs()
   {
     if (docContent.length == 0)
@@ -214,6 +234,7 @@ final class Func : TypeNode
     auto paramDescrs = params.filter!(pa => !(pa.isInstanceParam || pa.isArrayLength || pa.isClosure || pa.isDestroy))
       .map!(pa => "      " ~ pa.dName ~ " = " ~ gdocToDDocFunc(pa.docContent, "        ").stripLeft
         ~ (pa.isBorrowedArg ? Param.borrowedArgDoc : "")
+        ~ (pa.isBorrowedInOut ? Param.borrowedInOutDoc : "")
         ~ (unmapFunc.length > 0 && pa is mapParam ? " (mapped structure scope, unmapped by its `unmap()` or when it goes"
         ~ " out of scope, use a local variable: `" ~ mapScopeClass.dType ~ "." ~ mapScopeName ~ " " ~ pa.dName ~ ";`)"d
         : "")).array;
@@ -569,13 +590,22 @@ final class Func : TypeNode
 
       with (TypeKind) if (funcType == FuncType.Callback)
       {
-        // The callback wraps an InOut instance pointer and returns a new reference or copy of the resulting D object,
-        // which requires full transfer (no D owner can keep a returned borrowed instance alive for C)
-        if (pa.direction == ParamDirection.InOut && pa.kind.among(Opaque, Wrap, Boxed, Reffed, Object, Interface)
-            && (pa.cType.countStars != 2 || pa.ownership != Ownership.Full))
-          disableFunc(__FILE__, __LINE__, "InOut param '" ~ pa.name.to!string ~ "' of type '" ~ pa.dType.to!string
-            ~ "' in callback with C type '" ~ pa.cType.to!string ~ "' and ownership '" ~ pa.ownership.to!string
-            ~ "' is not supported (requires a pointer to an instance pointer with full ownership)", pa);
+        // InOut instance pointer: full transfer returns a new reference/copy to C, or transfer-none Wrap**
+        // borrowed from another parameter (gid-borrow) which may only be cleared (not replaced)
+        if (pa.direction == ParamDirection.InOut && pa.kind.among(Opaque, Wrap, Boxed, Reffed, Object, Interface))
+        {
+          if (pa.kind == Wrap && pa.ownership == Ownership.None && pa.cType.countStars == 2 && pa.borrowAttr.length > 0)
+          {
+            if (!paramBorrowOwner(pa))
+              disableFunc(__FILE__, __LINE__, "InOut param '" ~ pa.name.to!string ~ "' gid-borrow owner '"
+                ~ pa.borrowAttr.to!string ~ "' not found (requires an In Opaque/Wrap/Boxed/Reffed/Object parameter)", pa);
+          }
+          else if (pa.cType.countStars != 2 || pa.ownership != Ownership.Full)
+            disableFunc(__FILE__, __LINE__, "InOut param '" ~ pa.name.to!string ~ "' of type '" ~ pa.dType.to!string
+              ~ "' in callback with C type '" ~ pa.cType.to!string ~ "' and ownership '" ~ pa.ownership.to!string
+              ~ "' is not supported (requires a pointer to an instance pointer with full ownership, or a Wrap"
+              ~ " parameter with transfer none and a gid-borrow owner)", pa);
+        }
 
         // Callback output arrays are allocated by the delegate wrapper, so the caller must take full ownership.
         // InOut arrays and input arrays of inline structures are only supported without ownership transfer.

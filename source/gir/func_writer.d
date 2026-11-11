@@ -591,11 +591,27 @@ class FuncWriter
           {
             if (param.kind == Boxed)
             {
-              preCall ~= "auto _" ~ param.dName ~ " = boxedNew!" ~ param.cTypeRemPtr ~ "(" ~ param.fullDType
-                ~ "._getGType);";
-              addCallParam("_" ~ param.dName);
-              postCall ~= param.dName ~ " = " ~ "new " ~ param.fullDType ~ "(cast(void*)_" ~ param.dName
-                ~ ", Yes.Take);";
+              if (param.isOpaqueBoxedStackOut) // Opaque boxed with gid-c-layout; not used for ordinary boxed outs
+              {
+                preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";";
+                addCallParam("&_" ~ param.dName);
+                addImport("gid.gid");
+                auto wrapOut = param.dName ~ " = new " ~ param.fullDType ~ "(boxedCopy(" ~ param.fullDType
+                  ~ "._getGType, &_" ~ param.dName ~ "), Yes.Take);";
+                // Only when definitions set gid-valid-if-return; a false return does not generally invalidate outs
+                if (param.validIfReturn)
+                  postCall ~= ["if (_retval)", wrapOut];
+                else
+                  postCall ~= wrapOut;
+              }
+              else
+              {
+                preCall ~= "auto _" ~ param.dName ~ " = boxedNew!" ~ param.cTypeRemPtr ~ "(" ~ param.fullDType
+                  ~ "._getGType);";
+                addCallParam("_" ~ param.dName);
+                postCall ~= param.dName ~ " = " ~ "new " ~ param.fullDType ~ "(cast(void*)_" ~ param.dName
+                  ~ ", Yes.Take);";
+              }
             }
             else if (param.kind == Wrap)
             {

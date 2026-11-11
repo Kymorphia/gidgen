@@ -372,16 +372,32 @@ class DelegWriter
       case Opaque, Wrap, Boxed, Reffed, Object, Interface:
         if (param.direction == ParamDirection.In)
         {
+          // Named temp when later InOut params borrow from this parameter (gid-borrow)
+          auto needOwnerTemp = callback.isParamBorrowOwner(param);
+
           if (param.kind == TypeKind.Object || param.kind == TypeKind.Interface)
           {
             addImport("gobject.object");
-            addCallParam("gobject.object.ObjectWrap._getDObject!(" ~ param.fullDType ~ ")(cast(void*)" ~ param.dName ~ ", "
-              ~ param.fullOwnerFlag ~ ".Take)");
+            if (needOwnerTemp)
+            {
+              preCall ~= "auto _" ~ param.dName ~ " = gobject.object.ObjectWrap._getDObject!(" ~ param.fullDType
+                ~ ")(cast(void*)" ~ param.dName ~ ", " ~ param.fullOwnerFlag ~ ".Take);";
+              addCallParam("_" ~ param.dName);
+            }
+            else
+              addCallParam("gobject.object.ObjectWrap._getDObject!(" ~ param.fullDType ~ ")(cast(void*)" ~ param.dName
+                ~ ", " ~ param.fullOwnerFlag ~ ".Take)");
           }
           else if (param.isBorrowedArg) // Borrowed for the duration of the call (no owner, not copied)
           {
             preCall ~= "auto _" ~ param.dName ~ " = " ~ param.dName ~ " ? new " ~ param.fullDType ~ "(cast(void*)"
               ~ param.dName ~ ", null) : null;";
+            addCallParam("_" ~ param.dName);
+          }
+          else if (needOwnerTemp)
+          {
+            preCall ~= "auto _" ~ param.dName ~ " = " ~ param.dName ~ " ? new " ~ param.fullDType ~ "(cast(void*)"
+              ~ param.dName ~ ", " ~ param.fullOwnerFlag ~ ".Take) : null;";
             addCallParam("_" ~ param.dName);
           }
           else
@@ -399,6 +415,34 @@ class DelegWriter
           else // Out pass by value: if the D Out value is null, leave the C value struct alone (assumes the caller initialized it or knows when the value is valid)
             postCall ~= "if (_" ~ param.dName ~ ")\n{\n auto p_ = _" ~ param.dName ~ "._cPtr(Yes.Dup);\n*" ~ param.dName
               ~ " = *cast(" ~ param.cType ~ ")p_;\ngFree(p_);\n}\n";
+        }
+        else if (param.isBorrowedInOut) // Transfer none Wrap**: borrow from owner, null removes, replace is an error
+        {
+          auto owner = callback.paramBorrowOwner(param);
+          assert(owner, "Borrowed InOut parameter '" ~ param.fullDName.to!string ~ "' has no owner");
+
+          preCall ~= "auto _" ~ param.dName ~ "Orig = *" ~ param.dName ~ ";";
+          preCall ~= "auto _" ~ param.dName ~ " = _" ~ param.dName ~ "Orig ? new " ~ param.fullDType
+            ~ "(cast(void*)_" ~ param.dName ~ "Orig, _" ~ owner.dName ~ ") : null;";
+          addCallParam("_" ~ param.dName);
+
+          addImport("glib.c.functions");
+          addImport("glib.c.types");
+          // Null clears the slot (C removes the value). A different non-null pointer is a programmer error: log a
+          // critical, restore the original, and stop a boolean callback. Ownership of the C structure never moves to D.
+          auto post = [
+            "if (!_" ~ param.dName ~ ")",
+            "  *" ~ outTarget ~ " = null;",
+            "else if (_" ~ param.dName ~ "._cPtr !is cast(void*)_" ~ param.dName ~ "Orig)",
+            "{",
+            "  g_log(\"Gid\", GLogLevelFlags.LevelCritical, \"%s\",",
+            "    \"" ~ callback.fullDName ~ " replaced the borrowed " ~ param.dName ~ "\".ptr);",
+            "  *" ~ outTarget ~ " = _" ~ param.dName ~ "Orig;",
+          ];
+          if (callback.returnVal && callback.returnVal.origDType != "none")
+            post ~= "  _retval = cast(typeof(_retval))0;";
+          post ~= ["}", "else", "  *" ~ outTarget ~ " = _" ~ param.dName ~ "Orig;"];
+          postCall ~= post;
         }
         else // InOut pointer with full transfer (see Func.verify): the D object takes the C instance and the C side
         { // receives a new reference or copy of the resulting D object (which may be the same object, another or null)
