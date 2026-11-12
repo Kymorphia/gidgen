@@ -165,10 +165,81 @@ final class Structure : TypeNode
   Structure getIfaceAncestor(Structure iface)
   {
     for (auto cl = parentStruct; cl; cl = cl.parentStruct)
-      if (cl.implementStructs.canFind(iface))
+      if (cl.allImplementStructs.canFind(iface))
         return cl;
 
     return null;
+  }
+
+  /**
+   * Get the resolved prerequisite structures of an interface (interfaces or classes). Resolved on demand, since
+   * prerequisites are not needed to resolve the interface itself (unresolved ones are warned about in verify()).
+   * Returns: Resolved prerequisite structures
+   */
+  Structure[] prerequisiteStructs()
+  {
+    return prerequisites.map!(x => findPrerequisite(x)).filter!(x => x !is null).array;
+  }
+
+  // Find a prerequisite structure by type name, returns null if not found (including types of unknown namespaces)
+  private Structure findPrerequisite(dstring typeName)
+  {
+    try
+      return cast(Structure)repo.findTypeObject(typeName);
+    catch (Exception e)
+      return null;
+  }
+
+  /**
+   * Get the direct prerequisites of an interface which are interfaces (class prerequisites such as GObject.Object
+   * are skipped, since a D interface can't derive from a class, as are disabled interfaces).
+   * Returns: Direct interface prerequisites
+   */
+  Structure[] prerequisiteIfaces()
+  {
+    return prerequisiteStructs.filter!(x => x.structType == StructType.Interface && x.active == Active.Enabled).array;
+  }
+
+  /**
+   * Get all interface prerequisites of an interface, including indirect ones (prerequisites of prerequisites),
+   * without duplicates.
+   * Returns: All interface prerequisites in depth first order
+   */
+  Structure[] allPrerequisiteIfaces()
+  {
+    Structure[] result;
+
+    void recurse(Structure st)
+    {
+      foreach (pre; st.prerequisiteIfaces)
+      {
+        if (pre !is this && !result.canFind(pre))
+        {
+          result ~= pre;
+          recurse(pre);
+        }
+      }
+    }
+
+    recurse(this);
+    return result;
+  }
+
+  /**
+   * Get the interfaces implemented by a class, including interface prerequisites of the implemented interfaces which
+   * are not listed in the GIR, without duplicates.
+   * Returns: Implemented interfaces
+   */
+  Structure[] allImplementStructs()
+  {
+    Structure[] result;
+
+    foreach (iface; implementStructs)
+      foreach (st; [iface] ~ iface.allPrerequisiteIfaces)
+        if (!result.canFind(st))
+          result ~= st;
+
+    return result;
   }
 
   // Calculate the structure type kind
@@ -357,6 +428,13 @@ final class Structure : TypeNode
         TypeNode.dumpSelectorOnWarning(this);
       }
 
+    foreach (preName; prerequisites)
+      if (!findPrerequisite(preName))
+      {
+        warnWithLoc(__FILE__, __LINE__, xmlLocation, "Unable to resolve interface " ~ fullDName.to!string ~ " prerequisite " ~ preName.to!string);
+        TypeNode.dumpSelectorOnWarning(this);
+      }
+
     if (defCode.inhibitFlags & DefInhibitFlags.Funcs) // Skip verification of functions, signals, and fields if they aren't being generated
       return;
 
@@ -482,11 +560,15 @@ final class Structure : TypeNode
     if (parentStruct)
       importManager.add(parentStruct.fullModuleName); // Add parent to imports
 
-    foreach (st; implementStructs) // Add implemented interfaces to imports
+    foreach (st; allImplementStructs) // Add implemented interfaces to imports
     {
       importManager.add(st.fullModuleName);
       importManager.add(st.fullModuleName ~ "_mixin");
     }
+
+    if (kind == TypeKind.Interface && !isIfaceTemplate) // Add interface prerequisites (base interfaces) to imports
+      foreach (st; prerequisiteIfaces)
+        importManager.add(st.fullModuleName);
 
     if (!errorQuarks.empty)
     {
@@ -512,13 +594,14 @@ final class Structure : TypeNode
 
     if (defCode.classDecl.empty)
     {
-      if (kind == TypeKind.Interface)
-        writer ~= [isIfaceTemplate ? ("template " ~ dType ~ "T()") : ("interface " ~ dType ~ " : GidWrap"), "{"];
+      if (kind == TypeKind.Interface) // Interface derives from its prerequisite interfaces (or GidWrap if none)
+        writer ~= [isIfaceTemplate ? ("template " ~ dType ~ "T()") : ("interface " ~ dType ~ " : "
+          ~ (prerequisiteIfaces.empty ? "GidWrap"d : prerequisiteIfaces.map!(x => x.fullDType).join(", "))), "{"];
       else if (moduleType == ModuleType.Struct) // Struct module?
         writeStructDef(writer, true);  // Write structure definition using D types
       else if (kind != TypeKind.Namespace)
       { // Create range of parent type and implemented interface types, but filter out interfaces already implemented by ancestors
-        objIfaces = implementStructs.filter!(x => !getIfaceAncestor(x)).array;
+        objIfaces = allImplementStructs.filter!(x => !getIfaceAncestor(x)).array;
         auto parentAndIfaces = ((parentStruct && !usesBoxedWrap) ? [parentStruct.fullDType]
           : ((usesBoxedWrap || kind.among(TypeKind.Opaque, TypeKind.Reffed, TypeKind.Wrap)) ? [wrapBaseClass] : []))
           ~ objIfaces.map!(x => x.fullDType).array;
@@ -1246,12 +1329,13 @@ final class Structure : TypeNode
 
     writer ~= ["", "/// Fluent builder implementation template for [" ~ fullDType ~ "]"];
 
-    if (kind == TypeKind.Interface)
+    if (kind == TypeKind.Interface) // Interface builder derives from the builders of its prerequisite interfaces
       writer ~= [moduleType == ModuleType.IfaceTemplate ? ("template " ~ dType ~ "GidBuilderT()")
-        : ("interface " ~ dType ~ "GidBuilderImpl(T)"), "{"];
+        : ("interface " ~ dType ~ "GidBuilderImpl(T)" ~ (prerequisiteIfaces.empty ? ""d
+        : " : " ~ prerequisiteIfaces.map!(x => x.fullDType ~ "GidBuilderImpl!T").join(", "))), "{"];
     else
     {
-      objIfaces = implementStructs.filter!(x => !getIfaceAncestor(x)).array;
+      objIfaces = allImplementStructs.filter!(x => !getIfaceAncestor(x)).array;
       auto parentAndIfaces = ([parentStruct ? (parentStruct.fullDType ~ "GidBuilderImpl!T")
         : "gobject.gid_builder.GidBuilder!T"] ~ objIfaces.map!(x => x.fullDType ~ "GidBuilderImpl!T").array).join(", ");
 
@@ -1296,7 +1380,7 @@ final class Structure : TypeNode
         if (p.dName == prop.dName)
           return true;
 
-      foreach (iface; klass.implementStructs)
+      foreach (iface; klass.allImplementStructs)
         foreach (ip; iface.properties.filter!(p => p.active == Active.Enabled && p.writable))
           if (ip.dName == prop.dName)
             return true;
@@ -1443,6 +1527,7 @@ final class Structure : TypeNode
     js.jsonSetNonDefault("implements", implements);
     if (implementStructs.length > 0) js.jsonSet("implementStructs", implementStructs.map!(x => x.fullDType).array);
     js.jsonSetNonDefault("prerequisites", prerequisites);
+    if (prerequisiteStructs.length > 0) js.jsonSet("prerequisiteStructs", prerequisiteStructs.map!(x => x.fullDType).array);
     js.jsonSetNonDefault("functions", functions);
     js.jsonSetNonDefault("signals", signals);
     js.jsonSetNonDefault("fields", fields);

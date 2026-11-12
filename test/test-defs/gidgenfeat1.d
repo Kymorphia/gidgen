@@ -3,3 +3,6 @@
 
 //# Object is a reserved D class name
 //!subdtype Object ObjectWrap
+
+//# Class prerequisite of an interface (g-ir-scanner omits GObject.Object, real GIRs have ones like Gtk.Widget)
+//!add interface[ChildIface] '<prerequisite name="GObject.Object"/>'

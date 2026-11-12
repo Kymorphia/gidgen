@@ -824,3 +824,151 @@ gidgen_feat_object_compute (GidgenFeatObject *self, gint x)
 {
   return GIDGEN_FEAT_OBJECT_GET_CLASS (self)->compute (self, x);
 }
+
+/* ---- Interface with a prerequisite interface ---- */
+
+G_DEFINE_INTERFACE_WITH_CODE (GidgenFeatChildIface, gidgen_feat_child_iface, G_TYPE_OBJECT,
+                              g_type_interface_add_prerequisite (g_define_type_id, GIDGEN_FEAT_TYPE_IFACE))
+
+static void
+gidgen_feat_child_iface_default_init (GidgenFeatChildIfaceInterface *iface)
+{
+}
+
+/**
+ * gidgen_feat_child_iface_get_level:
+ * @self: Interface instance
+ *
+ * Returns: The level
+ */
+gint
+gidgen_feat_child_iface_get_level (GidgenFeatChildIface *self)
+{
+  return GIDGEN_FEAT_CHILD_IFACE_GET_IFACE (self)->get_level (self);
+}
+
+#ifndef __GI_SCANNER__
+/* Private object type (not in the GIR) implementing GidgenFeatChildIface and its GidgenFeatIface prerequisite, the
+ * D binding uses the interface proxy object for it */
+
+#define GIDGEN_FEAT_TYPE_HIDDEN (gidgen_feat_hidden_get_type ())
+G_DECLARE_FINAL_TYPE (GidgenFeatHidden, gidgen_feat_hidden, GIDGEN_FEAT, HIDDEN, GObject)
+
+struct _GidgenFeatHidden
+{
+  GObject parent_instance;
+  gint value;
+};
+
+static void gidgen_feat_hidden_iface_init (GidgenFeatIfaceInterface *iface);
+static void gidgen_feat_hidden_child_iface_init (GidgenFeatChildIfaceInterface *iface);
+
+G_DEFINE_TYPE_WITH_CODE (GidgenFeatHidden, gidgen_feat_hidden, G_TYPE_OBJECT,
+                         G_IMPLEMENT_INTERFACE (GIDGEN_FEAT_TYPE_IFACE, gidgen_feat_hidden_iface_init)
+                         G_IMPLEMENT_INTERFACE (GIDGEN_FEAT_TYPE_CHILD_IFACE, gidgen_feat_hidden_child_iface_init))
+
+static gint
+gidgen_feat_hidden_get_id (GidgenFeatIface *iface)
+{
+  return GIDGEN_FEAT_HIDDEN (iface)->value * 100;
+}
+
+static void
+gidgen_feat_hidden_iface_init (GidgenFeatIfaceInterface *iface)
+{
+  iface->get_id = gidgen_feat_hidden_get_id;
+}
+
+static gint
+gidgen_feat_hidden_get_level (GidgenFeatChildIface *iface)
+{
+  return GIDGEN_FEAT_HIDDEN (iface)->value;
+}
+
+static void
+gidgen_feat_hidden_child_iface_init (GidgenFeatChildIfaceInterface *iface)
+{
+  iface->get_level = gidgen_feat_hidden_get_level;
+}
+
+static void
+gidgen_feat_hidden_finalize (GObject *object)
+{
+  COUNT_DEC (GIDGEN_FEAT_COUNTER_OBJECT);
+  G_OBJECT_CLASS (gidgen_feat_hidden_parent_class)->finalize (object);
+}
+
+static void
+gidgen_feat_hidden_class_init (GidgenFeatHiddenClass *klass)
+{
+  G_OBJECT_CLASS (klass)->finalize = gidgen_feat_hidden_finalize;
+}
+
+static void
+gidgen_feat_hidden_init (GidgenFeatHidden *self)
+{
+  COUNT_INC (GIDGEN_FEAT_COUNTER_OBJECT);
+}
+#endif
+
+/**
+ * gidgen_feat_new_hidden_child:
+ * @value: Value of the object (the level, the ID is 100 times the value)
+ *
+ * Create an object of a private type (not in the GIR) which implements #GidgenFeatChildIface.
+ *
+ * Returns: (transfer full): The new object
+ */
+GidgenFeatChildIface *
+gidgen_feat_new_hidden_child (gint value)
+{
+  GidgenFeatHidden *self = g_object_new (GIDGEN_FEAT_TYPE_HIDDEN, NULL);
+  self->value = value;
+  return GIDGEN_FEAT_CHILD_IFACE (self);
+}
+
+/* ---- Object subclass implementing GidgenFeatChildIface ---- */
+
+struct _GidgenFeatChildObject
+{
+  GidgenFeatObject parent_instance;
+};
+
+static void gidgen_feat_child_object_child_iface_init (GidgenFeatChildIfaceInterface *iface);
+
+G_DEFINE_TYPE_WITH_CODE (GidgenFeatChildObject, gidgen_feat_child_object, GIDGEN_FEAT_TYPE_OBJECT,
+                         G_IMPLEMENT_INTERFACE (GIDGEN_FEAT_TYPE_CHILD_IFACE, gidgen_feat_child_object_child_iface_init))
+
+static gint
+gidgen_feat_child_object_get_level (GidgenFeatChildIface *iface)
+{
+  return gidgen_feat_object_get_value (GIDGEN_FEAT_OBJECT (iface)) * 10;
+}
+
+static void
+gidgen_feat_child_object_child_iface_init (GidgenFeatChildIfaceInterface *iface)
+{
+  iface->get_level = gidgen_feat_child_object_get_level;
+}
+
+static void
+gidgen_feat_child_object_class_init (GidgenFeatChildObjectClass *klass)
+{
+}
+
+static void
+gidgen_feat_child_object_init (GidgenFeatChildObject *self)
+{
+}
+
+/**
+ * gidgen_feat_child_object_new:
+ * @value: Object value
+ *
+ * Returns: (transfer full): A new child object
+ */
+GidgenFeatChildObject *
+gidgen_feat_child_object_new (gint value)
+{
+  return g_object_new (GIDGEN_FEAT_TYPE_CHILD_OBJECT, "value", value, NULL);
+}

@@ -126,6 +126,28 @@ G_DECLARE_FINAL_TYPE (GidgenFeatConflictChild, gidgen_feat_conflict_child, GIDGE
 
 GidgenFeatConflictChild *gidgen_feat_conflict_child_new (void);
 
+/* Interface with a prerequisite interface (and a GObject class prerequisite) */
+
+#define GIDGEN_FEAT_TYPE_CHILD_IFACE (gidgen_feat_child_iface_get_type ())
+G_DECLARE_INTERFACE (GidgenFeatChildIface, gidgen_feat_child_iface, GIDGEN_FEAT, CHILD_IFACE, GObject)
+
+struct _GidgenFeatChildIfaceInterface
+{
+  GTypeInterface parent_iface;
+
+  gint (*get_level) (GidgenFeatChildIface *self);
+};
+
+gint gidgen_feat_child_iface_get_level (GidgenFeatChildIface *self);
+GidgenFeatChildIface *gidgen_feat_new_hidden_child (gint value);
+
+/* Object subclass implementing the interface with a prerequisite implemented by its parent */
+
+#define GIDGEN_FEAT_TYPE_CHILD_OBJECT (gidgen_feat_child_object_get_type ())
+G_DECLARE_FINAL_TYPE (GidgenFeatChildObject, gidgen_feat_child_object, GIDGEN_FEAT, CHILD_OBJECT, GidgenFeatObject)
+
+GidgenFeatChildObject *gidgen_feat_child_object_new (gint value);
+
 /* Callbacks */
 
 typedef gint (*GidgenFeatIntFunc) (gint value, gpointer user_data);

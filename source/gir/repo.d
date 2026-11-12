@@ -531,19 +531,20 @@ final class Repo : Base
   {
     auto className = st.dType ~ "IfaceProxy";
     auto modName = st.moduleName ~ "_iface_proxy";
+    auto ifaces = [st] ~ st.allPrerequisiteIfaces; // Interface and its prerequisite interfaces which are mixed in
     auto writer = new CodeWriter(buildPath(path, modName.to!string ~ ".d"));
     writer ~= ["/// Module for [" ~ className ~ "] interface proxy object",
       "module " ~ packageNamespace ~ "." ~ modName ~ ";", "",
-      "import gobject.object;",
-      "import " ~ st.fullModuleName ~ ";",
-      "import " ~ st.fullModuleName ~ "_mixin;", "",
+      "import gobject.object;"];
+    writer ~= ifaces.map!(x => ["import " ~ x.fullModuleName ~ ";", "import " ~ x.fullModuleName ~ "_mixin;"]).join;
+    writer ~= ["",
       "/// Proxy object for [" ~ st.fullDName ~ "] interface when a GObject has no applicable D binding",
       "class " ~ className ~ " : IfaceProxy, " ~ st.fullDType, "{",
       "this(void* ptr, Flag!\"Take\" take) nothrow", "{", "super(cast(void*)ptr, take);", "}", "",
-      "override TypeInfo_Interface getIface() nothrow", "{", "return typeid(" ~ st.fullDType ~ ");", "}", "",
-      "mixin " ~ st.dType ~ "T!();",
-      "}",
-    ];
+      "override TypeInfo_Interface getIface() nothrow", "{", "return typeid(" ~ st.fullDType ~ ");", "}", ""];
+    writer ~= "mixin " ~ st.dType ~ "T!();";
+    writer ~= ifaces[1 .. $].map!(x => "mixin " ~ x.fullModuleName ~ "_mixin." ~ x.dType ~ "T!();").array; // Fully qualified, prerequisites can be from other packages
+    writer ~= "}";
 
     writer.write;
   }
