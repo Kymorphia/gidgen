@@ -17,3 +17,26 @@
    fun:_D4core8internal2gc4bits6GCBits*
    fun:_D4core8internal2gc4impl12conservative*Gcx__T4mark*
 }
+
+# D GC noise also seen in a plain D program (allocate, drop and collect GC arrays, no C libraries): the sweep and root
+# collection phases and the GC bit set operations (callers often unresolved, inlined into mark/sweep)
+{
+   druntime-gc-conservative-sweep
+   Memcheck:Cond
+   fun:_D4core8internal2gc4impl12conservative*Gcx5sweep*
+}
+{
+   druntime-gc-conservative-collect-roots
+   Memcheck:Cond
+   fun:_D4core8internal2gc4impl12conservative*Gcx12collectRoots*
+}
+{
+   druntime-gc-bits-value8
+   Memcheck:Value8
+   fun:_D4core8internal2gc4bits6GCBits*
+}
+{
+   druntime-gc-bits-cond
+   Memcheck:Cond
+   fun:_D4core8internal2gc4bits6GCBits*
+}
