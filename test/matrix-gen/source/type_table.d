@@ -56,6 +56,7 @@ struct TypeEntry
   bool lenFirst; /// The length parameter precedes the array parameter
   string cFreeN; /// C statement which frees owned array ${x} with length ${n} (C arrays without a terminator)
   string fixedElem; /// Element C type of fixed size arrays which can be inline record fields (empty otherwise)
+  int fixedSize; /// Size of a fixed size C array (0 if not a fixed size array)
   string counter; /// D member name of the type's live instance counter (empty if not counted)
   Own own; /// How D owns received C instances (see Own)
   bool transferFull = true; /// Pointer type which supports transfer full (false if C has no way to free it)
@@ -212,6 +213,7 @@ private TypeEntry fixedArray(string id, string cType, string kind, string[][3] e
   t.sigGtype = null;
   t.sigAnnot = null;
   t.fixedElem = fixedElem;
+  t.fixedSize = fixedSize;
   if (kind == "INT")
     t.cFill = "gm_carray_fill (GM_INT, ${x}, " ~ size ~ ", ${v})";
   return t;
@@ -414,6 +416,8 @@ immutable TypeEntry[] types = [
   carray("carray_obj", "GidgenMatrixObj **", "OBJ", intElems, intDVals, "guint", true),
   fixedArray("fixed_int", "gint *", "INT", fixedIntElems, fixedIntDVals, 3, "gint"),
   fixedArray("fixed_utf8", "gchar **", "STR", fixedStrElems, fixedStrDVals, 3),
+  // Fixed size array of plain structures (single gint field, so the integer array helpers are used)
+  fixedArray("fixed_plain", "GidgenMatrixPlain *", "INT", fixedIntElems, fixedIntDVals, 3).withElems,
   container("hash_utf8", "GHashTable *", "(element-type utf8 utf8)", "hash", "STR", strHashElems, strHashDVals),
   container("hash_obj", "GHashTable *", "(element-type utf8 GidgenMatrixObj)", "hash", "OBJ", objHashElems,
     objHashDVals),

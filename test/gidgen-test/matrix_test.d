@@ -12,7 +12,7 @@ module matrix_test;
 import std.algorithm : startsWith;
 import std.array : join;
 import std.meta : Filter;
-import std.traits : isDynamicArray, Parameters, ReturnType;
+import std.traits : isDynamicArray, ParameterStorageClass, ParameterStorageClassTuple, Parameters, ReturnType;
 import std.conv : to;
 
 import glib.c.functions : g_quark_from_string, g_set_error_literal;
@@ -489,11 +489,16 @@ private void testCell(MatrixCell c)()
   { // Receive the Out value
     alias T = Params[$ - 1];
     T a;
-    static if (c.pos == "out_ca" && isDynamicArray!T) // Caller allocated arrays are sized by the caller
+    static if (c.pos == "out_ca" && isDynamicArray!T && c.fixedSize == 0) // Caller allocated arrays are sized by the caller
       a.length = mixin(c.makeOut).length;
+    static if (c.pos == "out_ca" && c.fixedSize != 0) // Fixed size arrays are allocated by the wrapper (a is empty)
+      static assert(ParameterStorageClassTuple!fn[$ - 1] == ParameterStorageClass.out_,
+        c.func ~ ": fixed size caller allocated array is not an out parameter");
     auto base = typeLive!c;
     mixin("fn(" ~ nullArgs ~ "a);");
     assert(mixin(c.eqOut), c.func ~ ": unexpected out value");
+    static if (c.fixedSize != 0)
+      assert(a.length == c.fixedSize, c.func ~ ": fixed size out array length " ~ a.length.to!string);
     static if (c.pos == "out")
       checkReceived!c(a, base);
     static if (c.pos == "out_ca" && isInitWrap!T) // Callee filled C allocated structure taken by the wrapper
@@ -514,6 +519,16 @@ private void testCell(MatrixCell c)()
     mixin("fn(a);");
     assert(mixin(c.eqOut), c.func ~ ": unexpected inout value");
     release(a);
+
+    static if (c.fixedSize != 0)
+    { // Fixed size arrays are sized by the wrapper: an oversized In array is truncated to the fixed size
+      a = mixin(c.makeIn);
+      a ~= a[0];
+      mixin("fn(a);");
+      assert(a.length == c.fixedSize, c.func ~ ": oversized inout array length " ~ a.length.to!string);
+      assert(mixin(c.eqOut), c.func ~ ": unexpected oversized inout value");
+      release(a);
+    }
   }
   else static if (c.pos == "inout")
   { // Pass the In value and receive the Out value in the same variable

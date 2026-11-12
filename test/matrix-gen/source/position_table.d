@@ -194,6 +194,7 @@ immutable Unsupported[] unsupportedCells = [
   // gidgen only supports InOut full C arrays of basic types and strings
   {"inout", "carray_obj", "full", "InOut full object arrays not supported by gidgen"},
   {"inout", "carray_plain", "full", "InOut full structure arrays not supported by gidgen"},
+  {"inout", "fixed_plain", "full", "InOut full structure arrays not supported by gidgen"},
 
   // gidgen disables callback InOut containers and arrays
   {"cb_inout", "container", "*", "callback InOut containers and arrays not supported by gidgen"},

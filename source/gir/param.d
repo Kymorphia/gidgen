@@ -48,12 +48,17 @@ final class Param : TypeNode
     super.kind(kind);
   }
 
-  /// Get direction string (empty for input, "ref " if callerAllocates=1, "out ", or "inout "). Intended for use directly in code generation.
+  /**
+   * Get direction string (empty for input, "ref " for InOut and caller allocated arrays sized by the caller, or
+   * "out "). Caller allocated Out arrays of a fixed size are "out ", since the D wrapper sizes them.
+   * Intended for use directly in code generation.
+   */
   dstring directionStr()
   {
     if (direction == ParamDirection.In)
       return "";
-    else if (callerAllocates && containerType == ContainerType.Array)
+    else if (callerAllocates && containerType == ContainerType.Array
+        && (direction != ParamDirection.Out || fixedSize == ArrayNotFixed))
       return "ref ";
     else if (direction == ParamDirection.Out)
       return "out ";

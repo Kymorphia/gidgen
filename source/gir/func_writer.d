@@ -908,6 +908,11 @@ class FuncWriter
             preCall ~= "_" ~ param.lengthParam.dName ~ " = cast(" ~ param.lengthParam.fullDType ~ ")"
               ~ param.dName ~ ".length;";
 
+          // Fixed size array: the D array is sized by the wrapper (Out arrays are allocated, InOut arrays are
+          // truncated or extended with default values), so the C function can't write past its end
+          if (param.fixedSize != ArrayNotFixed)
+            preCall ~= param.dName ~ ".length = " ~ param.fixedSize.to!dstring ~ ";";
+
           if (elemType.kind == TypeKind.Struct)
             addCallParam("cast(" ~ param.cType ~ ")" ~ param.dName ~ ".ptr");
           else
