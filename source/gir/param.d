@@ -99,8 +99,33 @@ final class Param : TypeNode
       && func && func.funcType.among(FuncType.Callback, FuncType.Signal);
   }
 
-  /// Documentation note appended to borrowed parameters (see isBorrowedArg)
-  enum dstring borrowedArgDoc = " (borrowed, only valid during the callback, use `_dup` to keep a copy)";
+  /**
+   * Is this a callback or signal In array parameter of borrowed structure type (see Structure.borrowed) elements without
+   * ownership transfer, which D borrows for the duration of the call (element wrappers with no owner) instead of copying.
+   */
+  @property bool isBorrowedArrayArg()
+  {
+    auto st = elemTypes.length == 1 ? cast(Structure)elemTypes[0].typeObjectRoot : null;
+    auto func = getParentByType!Func;
+    return st && st.borrowed && elemTypes[0].kind == TypeKind.Wrap && containerType == ContainerType.Array
+      && direction == ParamDirection.In && ownership == Ownership.None
+      && func && func.funcType.among(FuncType.Callback, FuncType.Signal);
+  }
+
+  /**
+   * Documentation note appended to borrowed parameters (see isBorrowedArg and isBorrowedArrayArg), empty otherwise.
+   * Suggests `_dup` only for structures with a copy function, since `_dup` of other borrowed structures is a shallow
+   * copy whose pointer fields still reference the borrowed C memory.
+   */
+  @property dstring borrowedArgDoc()
+  {
+    if (!isBorrowedArg && !isBorrowedArrayArg)
+      return "";
+
+    auto st = cast(Structure)(isBorrowedArrayArg ? elemTypes[0].typeObjectRoot : typeObjectRoot);
+    return " (borrowed, only valid during the callback" ~ (st && st.copyFunction.length > 0
+      ? ", use `_dup` to keep a copy)"d : ")"d);
+  }
 
   /**
    * Is this a callback InOut Wrap** parameter borrowed from another parameter named by borrowAttr

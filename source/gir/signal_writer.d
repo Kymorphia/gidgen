@@ -332,7 +332,7 @@ class SignalWriter
     docs ~= ["", "        `" ~ callbackProto ~ "`"];
 
     docs ~= signal.params.filter!(pa => pa.isDParam).map!(pa => [""d] ~ ("        `" ~ pa.dName ~ "` "
-      ~ signal.gdocToDDocFunc(pa.docContent, "          ").stripLeft ~ (pa.isBorrowedArg ? Param.borrowedArgDoc : "")
+      ~ signal.gdocToDDocFunc(pa.docContent, "          ").stripLeft ~ pa.borrowedArgDoc
       ~ " (optional)").splitLines).join.array;
 
     docs ~= ["", "        `" ~ signal.signalDelegInstanceParam ~ "`"

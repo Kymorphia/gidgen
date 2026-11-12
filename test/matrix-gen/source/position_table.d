@@ -396,6 +396,19 @@ immutable Position[] positions = [
       ~ " * @user_data: (closure): User data\n *\n * Matrix callback.\n */\n"
       ~ "typedef void (*${cbType}) (const ${borrow} *value, gpointer user_data);\n\n"}] },
 
+  // Borrowed structure array callback argument (transfer none, inline elements with a length): D borrows each
+  // element for the duration of the call (wrappers with no owner), its writes must reach C and dups must survive
+  { id: "cb_borrow_array", supports: &borrowTypes, transfers: &noneTransfer,
+    ret: "void", args: "${cbType} func, gpointer user_data",
+    paramDocs: " * @func: (scope call) (closure user_data): Callback\n * @user_data: User data\n",
+    body: "  ${borrow} *a = gm_${id}_new (${vOut});\n  ${borrow} *b = gm_${id}_new (${vOut});\n"
+      ~ "  ${borrow} values[2] = { *a, *b };\n\n  func (values, 2, user_data);\n"
+      ~ "  CHECK (values[0].value == ${vIn} && values[1].value == ${vIn});\n"
+      ~ "  *a = values[0];\n  *b = values[1];\n  gm_${id}_free (a);\n  gm_${id}_free (b);\n",
+    sections: [{"cbTypedef", "/**\n * ${cbType}:\n * @values: (array length=n_values) (transfer none): Borrowed structures\n"
+      ~ " * @n_values: Number of structures\n * @user_data: (closure): User data\n *\n * Matrix callback.\n */\n"
+      ~ "typedef void (*${cbType}) (const ${borrow} *values, gsize n_values, gpointer user_data);\n\n"}] },
+
     // Callback InOut borrowed Wrap** with an owner (gid-borrow): null removes the value, keep leaves the same
   // pointer. Replacing with a different instance is a programmer error (Gid critical); not exercised here because
   // G_DEBUG=fatal-criticals would abort. Matches BufferForeachMetaFunc.

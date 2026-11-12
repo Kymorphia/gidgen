@@ -233,7 +233,7 @@ final class Func : TypeNode
 
     auto paramDescrs = params.filter!(pa => !(pa.isInstanceParam || pa.isArrayLength || pa.isClosure || pa.isDestroy))
       .map!(pa => "      " ~ pa.dName ~ " = " ~ gdocToDDocFunc(pa.docContent, "        ").stripLeft
-        ~ (pa.isBorrowedArg ? Param.borrowedArgDoc : "")
+        ~ pa.borrowedArgDoc
         ~ (pa.isBorrowedInOut ? Param.borrowedInOutDoc : "")
         ~ (unmapFunc.length > 0 && pa is mapParam ? " (mapped structure scope, unmapped by its `unmap()` or when it goes"
         ~ " out of scope, use a local variable: `" ~ mapScopeClass.dType ~ "." ~ mapScopeName ~ " " ~ pa.dName ~ ";`)"d

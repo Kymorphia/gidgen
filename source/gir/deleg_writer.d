@@ -527,7 +527,13 @@ class DelegWriter
             ~ param.dName ~ "[i].fromCString!(" ~ param.fullOwnerFlag ~ ".Free);"];
           break;
         case Opaque, Boxed, Wrap, Reffed:
-          if (param.arrayPtrDepth == 1) // Inline structures (not pointers), wrapper copies the structure
+          if (param.isBorrowedArrayArg && param.arrayPtrDepth == 1) // Borrowed inline structures (no owner, not copied)
+            preCall ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_" ~ param.dName ~ "[i] = "
+              ~ "new " ~ elemType.fullDType ~ "(cast(void*)&" ~ param.dName ~ "[i], null);"];
+          else if (param.isBorrowedArrayArg) // Borrowed array of structure pointers (no owner, not copied)
+            preCall ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_" ~ param.dName ~ "[i] = " ~ param.dName
+              ~ "[i] ? new " ~ elemType.fullDType ~ "(cast(void*)" ~ param.dName ~ "[i], null) : null;"];
+          else if (param.arrayPtrDepth == 1) // Inline structures (not pointers), wrapper copies the structure
             preCall ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_" ~ param.dName ~ "[i] = "
               ~ "new " ~ elemType.fullDType ~ "(cast(" ~ elemType.cType.stripConst ~ "*)&" ~ param.dName
               ~ "[i], No.Take);"];

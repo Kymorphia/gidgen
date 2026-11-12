@@ -784,6 +784,32 @@ private void testCell(MatrixCell c)()
     static if (T._cAllocated) // Deep copy (copy function), its pointer fields are valid after the original was freed
       assert(kept._cOwned && kept.name == "pw", c.func ~ ": dup is not a deep copy");
   }
+  else static if (c.pos == "cb_borrow_array")
+  { // C passes an array of borrowed structures (Out values) which D writes the In value to (checked by C) and dups
+    alias A = Parameters!(Params[0])[0];
+    alias T = typeof(A.init[0]);
+    T[] kept;
+    fn((A arr) {
+      assert(arr.length == 2, c.func ~ ": unexpected array length");
+
+      foreach (a; arr)
+      {
+        assert(mixin(c.eqOut), c.func ~ ": unexpected borrowed value");
+        assert(a._cBorrowed && !a._owner, c.func ~ ": array element is not borrowed without an owner");
+        a.value = mixin(c.makeIn).value;
+        kept ~= a._dup;
+        assert(!kept[$ - 1]._cBorrowed && kept[$ - 1]._cPtr !is a._cPtr, c.func ~ ": dup is not an owned copy");
+      }
+    });
+
+    foreach (k; kept)
+    {
+      assert(k.value == mixin(c.makeIn).value, c.func ~ ": dup did not survive the C structures");
+
+      static if (T._cAllocated) // Deep copy (copy function), its pointer fields are valid after the original was freed
+        assert(k._cOwned && k.name == "pw", c.func ~ ": dup is not a deep copy");
+    }
+  }
   else static if (c.pos == "cb_ret")
   { // The delegate returns the In value (nullable cells additionally return null)
     alias T = ReturnType!(Params[$ - 1]);

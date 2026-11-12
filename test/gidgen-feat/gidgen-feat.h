@@ -170,6 +170,7 @@ typedef gint (*GidgenFeatFieldFunc) (gint value);
  * @func: Callback field of a callback typedef
  * @inline_func: Callback field with an inline callback type
  * @data: Untyped pointer field
+ * @cdata: Untyped const pointer field (constructor default value of a const pointer type)
  * @pptr: Pointer to pointer field
  * @strs: String array field without array annotation
  *
@@ -199,6 +200,7 @@ typedef struct
   GidgenFeatFieldFunc func;
   gint (*inline_func) (gint x, gint y);
   gpointer data;
+  gconstpointer cdata;
   gint **pptr;
   gchar **strs;
 

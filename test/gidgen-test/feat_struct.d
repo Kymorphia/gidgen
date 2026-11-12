@@ -31,4 +31,10 @@ unittest
   fk.data = &x;
   assert(fk.data is &x, "untyped pointer field");
   fk.data = null;
+
+  const int cx = 7;
+  assert(fk.cdata is null);
+  fk.cdata = &cx;
+  assert(fk.cdata is &cx, "untyped const pointer field");
+  fk.cdata = null;
 }

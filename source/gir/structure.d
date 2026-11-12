@@ -772,8 +772,8 @@ final class Structure : TypeNode
           s ~= fieldType ~ " " ~ f.dName ~ " = 0.0"; // Use 0.0 for default value for floating point values (not nan)
         else
         {
-          if (fieldType.endsWith(']'))
-            s ~= fieldType ~ " " ~ f.dName ~ " = (" ~ fieldType ~ ").init"; // Use parenthesis for static array field types (end with [size])
+          if (fieldType.endsWith(']') || fieldType.endsWith('*'))
+            s ~= fieldType ~ " " ~ f.dName ~ " = (" ~ fieldType ~ ").init"; // Use parenthesis for static array and pointer field types (end with [size] or *)
           else
             s ~= fieldType ~ " " ~ f.dName ~ " = " ~ fieldType ~ ".init"; // Otherwise use types .init value
         }
