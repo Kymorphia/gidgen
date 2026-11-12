@@ -342,6 +342,20 @@ immutable TypeEntry[] types = [
     borrow: "GidgenMatrixAllocWrap", transferFull: false,
     defs: "//!kind AllocWrap Wrap\n" }, // GIR copy/free functions (from annotations) otherwise make it opaque
 
+  // Plain C structure with an owned pointer field, copy/free functions and an init function (gid-init-function): D
+  // always holds a C allocated instance (this() allocates and initializes it, caller allocated outs are allocated and
+  // taken), the name field is owned by the structure (setters store C copies)
+  { id: "initwrap", cType: "GidgenMatrixInitWrap *", cConstType: "const GidgenMatrixInitWrap *", pointer: true,
+    cVals: ["18", "29", "41"], dVals: ["18", "29", "41"], cMake: "gm_initwrap_new (${v})",
+    cMakeNone: "KEEP (gm_initwrap_new (${v}), gidgen_matrix_init_wrap_free)",
+    cEq: "${x}->value == ${v} && g_strcmp0 (${x}->name, \"iw\") == 0", cFree: "gidgen_matrix_init_wrap_free",
+    cFill: "${x}->value = ${v}; g_free (${x}->name); ${x}->name = g_strdup (\"iw\")",
+    cCopy: "gidgen_matrix_init_wrap_copy (${x})", dMake: "makeInitWrap!T(${v})",
+    dEq: "${a}.value == ${v} && ${a}.name == \"iw\"", transferFull: false,
+    defs: "//!kind InitWrap Wrap\n//!set record[InitWrap][gid-init-function] gidgen_matrix_init_wrap_init\n"
+      ~ "//!set record[InitWrap].field[name][owned] 1\n"
+      ~ "//!set record[InitWrap].method[init][ignore] 1\n" }, // Initializes the D allocated instance (this())
+
   // Opaque record with copy and free functions and no GType (no properties or signals)
   { id: "opaque", cType: "GidgenMatrixOpaque *", pointer: true, cVals: ["16", "27", "38"], dVals: ["16", "27", "38"],
     cMake: "gidgen_matrix_opaque_new (${v})",

@@ -41,6 +41,7 @@ GidgenMatrixAllocWrap *gm_allocwrap_new (gint value);
 #define gm_allocwrap_free gidgen_matrix_alloc_wrap_free
 void gm_allocwrap_copy_into (GidgenMatrixAllocWrap *dest, const GidgenMatrixAllocWrap *src);
 void gm_allocwrap_clear (GidgenMatrixAllocWrap *aw);
+GidgenMatrixInitWrap *gm_initwrap_new (gint value);
 
 /* Add to a live instance counter (instances created and freed by generated code) */
 void gm_live_add (GidgenMatrixCounter counter, gint delta);

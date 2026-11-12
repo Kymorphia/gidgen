@@ -193,6 +193,20 @@ final class Field : TypeNode
       }
     }
 
+    // Owned field values of a Wrap structure are freed by its free function, which requires a C allocated structure
+    if (owned)
+    {
+      auto st = getParentByType!Structure;
+
+      if (st && st.kind == TypeKind.Wrap && !st.cAllocated)
+      {
+        owned = false;
+        warnWithLoc(__FILE__, __LINE__, xmlLocation, "Ignoring 'owned' for field '" ~ fullDName.to!string
+          ~ "' of Wrap structure without a free-function (not C allocated)");
+        TypeNode.dumpSelectorOnWarning(this);
+      }
+    }
+
     if (callback)
     {
       if (callback.active == Active.Enabled)

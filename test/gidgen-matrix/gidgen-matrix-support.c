@@ -804,6 +804,63 @@ gm_allocwrap_clear (GidgenMatrixAllocWrap *aw)
   g_clear_pointer (&aw->name, g_free);
 }
 
+/* ---- Wrap structure with copy/free/init functions and an owned pointer field ---- */
+
+GidgenMatrixInitWrap *
+gm_initwrap_new (gint value)
+{
+  GidgenMatrixInitWrap *iw = g_new0 (GidgenMatrixInitWrap, 1);
+  gidgen_matrix_init_wrap_init (iw);
+  iw->value = value;
+  g_free (iw->name);
+  iw->name = g_strdup ("iw");
+  return iw;
+}
+
+/**
+ * gidgen_matrix_init_wrap_init:
+ * @self: Zero initialized (or initialized) structure
+ *
+ * Initialize a structure (value 0, name "init"), frees a previous name.
+ */
+void
+gidgen_matrix_init_wrap_init (GidgenMatrixInitWrap *self)
+{
+  g_free (self->name);
+  self->value = 0;
+  self->name = g_strdup ("init");
+}
+
+/**
+ * gidgen_matrix_init_wrap_copy:
+ * @self: The structure
+ *
+ * Deep copy a structure.
+ *
+ * Returns: (transfer full): The copy
+ */
+GidgenMatrixInitWrap *
+gidgen_matrix_init_wrap_copy (const GidgenMatrixInitWrap *self)
+{
+  GidgenMatrixInitWrap *copy = g_new (GidgenMatrixInitWrap, 1);
+  copy->value = self->value;
+  copy->name = g_strdup (self->name);
+  return copy;
+}
+
+/**
+ * gidgen_matrix_init_wrap_free:
+ * @self: The structure
+ *
+ * Free a structure and its name.
+ */
+void
+gidgen_matrix_init_wrap_free (GidgenMatrixInitWrap *self)
+{
+  g_free (self->name);
+  g_free (self);
+}
+
 /* ---- Opaque record ---- */
 
 /**

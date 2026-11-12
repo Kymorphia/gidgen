@@ -613,6 +613,14 @@ class FuncWriter
                   ~ ", Yes.Take);";
               }
             }
+            else if (param.kind == Wrap && st && st.initOwnsMembers) // Callee initializes/fills owned C allocated members
+            { // Zero initialized GLib allocation, owned by the wrapper (freed with the structure's free function)
+              preCall ~= "auto _" ~ param.dName ~ " = cast(" ~ param.cTypeRemPtr ~ "*)gMalloc(" ~ param.cTypeRemPtr
+                ~ ".sizeof);";
+              addCallParam("_" ~ param.dName);
+              addImport("gid.gid");
+              postCall ~= param.dName ~ " = new " ~ param.fullDType ~ "(cast(void*)_" ~ param.dName ~ ", Yes.Take);";
+            }
             else if (param.kind == Wrap)
             {
               preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";";

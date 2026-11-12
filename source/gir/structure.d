@@ -79,6 +79,25 @@ final class Structure : TypeNode
     return kind == TypeKind.Wrap && !isPlainData;
   }
 
+  /**
+   * Are owned instances of this Wrap structure C allocated (held by pointer and freed with freeFunction, deep copied
+   * with copyFunction), rather than held inline by the D wrapper (see StructWrap._cAllocated).
+   */
+  @property bool cAllocated()
+  {
+    return kind == TypeKind.Wrap && freeFunction.length > 0;
+  }
+
+  /**
+   * Do caller allocated structures of this type own their members once filled by the callee (C allocated Wrap with an
+   * init function, see gid-init-function). Caller allocated Out parameters are then allocated with g_malloc0 and taken
+   * by the wrapper. Otherwise filled members may be borrowed (transfer none), so the filled structure is copied.
+   */
+  @property bool initOwnsMembers()
+  {
+    return cAllocated && initFunction.length > 0;
+  }
+
   override @property bool inModule()
   {
     with (TypeKind) return kind.among(Struct, Opaque, Wrap, Boxed, Reffed, Object, Interface, Namespace) != 0;
@@ -122,6 +141,7 @@ final class Structure : TypeNode
     glibIsGtypeStructFor = node.get("glib:is-gtype-struct-for");
     copyFunction = node.get("copy-function");
     freeFunction = node.get("free-function");
+    initFunction = node.get("gid-init-function"); // Custom gid attribute: initializes a new C allocated Wrap structure
   }
 
   /**
@@ -643,8 +663,14 @@ final class Structure : TypeNode
     if (kind == TypeKind.Boxed && !ctorFunc && !opaque && !pointer && !fields.empty)
       writer ~= writeBoxedOrWrapCtor!"boxed";
 
-    // Create constructors for Wrap structures without a constructor
-    if (kind == TypeKind.Wrap && !ctorFunc && !fields.empty)
+    // Create constructors for Wrap structures without a constructor. C allocated Wrap structures with an init function
+    // (gid-init-function) get a constructor which allocates and initializes the C structure instead of field arguments
+    // (field defaults would overwrite the initialized values).
+    if (kind == TypeKind.Wrap && !ctorFunc && cAllocated && initFunction.length > 0)
+      writer ~= ["/**", "    Create a new C allocated `" ~ dName ~ "` initialized with `" ~ initFunction ~ "()`.", "*/",
+        "this() nothrow", "{", "auto _ptr = cast(" ~ cTypeRemPtr ~ "*)gMalloc(" ~ cTypeRemPtr ~ ".sizeof);",
+        initFunction ~ "(_ptr);", "super(cast(void*)_ptr, Yes.Take);", "}"];
+    else if (kind == TypeKind.Wrap && !ctorFunc && !fields.empty)
       writer ~= writeBoxedOrWrapCtor!"wrap";
 
     with (TypeKind) if (kind.among(Opaque, Reffed, Wrap, Boxed, Object))
@@ -778,11 +804,12 @@ final class Structure : TypeNode
       if (f.active != Active.Enabled || f.arrayFields) // Skip inactive fields or those which are array lengths
         continue;
 
-      // Wrap structure object fields keep a reference to the D object, since the C field borrows its pointer
-      if (kind == TypeKind.Wrap && f.writable
+      // Wrap structure object fields keep a reference to the D object, since the C field borrows its pointer (unless the
+      // field value is owned by a C allocated structure)
+      if (kind == TypeKind.Wrap && f.writable && !f.owned
           && f.kind.among(TypeKind.Boxed, TypeKind.Reffed, TypeKind.Object, TypeKind.Interface))
         lines ~= ["", "private " ~ f.fullDType ~ " _" ~ f.dName ~ "Ref; // Keeps borrowed field value alive"];
-      else if (kind == TypeKind.Wrap && f.writable && f.kind == TypeKind.String) // Wrap may be borrowed (C memory not scanned by the GC)
+      else if (kind == TypeKind.Wrap && f.writable && !f.owned && f.kind == TypeKind.String) // Wrap may be borrowed (C memory not scanned by the GC)
         lines ~= ["", "private const(char)* _" ~ f.dName ~ "Ref; // Keeps borrowed GC string alive"];
 
       assert(!f.directStruct, "Unsupported embedded structure field " ~ f.fullDName.to!string);
@@ -863,7 +890,9 @@ final class Structure : TypeNode
         lines ~= ["@property void " ~ f.dName ~ "(" ~ f.fullDType ~ " propval) nothrow", "{"];
 
       // D memory stored in a borrowed C structure is kept alive only by this wrapper, which the structure may outlive
-      if (borrowed && f.kind.among(TypeKind.String, TypeKind.Boxed, TypeKind.Reffed, TypeKind.Object, TypeKind.Interface))
+      // (owned field values are C memory freed by the structure's free function)
+      if (borrowed && !f.owned
+          && f.kind.among(TypeKind.String, TypeKind.Boxed, TypeKind.Reffed, TypeKind.Object, TypeKind.Interface))
         lines ~= ["if (_refuseBorrowedStore(\"" ~ f.dName ~ "\"))", "  return;", ""];
 
       final switch (f.kind) with (TypeKind)
@@ -892,7 +921,7 @@ final class Structure : TypeNode
             assert(0, "Write of container fields is not supported"); // Verify should prevent this
           break;
         case String:
-          if (kind == Wrap) // Borrowed GC string, kept alive by _<field>Ref (a borrowed C structure is not scanned by the GC)
+          if (kind == Wrap && !f.owned) // Borrowed GC string, kept alive by _<field>Ref (a borrowed C structure is not scanned by the GC)
             lines ~= ["_" ~ f.dName ~ "Ref = toCString!(No.Malloc, Yes.Nullable)(propval);",
               cPtr ~ "." ~ f.dName ~ " = cast(" ~ f.cType ~ ")_" ~ f.dName ~ "Ref;"];
           else // Owned field (enabled via definitions), null D strings are stored as NULL
@@ -900,7 +929,7 @@ final class Structure : TypeNode
               cPtr ~ "." ~ f.dName ~ " = toCString!(Yes.Malloc, Yes.Nullable)(propval);"];
           break;
         case Boxed, Reffed, Object, Interface:
-          if (kind == Wrap) // Borrowed pointer, D object kept alive by _<field>Ref
+          if (kind == Wrap && !f.owned) // Borrowed pointer, D object kept alive by _<field>Ref
           {
             if (f.kind == Interface)
               addImport("gobject.object");
@@ -1438,6 +1467,7 @@ final class Structure : TypeNode
     js.jsonSetNonDefault("glibIsGtypeStructFor", glibIsGtypeStructFor);
     js.jsonSetNonDefault("copyFunction", copyFunction);
     js.jsonSetNonDefault("freeFunction", freeFunction);
+    js.jsonSetNonDefault("initFunction", initFunction);
   }
 
   StructType structType; /// Type of structure
@@ -1482,6 +1512,7 @@ final class Structure : TypeNode
   dstring glibIsGtypeStructFor; /// Indicates what type a class structure belongs to
   dstring copyFunction; /// Record/Union copy function (not seen in the wild, but defined in gir-1.2.rnc - we use it via XML patching)
   dstring freeFunction; /// Record/Union free function (not seen in the wild, but defined in gir-1.2.rnc - we use it via XML patching)
+  dstring initFunction; /// Custom "gid-init-function" attribute: initializes a new C allocated (cAllocated) Wrap structure
 }
 
 /// Type of structure

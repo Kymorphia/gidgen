@@ -190,6 +190,24 @@ typedef struct
 GidgenMatrixAllocWrap *gidgen_matrix_alloc_wrap_copy (const GidgenMatrixAllocWrap *self);
 void gidgen_matrix_alloc_wrap_free (GidgenMatrixAllocWrap *self);
 
+/**
+ * GidgenMatrixInitWrap: (copy-func gidgen_matrix_init_wrap_copy) (free-func gidgen_matrix_init_wrap_free)
+ * @value: The value
+ * @name: A name string (owned by the structure)
+ *
+ * Plain C structure test type with a pointer field owned by the structure, copy/free functions and an init function
+ * (no GType, bound as a D class which always holds a C allocated instance, see the gid-init-function definition).
+ */
+typedef struct
+{
+  gint value;
+  gchar *name;
+} GidgenMatrixInitWrap;
+
+GidgenMatrixInitWrap *gidgen_matrix_init_wrap_copy (const GidgenMatrixInitWrap *self);
+void gidgen_matrix_init_wrap_free (GidgenMatrixInitWrap *self);
+void gidgen_matrix_init_wrap_init (GidgenMatrixInitWrap *self);
+
 /* Opaque record with copy and free functions and no GType */
 
 typedef struct _GidgenMatrixOpaque GidgenMatrixOpaque;

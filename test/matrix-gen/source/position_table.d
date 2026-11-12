@@ -143,8 +143,10 @@ immutable Unsupported[] unsupportedCells = [
   {"cb_out", "plain", "none", "callback out structure pointer without full ownership not supported by gidgen"},
   {"cb_ret", "plainwrap", "none", "callback structure pointer return value without full ownership not supported by gidgen"},
   {"cb_ret", "allocwrap", "none", "callback structure pointer return value without full ownership not supported by gidgen"},
+  {"cb_ret", "initwrap", "none", "callback structure pointer return value without full ownership not supported by gidgen"},
   {"cb_out", "plainwrap", "none", "callback out structure pointer without full ownership not supported by gidgen"},
   {"cb_out", "allocwrap", "none", "callback out structure pointer without full ownership not supported by gidgen"},
+  {"cb_out", "initwrap", "none", "callback out structure pointer without full ownership not supported by gidgen"},
 
   // Signal values are typed by their GType in the GIR, which differs from the C type of the emitting function
   // for these types (gint8 signals are gchar = D char, gunichar signals are guint = D uint), so the D test can't
@@ -181,11 +183,13 @@ immutable Unsupported[] unsupportedCells = [
   {"inout", "opaque", "*", "InOut Opaque pointer parameters not supported by gidgen"},
   {"inout", "plainwrap", "*", "InOut Wrap pointer parameters not supported by gidgen"},
   {"inout", "allocwrap", "*", "InOut Wrap pointer parameters not supported by gidgen"},
+  {"inout", "initwrap", "*", "InOut Wrap pointer parameters not supported by gidgen"},
 
   // gidgen makes pointer fields of records without a GType read-only
   {"field", "opaque", "*", "Opaque pointer fields are not writable in gidgen"},
   {"field", "plainwrap", "*", "Wrap pointer fields are not writable in gidgen"},
   {"field", "allocwrap", "*", "Wrap pointer fields are not writable in gidgen"},
+  {"field", "initwrap", "*", "Wrap pointer fields are not writable in gidgen"},
 
   // gidgen only supports InOut full C arrays of basic types and strings
   {"inout", "carray_obj", "full", "InOut full object arrays not supported by gidgen"},
@@ -205,6 +209,7 @@ immutable Unsupported[] unsupportedCells = [
   {"cb_inout", "opaque", "*", "InOut Opaque pointer parameters not supported by gidgen"},
   {"cb_inout", "plainwrap", "*", "InOut Wrap pointer parameters not supported by gidgen"},
   {"cb_inout", "allocwrap", "*", "InOut Wrap pointer parameters not supported by gidgen"},
+  {"cb_inout", "initwrap", "*", "InOut Wrap pointer parameters not supported by gidgen"},
 
   // gidgen disables transfer full containers of Wrap structures with pointer fields (the D copies can't free them)
   {"*", "garray_plainwrap", "full", "transfer full containers of Wrap structures with pointer fields not supported by gidgen"},

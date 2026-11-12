@@ -361,6 +361,73 @@ private void testRefusedStore(MatrixCell c, T)(T a)
   }
 }
 
+/// Check if T is a C allocated Wrap class with an init function constructor (gid-init-function, no field arguments)
+private enum isInitWrap(T) = is(T == class) && __traits(hasMember, T, "_cAllocated") && hasNoArgCtor!T;
+
+private template hasNoArgCtor(T)
+{
+  static if (__traits(hasMember, T, "__ctor"))
+  {
+    enum hasNoArgCtor = ()
+    {
+      bool found;
+      static foreach (ctor; __traits(getOverloads, T, "__ctor"))
+        found = found || Parameters!ctor.length == 0;
+      return found;
+    }();
+  }
+  else
+    enum hasNoArgCtor = false;
+}
+
+/// Create a C allocated Wrap with an init function (see isInitWrap) and set its value and owned name field
+private T makeInitWrap(T)(int v)
+{
+  auto a = new T;
+  assert(a._cOwned && !a._cBorrowed && a.name == "init", T.stringof ~ ": constructor did not initialize a C allocated instance");
+  a.value = v;
+  a.name = "iw";
+  return a;
+}
+
+/**
+ * Owned string fields of a C allocated Wrap (see isInitWrap): setters store C copies freed by the structure (also
+ * through a borrowed wrapper, which must not refuse them), copies are deep and independent.
+ */
+private void testOwnedFields(MatrixCell c, T)(T a)
+{
+  static if (isInitWrap!T && __traits(compiles, a.name = ""))
+  {
+    auto cStruct = cast(typeof(T._cInstance)*)a._cPtr;
+    auto gcName = "owned".dup;
+    a.name = cast(string)gcName;
+    assert(cStruct.name !is gcName.ptr && a.name == "owned",
+      c.func ~ ": owned field setter did not store a C copy");
+
+    auto b = new T(a._cPtr, cast(Object)a); // Borrowed wrapper of the same C structure
+    b.name = "borrowed";
+    assert(a.name == "borrowed", c.func ~ ": owned field set through a borrowed wrapper not stored");
+    b.name = null;
+    assert(cStruct.name is null && a.name is null, c.func ~ ": owned field not cleared");
+
+    a.name = "orig";
+    auto d = a._dup;
+    assert(d._cOwned && d._cPtr !is a._cPtr && d.name == "orig" && d.value == a.value, c.func ~ ": dup is not a deep copy");
+    d.name = "changed";
+    assert(a.name == "orig", c.func ~ ": dup shares the owned field");
+    release(d);
+
+    static if (__traits(hasMember, T, "copy")) // C copy function bound as a method returns an owned deep copy
+    {
+      auto e = a.copy;
+      assert(e._cOwned && e._cPtr !is a._cPtr && e.name == "orig", c.func ~ ": copy is not an owned deep copy");
+      release(e);
+    }
+
+    release(b);
+  }
+}
+
 /// Overwrite unused stack below the caller with zeros, so stale references aren't found by the conservative GC
 private void clearStack()
 {
@@ -399,6 +466,7 @@ private void testCell(MatrixCell c)()
       fn(true, null);
       fn(true); // Trailing nullable parameters default to null
     }
+    testOwnedFields!(c, T)(v);
     release(v);
 
     static if (is(T == class) && c.transfer == "full" && !c.nullable)
@@ -428,6 +496,8 @@ private void testCell(MatrixCell c)()
     assert(mixin(c.eqOut), c.func ~ ": unexpected out value");
     static if (c.pos == "out")
       checkReceived!c(a, base);
+    static if (c.pos == "out_ca" && isInitWrap!T) // Callee filled C allocated structure taken by the wrapper
+      assert(a._cOwned && !a._cBorrowed && !a._owner, c.func ~ ": caller allocated structure not owned by the wrapper");
     release(a);
 
     static if (c.nullable)
