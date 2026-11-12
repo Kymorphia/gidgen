@@ -485,6 +485,31 @@ private void testCell(MatrixCell c)()
       assert(typeLive!c == stealBase, c.func ~ ": steal live count " ~ (typeLive!c - stealBase).to!string);
     }
   }
+  else static if (c.pos == "in_fixed" || c.pos == "in_fixed_null")
+  { // Fixed size arrays are sized by the wrapper: C gets the passed elements padded with zeros (also for an empty
+    // array, which is passed as null if nullable) and only the fixed size elements of a longer array
+    alias T = Params[$ - 1];
+    T v = mixin(c.makeIn);
+    assert(v.length == c.fixedSize);
+
+    foreach (n; 0 .. c.fixedSize + 1)
+      fn(cast(uint)n, v[0 .. n]);
+
+    fn(c.fixedSize, v ~ v[0]);
+    { auto a = v; assert(mixin(c.eqIn), c.func ~ ": in value modified"); }
+    release(v);
+  }
+  else static if (c.pos == "cb_ret_fixed")
+  { // The delegate returns the first n In value elements (or a longer array), C gets them padded with zeros
+    alias T = ReturnType!(Params[$ - 1]);
+    T v = mixin(c.makeIn);
+
+    foreach (n; 0 .. c.fixedSize + 1)
+      fn(cast(uint)n, () => v[0 .. n]);
+
+    fn(c.fixedSize, () => v ~ v[0]);
+    release(v);
+  }
   else static if (c.pos == "out" || c.pos == "out_ca")
   { // Receive the Out value
     alias T = Params[$ - 1];

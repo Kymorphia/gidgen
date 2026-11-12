@@ -713,11 +713,20 @@ class FuncWriter
       assert(0, "Function array parameter " ~ param.fullDName.to!string ~ " ownership " ~ param.ownership.to!string
         ~ " not supported");
 
-    if (param.fixedSize != ArrayNotFixed) // Add an array size assertion if fixed size does not match
-      preCall ~= "assert(!" ~ param.dName ~ " || " ~ param.dName ~ ".length == "
-        ~ param.fixedSize.to!dstring ~ ");";
+    // Fixed size arrays are sized by the wrapper, so the C function can't read past the end of the D array: longer
+    // arrays are truncated, shorter ones are padded with zeros (empty nullable arrays are passed as null)
+    auto fixedSize = param.fixedSize != ArrayNotFixed ? param.fixedSize.to!dstring : null;
+    auto nullOk = param.nullable || param.isOptional;
+
+    if (fixedSize)
+      preCall ~= "if (" ~ param.dName ~ ".length > " ~ fixedSize ~ ") " ~ param.dName ~ " = " ~ param.dName ~ "[0 .. "
+        ~ fixedSize ~ "];";
 
     auto zeroTerm = param.zeroTerminated ? " + 1"d : "";
+
+    // Length of C arrays allocated for the callee (Ownership Full, gMalloc zeroes the padding of fixed size arrays)
+    auto fullLen = !fixedSize ? param.dName ~ ".length" ~ zeroTerm : nullOk ? "(" ~ param.dName ~ ".length ? "
+      ~ fixedSize ~ " : 0)" ~ zeroTerm : fixedSize ~ zeroTerm;
 
     final switch (elemType.kind) with (TypeKind)
     {
@@ -728,8 +737,7 @@ class FuncWriter
             preCall ~= ["auto _" ~ param.dName ~ "_arr = new gboolean[](" ~ param.dName ~ ".length" ~ zeroTerm ~ ");",
               "auto _" ~ param.dName ~ " = " ~ "_" ~ param.dName ~ "_arr.ptr" ~ ";"];
           else // Ownership Full
-            preCall ~= ["auto _" ~ param.dName ~ " = cast(gboolean*)gMalloc((" ~ param.dName ~ ".length" ~ zeroTerm
-              ~ ") * gboolean.sizeof);"];
+            preCall ~= ["auto _" ~ param.dName ~ " = cast(gboolean*)gMalloc((" ~ fullLen ~ ") * gboolean.sizeof);"];
 
           preCall ~= "foreach (i, b; " ~ param.dName ~ ") _" ~ param.dName ~ "[i] = cast(gboolean)b;";
           break;
@@ -744,8 +752,8 @@ class FuncWriter
             preCall ~= "auto _" ~ param.dName ~ " = cast(" ~ elemType.cType ~ "*)" ~ param.dName ~ ".ptr;";
         }
         else // Ownership Full
-          preCall ~= ["auto _" ~ param.dName ~ " = cast(" ~ param.cType.stripConst ~ ")gMalloc((" ~ param.dName
-            ~ ".length" ~ zeroTerm ~ ") * (" ~ elemType.cType ~ ").sizeof);", "_" ~ param.dName ~ "[0 .. " ~ param.dName
+          preCall ~= ["auto _" ~ param.dName ~ " = cast(" ~ param.cType.stripConst ~ ")gMalloc((" ~ fullLen
+            ~ ") * (" ~ elemType.cType ~ ").sizeof);", "_" ~ param.dName ~ "[0 .. " ~ param.dName
             ~ ".length] = " ~ (elemType.kind == Struct // D Struct types have the C layout, copy as the C type
             ? "(cast(" ~ elemType.cType ~ "*)" ~ param.dName ~ ".ptr)[0 .. " ~ param.dName ~ ".length];"
             : param.dName ~ "[];")];
@@ -755,8 +763,7 @@ class FuncWriter
           preCall ~= ["auto _" ~ param.dName ~ "_arr = new char*[](" ~ param.dName ~ ".length" ~ zeroTerm ~ ");",
             "auto _" ~ param.dName ~ " = cast(" ~ param.cType.stripConst ~ ")" ~ "_" ~ param.dName ~ "_arr.ptr" ~ ";"];
         else // Ownership Full
-          preCall ~= ["auto _" ~ param.dName ~ " = cast(char**)gMalloc((" ~ param.dName ~ ".length" ~ zeroTerm
-            ~ ") * (char*).sizeof);"];
+          preCall ~= ["auto _" ~ param.dName ~ " = cast(char**)gMalloc((" ~ fullLen ~ ") * (char*).sizeof);"];
 
         auto malloc = param.ownership == Ownership.None ? "No"d : "Yes"d;
         preCall ~= "foreach (i, s; " ~ param.dName ~ ") _" ~ param.dName ~ "[i] = s.toCString!(" ~ malloc
@@ -767,8 +774,8 @@ class FuncWriter
           preCall ~= ["auto _" ~ param.dName ~ "_arr = new " ~ elemType.cType ~ "[](" ~ param.dName ~ ".length"
             ~ zeroTerm ~ ");", "auto _" ~ param.dName ~ " = " ~ "_" ~ param.dName ~ "_arr.ptr" ~ ";"];
         else // Ownership Full
-          preCall ~= ["auto _" ~ param.dName ~ " = cast(" ~ param.cType.stripConst ~ ")gMalloc((" ~ param.dName
-            ~ ".length" ~ zeroTerm ~ ") * (" ~ elemType.cType ~ ").sizeof);"];
+          preCall ~= ["auto _" ~ param.dName ~ " = cast(" ~ param.cType.stripConst ~ ")gMalloc((" ~ fullLen
+            ~ ") * (" ~ elemType.cType ~ ").sizeof);"];
 
         preCall ~= "foreach (i, obj; " ~ param.dName ~ ") _" ~ param.dName ~ "[i] = *cast(" ~ elemType.cType
           ~ "*)obj._cPtr;";
@@ -782,8 +789,8 @@ class FuncWriter
           preCall ~= ["auto _" ~ param.dName ~ "_arr = new " ~ elemType.cType ~ "[](" ~ param.dName ~ ".length"
             ~ zeroTerm ~ ");", "auto _" ~ param.dName ~ " = " ~ "_" ~ param.dName ~ "_arr.ptr" ~ ";"];
         else // Ownership Full
-          preCall ~= ["auto _" ~ param.dName ~ " = cast(" ~ param.cType.stripConst ~ ")gMalloc((" ~ param.dName
-            ~ ".length" ~ zeroTerm ~") * (" ~ elemType.cType ~ ").sizeof);"];
+          preCall ~= ["auto _" ~ param.dName ~ " = cast(" ~ param.cType.stripConst ~ ")gMalloc((" ~ fullLen
+            ~ ") * (" ~ elemType.cType ~ ").sizeof);"];
 
         auto ptr = elemType.cType.endsWith('*') ? ""d : "*"d;
         auto nullval = elemType.cType.endsWith('*') ? "null"d : (elemType.cType ~ ".init");
@@ -797,8 +804,8 @@ class FuncWriter
             ~ zeroTerm ~ ");", "auto _" ~ param.dName ~ " = cast(" ~ param.cType.stripConst ~ ")" ~ "_" ~ param.dName
             ~ "_arr.ptr" ~ ";"];
         else // Ownership Full
-          preCall ~= ["auto _" ~ param.dName ~ " = cast(" ~ param.cType.stripConst ~ ")gMalloc((" ~ param.dName
-            ~ ".length" ~ zeroTerm ~") * (" ~ elemType.cType ~ ").sizeof);"];
+          preCall ~= ["auto _" ~ param.dName ~ " = cast(" ~ param.cType.stripConst ~ ")gMalloc((" ~ fullLen
+            ~ ") * (" ~ elemType.cType ~ ").sizeof);"];
 
         auto dup = param.ownership == Ownership.None ? "No"d : "Yes"d;
         preCall ~= "foreach (i, obj; " ~ param.dName ~ ") _" ~ param.dName ~ "[i] = obj ? cast(" ~ elemType.cType
@@ -817,8 +824,8 @@ class FuncWriter
           preCall ~= ["auto _" ~ param.dName ~ "_arr = new " ~ elemType.cType ~ "[](" ~ param.dName ~ ".length"
             ~ zeroTerm ~ ");", "auto _" ~ param.dName ~ " = " ~ "_" ~ param.dName ~ "_arr.ptr" ~ ";"];
         else // Ownership Full
-          preCall ~= ["auto _" ~ param.dName ~ " = cast(" ~ param.cType.stripConst ~ ")gMalloc((" ~ param.dName
-            ~ ".length" ~ zeroTerm ~") * (" ~ elemType.cType ~ ").sizeof);"];
+          preCall ~= ["auto _" ~ param.dName ~ " = cast(" ~ param.cType.stripConst ~ ")gMalloc((" ~ fullLen
+            ~ ") * (" ~ elemType.cType ~ ").sizeof);"];
 
         auto dup = param.ownership == Ownership.None ? "No"d : "Yes"d;
         preCall ~= "foreach (i, obj; " ~ param.dName ~ ") _" ~ param.dName ~ "[i] = obj ? cast("
@@ -827,6 +834,20 @@ class FuncWriter
       case Unknown, Callback, Container, Namespace:
         assert(0, "Unsupported parameter array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType.kind.to!string
             ~ ") for " ~ param.fullDName.to!string);
+    }
+
+    // Short fixed size array passed without an ownership transfer: pass a zero padded copy of the fixed size
+    if (fixedSize && param.ownership == Ownership.None)
+    { // An empty nullable array is passed as null (the pointer of an empty D slice is not necessarily null)
+      preCall ~= "typeof(*_" ~ param.dName ~ ")[" ~ fixedSize ~ "] _" ~ param.dName ~ "_fixed = void;";
+
+      if (nullOk)
+        preCall ~= ["if (" ~ param.dName ~ ".length == 0)", "_" ~ param.dName ~ " = null;"];
+
+      preCall ~= [(nullOk ? "else if ("d : "if (") ~ param.dName ~ ".length < " ~ fixedSize ~ ")", "{",
+        "(cast(ubyte[])_" ~ param.dName ~ "_fixed[])[] = 0;",
+        "_" ~ param.dName ~ "_fixed[0 .. " ~ param.dName ~ ".length] = _" ~ param.dName ~ "[0 .. " ~ param.dName
+        ~ ".length];", "_" ~ param.dName ~ " = _" ~ param.dName ~ "_fixed.ptr;", "}"];
     }
 
     if (param.isOptional) // If parameter is optional, set default value to null

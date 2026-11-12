@@ -195,6 +195,7 @@ string[string] cellVars(const Cell c)
   v["checkOut"] = c.nullable ? format!"is_null ? %s == NULL : (%s != NULL && %s)"(val, val, eq(val, Role.Out))
     : eq(val, Role.Out);
   v["eqIn"] = eq(val, Role.In);
+  v["eqInPrefix"] = fill(t.cEqPrefix, ["x": val, "m": "n_set", "v": "(" ~ t.cVals[Role.In] ~ ")"]);
   v["isNull"] = t.pointer ? val ~ " == NULL" : "FALSE";
   v["keptSame"] = !t.pointer || t.own == Own.Ref ? " && " ~ val ~ " == orig" : "";
   v["release"] = !full ? "" : t.cFreeN.length ? format!"  %s;\n  %s = NULL;\n"(fill(t.cFreeN, ["x": val, "n": n]), val)

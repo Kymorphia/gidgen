@@ -89,6 +89,7 @@ void gm_zt_free_obj (gpointer array);
 gpointer gm_carray_new (GmKind kind, const GmVals *gv);
 void gm_carray_fill (GmKind kind, gpointer array, gsize n, const GmVals *gv);
 gboolean gm_carray_eq (GmKind kind, gconstpointer array, gsize n, const GmVals *gv);
+gboolean gm_carray_eq_prefix (GmKind kind, gconstpointer array, gsize n, gsize m, const GmVals *gv);
 void gm_carray_free_int (gpointer array);
 void gm_carray_free_str (gpointer array);
 void gm_carray_free_obj (gpointer array);

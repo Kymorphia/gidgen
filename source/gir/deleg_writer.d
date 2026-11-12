@@ -4,6 +4,7 @@ import code_writer;
 import defs;
 import gir.func;
 import gir.param;
+import gir.return_value;
 import gir.structure;
 import gir.type_node;
 import import_manager;
@@ -158,19 +159,29 @@ class DelegWriter
     dstring[] lines;
     auto elemType = arr.elemTypes[0];
 
-    if (arr.fixedSize != ArrayNotFixed) // Array is a fixed size? Add an array size assertion.
+    dstring cLen = dVar ~ ".length"; // Length of the C array
+
+    // Fixed size array? The C array always has the fixed size: longer D arrays are truncated, shorter ones are padded
+    // with zeros (an empty D array is passed as null if the array is nullable)
+    if (arr.fixedSize != ArrayNotFixed)
     {
-      addImport("std.conv"); // For the to!string in the assertion message
-      lines ~= "assert(!" ~ dVar ~ " || " ~ dVar ~ ".length == " ~ arr.fixedSize.to!dstring
-        ~ `, "Delegate '` ~ callback.fullDName ~ `' array should be of size ` ~ arr.fixedSize.to!dstring
-        ~ ` not " ~ ` ~ dVar ~ `.length.to!string);`;
+      auto param = cast(Param)arr;
+      auto retVal = cast(ReturnValue)arr;
+      auto nullable = (param && param.nullable) || (retVal && retVal.nullable);
+      auto fixedSize = arr.fixedSize.to!dstring;
+      lines ~= "if (" ~ dVar ~ ".length > " ~ fixedSize ~ ") " ~ dVar ~ " = " ~ dVar ~ "[0 .. " ~ fixedSize ~ "];";
+      cLen = fixedSize;
+
+      if (!nullable)
+        lines ~= ["if (" ~ dVar ~ ".length == 0)", cVar ~ " = cast(typeof(" ~ cVar ~ "))gMalloc(" ~ fixedSize
+          ~ (arr.zeroTerminated ? " + 1"d : "") ~ " * (*" ~ cVar ~ ").sizeof);", ""];
     }
 
     lines ~= ["if (" ~ dVar ~ ".length > 0)", "{"];
 
     // gMalloc zeroes the memory, which also sets the zero terminator
-    lines ~= cVar ~ " = cast(typeof(" ~ cVar ~ "))gMalloc(" ~ (arr.zeroTerminated ? "(" ~ dVar ~ ".length + 1)"
-      : dVar ~ ".length") ~ " * (*" ~ cVar ~ ").sizeof);";
+    lines ~= cVar ~ " = cast(typeof(" ~ cVar ~ "))gMalloc(" ~ (arr.zeroTerminated ? "(" ~ cLen ~ " + 1)"
+      : cLen) ~ " * (*" ~ cVar ~ ").sizeof);";
 
     with (TypeKind) if (!elemType.kind.among(Basic, BasicAlias, Enum, Flags, StructAlias, Struct, Pointer) // Can array be directly copied?
         || elemType.dType == "bool")

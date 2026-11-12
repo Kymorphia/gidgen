@@ -647,6 +647,21 @@ gm_carray_eq (GmKind kind, gconstpointer array, gsize n, const GmVals *gv)
   return TRUE;
 }
 
+/* Check that the first m of the n elements of array are the first m values of gv and the remaining elements are
+ * zero (NULL for pointer elements), used for D arrays sized by the wrapper */
+gboolean
+gm_carray_eq_prefix (GmKind kind, gconstpointer array, gsize n, gsize m, const GmVals *gv)
+{
+  if (!array || n != gv->n || m > n)
+    return FALSE;
+  for (gsize i = 0; i < n; i++)
+    if (i < m ? (kind == GM_INT ? ((const gint *)array)[i] != (gint)gv->v[i]
+        : !gm_elem_eq (kind, ((const gpointer *)array)[i], gv->v[i]))
+        : (kind == GM_INT ? ((const gint *)array)[i] != 0 : ((const gpointer *)array)[i] != NULL))
+      return FALSE;
+  return TRUE;
+}
+
 void gm_carray_free_int (gpointer array) { g_free (array); }
 void gm_carray_free_str (gpointer array) { g_strfreev (array); }
 void gm_carray_free_obj (gpointer array) { gm_zt_free_obj (array); }

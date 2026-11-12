@@ -15,6 +15,8 @@
  *   ${checkIn}   C expression checking that ${val} is the In role value (or NULL when is_null)
  *   ${checkOut}  C expression checking that ${val} is the Out role value (or NULL when is_null)
  *   ${eqIn}      C expression checking that ${val} is the In role value (not NULL)
+ *   ${eqInPrefix} C expression checking that the first n_set elements of fixed size array ${val} are those of the In
+ *                role value and the remaining ones are zero
  *   ${isNull}    C expression checking that ${val} is NULL (FALSE for non-pointer types)
  *   ${keptSame}  " && ${val} == orig" for values which are kept unchanged (non-pointer and reference counted
  *                types), empty for types which are copied
@@ -91,6 +93,7 @@ private bool callerAllocTypes(const TypeEntry t) => t.cFill.length > 0;
 private bool lenTypes(const TypeEntry t) => t.lenType.length > 0;
 private bool fieldTypes(const TypeEntry t) => (!t.pointer || t.nullable) && !t.container;
 private bool fixedFieldTypes(const TypeEntry t) => t.fixedElem.length > 0;
+private bool fixedTypes(const TypeEntry t) => t.fixedSize > 0;
 private bool embedTypes(const TypeEntry t) => t.embed.length > 0;
 private bool borrowTypes(const TypeEntry t) => t.borrow.length > 0;
 private bool instanceTypes(const TypeEntry t) => t.own.among(Own.Ref, Own.Copy, Own.Borrow) != 0;
@@ -239,6 +242,21 @@ immutable Position[] positions = [
     ret: "void", args: "${nullArg}${lenB}${type} value${lenA}",
     paramDocs: "${nullDoc} * @value: ${annots}Input value\n${lenDoc}",
     body: "  CHECK (${checkIn});\n${release}" },
+
+  // Fixed size array In parameter sized by the D wrapper: D passes the first n_set In value elements (or a longer
+  // array), the C function gets the first n_set elements followed by zeros
+  { id: "in_fixed", val: "value", supports: &fixedTypes, transfers: &anyTransfer,
+    ret: "void", args: "guint n_set, ${type} value",
+    paramDocs: " * @n_set: Number of In value elements passed by D (the remaining elements must be zero)\n"
+      ~ " * @value: ${annots}Input value\n",
+    body: "  CHECK (${eqInPrefix});\n${release}" },
+
+  // Nullable fixed size array In parameter: like in_fixed, but D passes an empty array as NULL
+  { id: "in_fixed_null", val: "value", supports: &fixedTypes, transfers: &anyTransfer,
+    ret: "void", args: "guint n_set, ${type} value",
+    paramDocs: " * @n_set: Number of In value elements passed by D (the remaining elements must be zero)\n"
+      ~ " * @value: (nullable) ${annots}Input value\n",
+    body: "  CHECK (n_set == 0 ? value == NULL : ${eqInPrefix});\n${release}" },
 
   { id: "out", direction: "(out)", lenPtr: true, lenDir: "(out)", supports: &allTypes, transfers: &anyTransfer, nullable: true,
     ret: "void", args: "${nullArg}${lenB}${type} *value${lenA}",
@@ -576,6 +594,17 @@ immutable Position[] positions = [
     sections: [{"cbTypedef", "/**\n * ${cbType}:\n * @user_data: (closure): User data\n${lenDoc} *\n * Matrix callback.\n *\n"
       ~ " * Returns: ${annots}Value returned by the callback\n */\n"
       ~ "typedef ${type} (*${cbType}) (${lenParamB}gpointer user_data);\n\n"}] },
+
+  // Fixed size array returned by a callback (sized by the D wrapper): the D delegate returns the first n_set In value
+  // elements (or a longer array), C gets the first n_set elements followed by zeros
+  { id: "cb_ret_fixed", val: "value", supports: &fixedTypes, transfers: &fullTransfer,
+    ret: "void", args: "guint n_set, ${cbType} func, gpointer user_data",
+    paramDocs: " * @n_set: Number of In value elements returned by the callback (the remaining elements must be zero)\n"
+      ~ " * @func: (scope call) (closure user_data): Callback\n * @user_data: User data\n",
+    body: "  ${type} value = func (user_data);\n  CHECK (${eqInPrefix});\n${release}",
+    sections: [{"cbTypedef", "/**\n * ${cbType}:\n * @user_data: (closure): User data\n *\n * Matrix callback.\n *\n"
+      ~ " * Returns: ${annots}Value returned by the callback\n */\n"
+      ~ "typedef ${type} (*${cbType}) (gpointer user_data);\n\n"}] },
 
   // Callback out parameter: C calls a D delegate which sets the In value
   { id: "cb_out", lenName: "n", lenLocal: true, lenPtr: true, lenDir: "(out)", direction: "(out)", val: "value", supports: &allTypes, transfers: &anyTransfer, nullable: true,

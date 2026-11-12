@@ -57,6 +57,8 @@ struct TypeEntry
   string cFreeN; /// C statement which frees owned array ${x} with length ${n} (C arrays without a terminator)
   string fixedElem; /// Element C type of fixed size arrays which can be inline record fields (empty otherwise)
   int fixedSize; /// Size of a fixed size C array (0 if not a fixed size array)
+  string cEqPrefix; /// C expression which is true if the first ${m} elements of fixed size array ${x} are those of ${v}
+    /// and the remaining ones are zero (empty if not a fixed size array)
   string counter; /// D member name of the type's live instance counter (empty if not counted)
   Own own; /// How D owns received C instances (see Own)
   bool transferFull = true; /// Pointer type which supports transfer full (false if C has no way to free it)
@@ -214,6 +216,7 @@ private TypeEntry fixedArray(string id, string cType, string kind, string[][3] e
   t.sigAnnot = null;
   t.fixedElem = fixedElem;
   t.fixedSize = fixedSize;
+  t.cEqPrefix = "gm_carray_eq_prefix (GM_" ~ kind ~ ", ${x}, " ~ size ~ ", ${m}, ${v})";
   if (kind == "INT")
     t.cFill = "gm_carray_fill (GM_INT, ${x}, " ~ size ~ ", ${v})";
   return t;
