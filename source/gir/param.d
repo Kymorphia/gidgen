@@ -122,7 +122,8 @@ final class Param : TypeNode
     if (!isBorrowedArg && !isBorrowedArrayArg)
       return "";
 
-    auto st = cast(Structure)(isBorrowedArrayArg ? elemTypes[0].typeObjectRoot : typeObjectRoot);
+    // Cast each branch, LDC 1.42 fails on a class cast of a conditional expression (ldc-developers/ldc#5079)
+    auto st = isBorrowedArrayArg ? cast(Structure)elemTypes[0].typeObjectRoot : cast(Structure)typeObjectRoot;
     return " (borrowed, only valid during the callback" ~ (st && st.copyFunction.length > 0
       ? ", use `_dup` to keep a copy)"d : ")"d);
   }
