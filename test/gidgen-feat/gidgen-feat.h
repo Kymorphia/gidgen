@@ -78,6 +78,7 @@ struct _GidgenFeatIfaceInterface
 };
 
 gint gidgen_feat_iface_get_id (GidgenFeatIface *self);
+void gidgen_feat_iface_emit_id_changed (GidgenFeatIface *self, gint id);
 
 /* Object */
 

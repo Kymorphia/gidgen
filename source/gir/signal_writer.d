@@ -275,10 +275,7 @@ class SignalWriter
   {
     writer ~= genDocs;
     writer ~= "gulong connect" ~ signal.titleName ~ "(T)(" ~ (signal.detailed ? "string detail = null, "d : "")
-      ~ "T callback, Flag!\"After\" after = No.After) nothrow" ~ (moduleType == ModuleType.Iface ? ";"d : "");
-
-    if (moduleType == ModuleType.Iface)
-      return;
+      ~ "T callback, Flag!\"After\" after = No.After) nothrow";
 
     writer ~= ["if (isCallable!T", "&& is(ReturnType!T " ~ (callbackTypes[0].isObject ? ": "d : "== "d) // Add isCallable and ReturnType constraints
       ~ callbackTypes[0].type ~ ")"];
@@ -312,7 +309,13 @@ class SignalWriter
       writer ~= postCall;
 
     writer ~= ["}", "", "auto closure = new DClosure(callback, &_cmarshal);"];
-    writer ~= ["return connectSignalClosure(\"" ~ signal.name ~ "\""
+    // Templates in a D interface are not virtual, so the interface definition has its own implementation which
+    // connects to the object instance, allowing a signal to be connected via an interface typed reference
+    if (moduleType == ModuleType.Iface)
+      addImport("gobject.object");
+
+    writer ~= ["return " ~ (moduleType == ModuleType.Iface ? "(cast(gobject.object.ObjectWrap)this)."d : "")
+      ~ "connectSignalClosure(\"" ~ signal.name ~ "\""
       ~ (signal.detailed ? `~ (detail.length ? "::" ~ detail : "")`d : "") ~ ", closure, after);", "}"];
   }
 

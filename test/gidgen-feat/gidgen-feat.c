@@ -103,9 +103,20 @@ gidgen_feat_may_fail_string (gboolean fail, GError **error)
 
 G_DEFINE_INTERFACE (GidgenFeatIface, gidgen_feat_iface, G_TYPE_OBJECT)
 
+static guint iface_signal_id_changed;
+
 static void
 gidgen_feat_iface_default_init (GidgenFeatIfaceInterface *iface)
 {
+  /**
+   * GidgenFeatIface::id-changed:
+   * @self: The interface instance
+   * @id: The new ID
+   *
+   * Interface signal emitted by gidgen_feat_iface_emit_id_changed().
+   */
+  iface_signal_id_changed = g_signal_new ("id-changed", G_TYPE_FROM_INTERFACE (iface), G_SIGNAL_RUN_LAST, 0,
+                                          NULL, NULL, NULL, G_TYPE_NONE, 1, G_TYPE_INT);
 }
 
 /**
@@ -118,6 +129,17 @@ gint
 gidgen_feat_iface_get_id (GidgenFeatIface *self)
 {
   return GIDGEN_FEAT_IFACE_GET_IFACE (self)->get_id (self);
+}
+
+/**
+ * gidgen_feat_iface_emit_id_changed:
+ * @self: Interface instance
+ * @id: ID to emit with the id-changed signal
+ */
+void
+gidgen_feat_iface_emit_id_changed (GidgenFeatIface *self, gint id)
+{
+  g_signal_emit (self, iface_signal_id_changed, 0, id);
 }
 
 /* ---- Object ---- */
