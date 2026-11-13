@@ -316,6 +316,18 @@ immutable TypeEntry[] types = [
     pspec: "g_param_spec_boxed (${name}, NULL, NULL, GIDGEN_MATRIX_TYPE_REC, G_PARAM_READWRITE)",
     dMake: "new T(${v})", dEq: "${a}.value == ${v} && ${a}.name == \"rec\"", counter: "Rec", own: Own.Copy, inPlace: true },
 
+  // Boxed record with a 16 byte aligned (SIMD style) private field which gidgen binds as a D class, the alignment is
+  // not in the GIR (gid-align definition), the C copy and free functions check the instance alignment
+  { id: "aligned", cType: "GidgenMatrixAligned *", pointer: true, cVals: ["47", "58", "69"], dVals: ["47", "58", "69"],
+    cMake: "gidgen_matrix_aligned_new (${v})",
+    cMakeNone: "KEEP (gidgen_matrix_aligned_new (${v}), gidgen_matrix_aligned_free)",
+    cEq: "((guintptr)${x} % 16) == 0 && ${x}->value == ${v}", cFree: "gidgen_matrix_aligned_free",
+    cFill: "${x}->value = ${v}", cCopy: "gidgen_matrix_aligned_copy (${x})", gtype: "GIDGEN_MATRIX_TYPE_ALIGNED",
+    gvalue: "boxed",
+    pspec: "g_param_spec_boxed (${name}, NULL, NULL, GIDGEN_MATRIX_TYPE_ALIGNED, G_PARAM_READWRITE)",
+    dMake: "new T(${v})", dEq: "${a}.value == ${v}", counter: "Aligned", own: Own.Copy,
+    defs: "//!set record[Simd][gid-align] 16\n" },
+
   // Reference counted fundamental type (no GValue support, so no properties or signals)
   { id: "reffed", cType: "GidgenMatrixReffed *", pointer: true, cVals: ["12", "23", "34"], dVals: ["12", "23", "34"],
     cMake: "gidgen_matrix_reffed_new (${v})",

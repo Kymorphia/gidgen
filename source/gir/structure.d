@@ -132,6 +132,7 @@ final class Structure : TypeNode
     glibGetType = node.get("glib:get-type");
     borrowAttr = node.get("gid-borrow"); // Custom gid attribute set by def rule: "1" to force borrowing, "0" to copy
     cLayout = node.get("gid-c-layout") == "1"; // Custom gid attribute: emit GIR field layout in c/types.d when opaque
+    alignAttr = node.get("gid-align"); // Custom gid attribute: C alignment of the structure (SIMD types, not in the GIR)
     glibTypeName = node.get("glib:type-name");
     glibGetValueFunc = node.get("glib:get-value-func");
     glibSetValueFunc = node.get("glib:set-value-func");
@@ -414,6 +415,19 @@ final class Structure : TypeNode
       return;
 
     super.verify;
+
+    if (!alignAttr.empty)
+    {
+      uint alignVal;
+
+      try
+        alignVal = alignAttr.to!uint;
+      catch (ConvException e)
+        alignVal = 0;
+
+      if (alignVal == 0 || (alignVal & (alignVal - 1)) != 0)
+        throw new Exception("Structure gid-align '" ~ alignAttr.to!string ~ "' is not a power of 2");
+    }
 
     if (!parentType.empty && !parentStruct)
       throw new Exception("Failed to resolve parent type '" ~ parentType.to!string ~ "'");
@@ -1409,7 +1423,9 @@ final class Structure : TypeNode
       else
         typeName = st.name ? (st.name.camelCase(true) ~ "Type") : null; // Handles anonymous or named embedded struct/unions
 
-      writer ~= [(st.structType == StructType.Union ? "union"d : "struct"d) ~ (typeName ? (" " ~ typeName) : ""), "{"];
+      // C alignment not described by the GIR fields (gid-align), D propagates it to containing structures and arrays
+      auto alignPrefix = (st is this && !alignAttr.empty) ? ("align(" ~ alignAttr ~ ") "d) : ""d;
+      writer ~= [alignPrefix ~ (st.structType == StructType.Union ? "union"d : "struct"d) ~ (typeName ? (" " ~ typeName) : ""), "{"];
 
       dstring bitsType; // Current bit field type or empty if not active
       ubyte bitsLeft; // Number of bits remaining for this bit field type
@@ -1538,6 +1554,7 @@ final class Structure : TypeNode
     js.jsonSetNonDefault("deprecated", deprecated_);
     js.jsonSetNonDefault("opaque", opaque);
     js.jsonSetNonDefault("cLayout", cLayout);
+    js.jsonSetNonDefault("align", alignAttr);
     js.jsonSetNonDefault("pointer", pointer);
     js.jsonSetNonDefault("version", version_);
     js.jsonSetNonDefault("deprecatedVersion", deprecatedVersion);
@@ -1577,6 +1594,7 @@ final class Structure : TypeNode
 
   dstring borrowAttr; /// Custom "gid-borrow" attribute value ("1" or "0", empty if not set, see borrowed)
   bool cLayout; /// Custom "gid-c-layout" attribute: emit the GIR field layout in c/types.d even when opaque
+  dstring alignAttr; /// Custom "gid-align" attribute: C structure alignment (power of 2) for types the GIR fields don't describe (SIMD)
   bool _isPlainDataSet; /// true when _isPlainData has been set
   bool _isPlainData; /// Cached value indicating if kind.isPlainData or Wrap and all fields are POD
   bool abstract_; /// Is abstract type?

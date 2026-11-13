@@ -19,6 +19,7 @@ G_BEGIN_DECLS
  * @GIDGEN_MATRIX_COUNTER_OBJ: Live #GidgenMatrixObj instances
  * @GIDGEN_MATRIX_COUNTER_BOX: Live #GidgenMatrixBox instances
  * @GIDGEN_MATRIX_COUNTER_REC: Live #GidgenMatrixRec instances
+ * @GIDGEN_MATRIX_COUNTER_ALIGNED: Live #GidgenMatrixAligned instances
  * @GIDGEN_MATRIX_COUNTER_REFFED: Live #GidgenMatrixReffed instances
  * @GIDGEN_MATRIX_COUNTER_OPAQUE: Live #GidgenMatrixOpaque instances
  * @GIDGEN_MATRIX_COUNTER_FIELDS: Live #GidgenMatrixFields instances
@@ -32,6 +33,7 @@ typedef enum
   GIDGEN_MATRIX_COUNTER_OBJ,
   GIDGEN_MATRIX_COUNTER_BOX,
   GIDGEN_MATRIX_COUNTER_REC,
+  GIDGEN_MATRIX_COUNTER_ALIGNED,
   GIDGEN_MATRIX_COUNTER_REFFED,
   GIDGEN_MATRIX_COUNTER_OPAQUE,
   GIDGEN_MATRIX_COUNTER_FIELDS,
@@ -135,6 +137,53 @@ GType gidgen_matrix_rec_get_type (void) G_GNUC_CONST;
 GidgenMatrixRec *gidgen_matrix_rec_new (gint value);
 GidgenMatrixRec *gidgen_matrix_rec_copy (const GidgenMatrixRec *rec);
 void gidgen_matrix_rec_free (GidgenMatrixRec *rec);
+
+/* Boxed record with an over-aligned (SIMD style) field (bound as a D class) */
+
+#define GIDGEN_MATRIX_TYPE_ALIGNED (gidgen_matrix_aligned_get_type ())
+
+/**
+ * GidgenMatrixSimd:
+ *
+ * 16 byte aligned SIMD style structure. Like graphene_simd4f_t the GIR describes the scalar layout, the alignment
+ * isn't introspectable (gid-align definition).
+ */
+#ifdef __GI_SCANNER__
+typedef struct
+{
+  /*< private >*/
+  gint x, y, z, w;
+} GidgenMatrixSimd;
+#else
+typedef struct
+{
+  /*< private >*/
+  gint x, y, z, w;
+} __attribute__ ((aligned (16))) GidgenMatrixSimd;
+#endif
+
+typedef struct _GidgenMatrixAligned GidgenMatrixAligned;
+
+/**
+ * GidgenMatrixAligned:
+ * @value: The value
+ *
+ * Boxed record test type with a 16 byte aligned field (instances must be 16 byte aligned, the copy and free
+ * functions check it).
+ */
+struct _GidgenMatrixAligned
+{
+  gint value;
+  /*< private >*/
+  GidgenMatrixSimd simd;
+};
+
+GType gidgen_matrix_aligned_get_type (void) G_GNUC_CONST;
+GidgenMatrixAligned *gidgen_matrix_aligned_new (gint value);
+GidgenMatrixAligned *gidgen_matrix_aligned_copy (const GidgenMatrixAligned *aligned);
+void gidgen_matrix_aligned_free (GidgenMatrixAligned *aligned);
+gsize gidgen_matrix_aligned_size (void);
+gsize gidgen_matrix_aligned_alignment (void);
 
 /* Reference counted fundamental type (not derived from GObject) */
 

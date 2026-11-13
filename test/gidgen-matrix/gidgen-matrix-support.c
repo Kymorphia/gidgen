@@ -291,6 +291,83 @@ gidgen_matrix_rec_free (GidgenMatrixRec *rec)
   g_free (rec);
 }
 
+/* ---- Boxed record with an over-aligned field ---- */
+
+G_DEFINE_BOXED_TYPE (GidgenMatrixAligned, gidgen_matrix_aligned, gidgen_matrix_aligned_copy,
+  gidgen_matrix_aligned_free)
+
+#define GM_IS_ALIGNED(p) (((guintptr)(p) % G_ALIGNOF (GidgenMatrixAligned)) == 0)
+
+/**
+ * gidgen_matrix_aligned_new:
+ * @value: The value
+ *
+ * Returns: (transfer full): A new aligned record (simd field x..w = value..value + 3)
+ */
+GidgenMatrixAligned *
+gidgen_matrix_aligned_new (gint value)
+{
+  GidgenMatrixAligned *aligned = g_aligned_alloc0 (1, sizeof (GidgenMatrixAligned), G_ALIGNOF (GidgenMatrixAligned));
+  aligned->value = value;
+  aligned->simd.x = value;
+  aligned->simd.y = value + 1;
+  aligned->simd.z = value + 2;
+  aligned->simd.w = value + 3;
+  g_atomic_int_inc (&live_counts[GIDGEN_MATRIX_COUNTER_ALIGNED]);
+  return aligned;
+}
+
+/**
+ * gidgen_matrix_aligned_copy:
+ * @aligned: The record to copy (must be aligned, like the SIMD loads of graphene)
+ *
+ * Returns: (transfer full): A copy of @aligned
+ */
+GidgenMatrixAligned *
+gidgen_matrix_aligned_copy (const GidgenMatrixAligned *aligned)
+{
+  GidgenMatrixAligned *copy;
+
+  g_return_val_if_fail (GM_IS_ALIGNED (aligned), NULL);
+  copy = gidgen_matrix_aligned_new (aligned->value);
+  copy->simd = aligned->simd;
+  return copy;
+}
+
+/**
+ * gidgen_matrix_aligned_free:
+ * @aligned: The record to free
+ */
+void
+gidgen_matrix_aligned_free (GidgenMatrixAligned *aligned)
+{
+  g_return_if_fail (GM_IS_ALIGNED (aligned));
+  g_atomic_int_add (&live_counts[GIDGEN_MATRIX_COUNTER_ALIGNED], -1);
+  g_aligned_free (aligned);
+}
+
+/**
+ * gidgen_matrix_aligned_size:
+ *
+ * Returns: The C size of #GidgenMatrixAligned
+ */
+gsize
+gidgen_matrix_aligned_size (void)
+{
+  return sizeof (GidgenMatrixAligned);
+}
+
+/**
+ * gidgen_matrix_aligned_alignment:
+ *
+ * Returns: The C alignment of #GidgenMatrixAligned
+ */
+gsize
+gidgen_matrix_aligned_alignment (void)
+{
+  return G_ALIGNOF (GidgenMatrixAligned);
+}
+
 /* ---- Reference counted fundamental type ---- */
 
 /**

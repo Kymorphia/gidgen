@@ -1064,3 +1064,14 @@ unittest
   inInt(0); // Expects -1
   assert(failureCount == start + 1, "matrix C value checks are not working");
 }
+
+/// The C structure layout of a type with a field of a gid-align structure (alignment not in the GIR) matches C, so
+/// stack temporaries (boxedNew), inline fields and arrays of it are aligned like C requires
+unittest
+{
+  import gidgenmatrix.aligned : Aligned;
+  import gidgenmatrix.c.types : GidgenMatrixAligned;
+
+  assert(GidgenMatrixAligned.sizeof == Aligned.size, "aligned record size differs from C");
+  assert(GidgenMatrixAligned.alignof == Aligned.alignment, "aligned record alignment differs from C");
+}

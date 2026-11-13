@@ -207,6 +207,7 @@ immutable Unsupported[] unsupportedCells = [
   // resulting instance, which no D owner can keep alive), and of records without a GType (unknown memory management)
   {"cb_inout", "obj", "none", "callback InOut instance parameters without full ownership not supported by gidgen"},
   {"cb_inout", "rec", "none", "callback InOut instance parameters without full ownership not supported by gidgen"},
+  {"cb_inout", "aligned", "none", "callback InOut instance parameters without full ownership not supported by gidgen"},
   {"cb_inout", "reffed", "none", "callback InOut instance parameters without full ownership not supported by gidgen"},
   {"cb_inout", "bytes", "none", "callback InOut instance parameters without full ownership not supported by gidgen"},
   {"cb_inout", "variant", "none", "callback InOut instance parameters without full ownership not supported by gidgen"},
