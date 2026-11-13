@@ -538,6 +538,29 @@ private void testCell(MatrixCell c)()
       assert(n is null, c.func ~ ": expected null out value");
     }
   }
+  else static if (c.pos == "out_ca_throws")
+  { // Receive the Out value, then fail with an error after the callee filled it (the wrapper frees its allocation)
+    import glib.error : ErrorWrap;
+    alias T = Params[$ - 1];
+    T a;
+    auto base = typeLive!c;
+    assert(fn(false, a), c.func ~ ": unexpected failure");
+    assert(mixin(c.eqOut), c.func ~ ": unexpected out value");
+    release(a);
+    assert(typeLive!c == base, c.func ~ ": out value live count " ~ (typeLive!c - base).to!string);
+
+    T b;
+    bool caught;
+    try
+      fn(true, b);
+    catch (ErrorWrap e)
+      caught = e.msg == "matrix error";
+    assert(caught, c.func ~ ": expected matrix error");
+    static if (is(T == class))
+      assert(b is null, c.func ~ ": out value set on error");
+    assert(typeLive!c == base, c.func ~ ": caller allocated value not freed on error, live count "
+      ~ (typeLive!c - base).to!string);
+  }
   else static if (c.pos == "inout_ca")
   { // Pass the In value which is replaced with the Out value in place
     alias T = Params[$ - 1];

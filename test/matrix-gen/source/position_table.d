@@ -90,6 +90,7 @@ private string[] fullTransfer(const TypeEntry t) => t.pointer && t.transferFull 
 private string[] noneTransfer(const TypeEntry t) => ["none"];
 private bool allTypes(const TypeEntry t) => true;
 private bool callerAllocTypes(const TypeEntry t) => t.cFill.length > 0;
+private bool callerAllocStructTypes(const TypeEntry t) => t.cFill.length > 0 && !t.container;
 private bool lenTypes(const TypeEntry t) => t.lenType.length > 0;
 private bool fieldTypes(const TypeEntry t) => (!t.pointer || t.nullable) && !t.container;
 private bool fixedFieldTypes(const TypeEntry t) => t.fixedElem.length > 0;
@@ -269,6 +270,17 @@ immutable Position[] positions = [
     ret: "void", args: "${lenB}${cType} value${lenA}",
     paramDocs: " * @value: ${annots}Caller allocated output value\n${lenDoc}",
     body: "  ${fillOut};\n" },
+
+  // Throwing function with a caller allocated output structure: the callee fills it and then sets the GError
+  // "gidgen-matrix" 1 "matrix error" if fail is TRUE (the wrapper must free the structure it allocated)
+  { id: "out_ca_throws", direction: "(out caller-allocates)", supports: &callerAllocStructTypes,
+    transfers: &noneTransfer, ret: "gboolean", args: "gboolean fail, ${cType} value, GError **error",
+    paramDocs: " * @fail: TRUE to fail with an error after filling @value\n"
+      ~ " * @value: ${annots}Caller allocated output value\n * @error: Return location for a #GError\n",
+    returnDoc: " * Returns: TRUE on success, FALSE if @error is set\n",
+    body: "  ${fillOut};\n\n  if (fail)\n  {\n"
+      ~ "    g_set_error_literal (error, g_quark_from_string (\"gidgen-matrix\"), 1, \"matrix error\");\n"
+      ~ "    return FALSE;\n  }\n\n  return TRUE;\n" },
 
   // Transfer none inout pointer values: the callee only borrows the input value and returns a borrowed value
   { id: "inout", direction: "(inout)", lenPtr: true, lenDir: "(inout)", val: "(*value)", supports: &allTypes, transfers: &anyTransfer, nullable: true,

@@ -181,6 +181,21 @@ final class Param : TypeNode
   }
 
   /**
+   * Caller-allocated Out structure which the wrapper allocates on the heap before the call (boxedNew for boxed types
+   * other than isOpaqueBoxedStackOut, g_malloc0 for Wrap types with initOwnsMembers) and which is only taken by the D
+   * object after the call. It must be freed (with the type's _cFree) if the call fails with an error.
+   */
+  @property bool isHeapCallerAllocOut()
+  {
+    auto st = cast(Structure)typeObject;
+    auto func = getParentByType!Func;
+    return active != Active.Ignored && !isInstanceParam && !isArrayLength && containerType == ContainerType.None
+      && direction == ParamDirection.Out && callerAllocates && !cTypeRemPtr.endsWith('*') && !(st && st.pointer)
+      && !(func && func.unmapFunc.length > 0 && this is func.mapParam)
+      && ((kind == TypeKind.Boxed && !isOpaqueBoxedStackOut) || (kind == TypeKind.Wrap && st && st.initOwnsMembers));
+  }
+
+  /**
    * Check if a parameter can fully transfer its memory to another user.
    * Returns: true if parameter can be fully transferred, false otherwise
    */

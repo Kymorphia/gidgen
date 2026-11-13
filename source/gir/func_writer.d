@@ -42,7 +42,16 @@ class FuncWriter
 
     if (func.throws)
     { // postCall for exceptions is order sensitive and must be handled before output and return processing
-      postCall ~= ["if (_err)", "throw new " ~ func.errorDomain ~ "(_err, Yes.Take);"];
+      // Free caller allocated outs which are not yet owned by a D object when the call fails
+      auto freeOuts = func.params.filter!(p => p.isHeapCallerAllocOut)
+        .map!(p => p.fullDType ~ "._cFree(_" ~ p.dName ~ ");").array;
+      auto throwLine = "throw new " ~ func.errorDomain ~ "(_err, Yes.Take);";
+
+      if (freeOuts.length > 0)
+        postCall ~= ["if (_err)"d, "{"] ~ freeOuts ~ [throwLine, "}"];
+      else
+        postCall ~= ["if (_err)", throwLine];
+
       addImport("glib.error");
     }
 
@@ -606,6 +615,7 @@ class FuncWriter
               }
               else
               {
+                assert(param.isHeapCallerAllocOut, "Boxed caller allocated out not freed on error");
                 preCall ~= "auto _" ~ param.dName ~ " = boxedNew!" ~ param.cTypeRemPtr ~ "(" ~ param.fullDType
                   ~ "._getGType);";
                 addCallParam("_" ~ param.dName);
@@ -615,6 +625,7 @@ class FuncWriter
             }
             else if (param.kind == Wrap && st && st.initOwnsMembers) // Callee initializes/fills owned C allocated members
             { // Zero initialized GLib allocation, owned by the wrapper (freed with the structure's free function)
+              assert(param.isHeapCallerAllocOut, "Wrap caller allocated out not freed on error");
               preCall ~= "auto _" ~ param.dName ~ " = cast(" ~ param.cTypeRemPtr ~ "*)gMalloc(" ~ param.cTypeRemPtr
                 ~ ".sizeof);";
               addCallParam("_" ~ param.dName);
