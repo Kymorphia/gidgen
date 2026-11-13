@@ -66,6 +66,7 @@ struct TypeEntry
   string borrow; /// C structure type which D borrows from an owning record (Wrap with pointer fields, which has an
                  /// int value field and gm_<id>_new/copy_into/clear/free helpers), empty if not borrowed
   string defs; /// gidgen definitions for the type (added to the definitions file)
+  bool inPlace; /// Boxed type bound as a D class which a callback can modify in place (non-const pointer argument)
 
   /// Set cFill (caller allocated values)
   TypeEntry withFill(string cFill) const
@@ -313,7 +314,7 @@ immutable TypeEntry[] types = [
     cFill: "${x}->value = ${v}; g_free (${x}->name); ${x}->name = g_strdup (\"rec\")",
     cCopy: "gidgen_matrix_rec_copy (${x})", gtype: "GIDGEN_MATRIX_TYPE_REC", gvalue: "boxed",
     pspec: "g_param_spec_boxed (${name}, NULL, NULL, GIDGEN_MATRIX_TYPE_REC, G_PARAM_READWRITE)",
-    dMake: "new T(${v})", dEq: "${a}.value == ${v} && ${a}.name == \"rec\"", counter: "Rec", own: Own.Copy },
+    dMake: "new T(${v})", dEq: "${a}.value == ${v} && ${a}.name == \"rec\"", counter: "Rec", own: Own.Copy, inPlace: true },
 
   // Reference counted fundamental type (no GValue support, so no properties or signals)
   { id: "reffed", cType: "GidgenMatrixReffed *", pointer: true, cVals: ["12", "23", "34"], dVals: ["12", "23", "34"],
@@ -388,7 +389,7 @@ immutable TypeEntry[] types = [
     dVals: ["17", "28", "39"], cMake: "gm_value_new (${v})", cMakeNone: "KEEP (gm_value_new (${v}), gm_value_free)",
     cEq: "G_VALUE_HOLDS_INT (${x}) && g_value_get_int (${x}) == ${v}", cFree: "gm_value_free",
     cFill: "gm_value_fill (${x}, ${v})", cCopy: "gm_value_copy (${x})", dMake: "new T(cast(int)${v})",
-    dEq: "${a}.getInt == ${v}" },
+    dEq: "${a}.getInt == ${v}", inPlace: true },
 
   // Containers (pointer elements for GList, GSList, GPtrArray and GHashTable, integers for GArray)
   container("list_utf8", "GList *", "(element-type utf8)", "list", "STR", strElems, strDVals),

@@ -118,6 +118,23 @@ final class Param : TypeNode
   }
 
   /**
+   * Is this a callback In parameter of a boxed type passed as a non-const pointer without ownership transfer (such as a
+   * caller initialized GValue the callback sets). The D wrapper borrows the C instance during the call (Boxed._cBorrow),
+   * so changes made by the delegate are seen by the caller, and takes a copy of it afterwards (Boxed._cUnborrow) in
+   * case the delegate kept a reference (see DelegWriter).
+   */
+  @property bool isInPlaceBoxedArg()
+  {
+    auto func = getParentByType!Func;
+    return kind == TypeKind.Boxed && containerType == ContainerType.None && direction == ParamDirection.In
+      && ownership == Ownership.None && cType.countStars == 1 && !cType.startsWith("const")
+      && func && func.funcType == FuncType.Callback;
+  }
+
+  /// Documentation note appended to in place boxed parameters (see isInPlaceBoxedArg)
+  enum dstring inPlaceBoxedArgDoc = " (modified in place, changes are seen by the caller)";
+
+  /**
    * Documentation note appended to borrowed parameters (see isBorrowedArg and isBorrowedArrayArg), empty otherwise.
    * Suggests `_dup` only for structures with a copy function, since `_dup` of other borrowed structures is a shallow
    * copy whose pointer fields still reference the borrowed C memory.

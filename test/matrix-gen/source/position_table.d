@@ -96,6 +96,7 @@ private bool fixedFieldTypes(const TypeEntry t) => t.fixedElem.length > 0;
 private bool fixedTypes(const TypeEntry t) => t.fixedSize > 0;
 private bool embedTypes(const TypeEntry t) => t.embed.length > 0;
 private bool borrowTypes(const TypeEntry t) => t.borrow.length > 0;
+private bool inPlaceTypes(const TypeEntry t) => t.inPlace;
 private bool instanceTypes(const TypeEntry t) => t.own.among(Own.Ref, Own.Copy, Own.Borrow) != 0;
 private bool staticRetTypes(const TypeEntry t) => t.pointer && !t.container;
 private bool gtypeTypes(const TypeEntry t) => t.gtype.length > 0;
@@ -427,6 +428,19 @@ immutable Position[] positions = [
     sections: [{"cbTypedef", "/**\n * ${cbType}:\n * @values: (array length=n_values) (transfer none): Borrowed structures\n"
       ~ " * @n_values: Number of structures\n * @user_data: (closure): User data\n *\n * Matrix callback.\n */\n"
       ~ "typedef void (*${cbType}) (const ${borrow} *values, gsize n_values, gpointer user_data);\n\n"}] },
+
+  // Boxed callback argument passed as a non-const pointer (transfer none): D borrows the C instance during the call,
+  // so the In value it writes (mode GM_INOUT_REPLACE) reaches C, a reference kept by D survives the C instance being
+  // freed (copied after the call), and destroying the borrowed wrapper (mode GM_INOUT_KEEP) does not free the C instance
+  { id: "cb_inplace", val: "value", supports: &inPlaceTypes, transfers: &noneTransfer,
+    ret: "void", args: "gint mode, ${cbType} func, gpointer user_data",
+    paramDocs: " * @mode: What the callback does (0 = write the In value, 1 = destroy the D wrapper)\n"
+      ~ " * @func: (scope call) (closure user_data): Callback\n * @user_data: User data\n",
+    body: "  ${cType} value = ${makeOutFull};\n\n  func (value, user_data);\n"
+      ~ "  CHECK (mode == GM_INOUT_KEEP ? ${eqOut} : ${eqIn});\n  ${cFree} (value);\n",
+    sections: [{"cbTypedef", "/**\n * ${cbType}:\n * @value: (transfer none): Value modified in place by the callback\n"
+      ~ " * @user_data: (closure): User data\n *\n * Matrix callback.\n */\n"
+      ~ "typedef void (*${cbType}) (${cType} value, gpointer user_data);\n\n"}] },
 
     // Callback InOut borrowed Wrap** with an owner (gid-borrow): null removes the value, keep leaves the same
   // pointer. Replacing with a different instance is a programmer error (Gid critical); not exercised here because

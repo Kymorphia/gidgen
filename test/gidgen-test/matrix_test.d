@@ -18,6 +18,7 @@ import std.conv : to;
 import glib.c.functions : g_quark_from_string, g_set_error_literal;
 import glib.c.types : GError, GLogLevelFlags;
 import gobject.object : ObjectWrap;
+import gobject.value : Value;
 import gidgenmatrix.global;
 import gidgenmatrix.types : Counter;
 import matrix_manifest;
@@ -823,6 +824,31 @@ private void testCell(MatrixCell c)()
 
     static if (T._cAllocated) // Deep copy (copy function), its pointer fields are valid after the original was freed
       assert(kept._cOwned && kept.name == "pw", c.func ~ ": dup is not a deep copy");
+  }
+  else static if (c.pos == "cb_inplace")
+  { // C passes a boxed instance (Out value) which D borrows and writes the In value to (checked by C), a reference kept
+    // by D is a copy after the call, and destroying the borrowed wrapper leaves the C instance alone
+    alias T = Parameters!(Params[$ - 1])[0];
+    fn(InOutMode.Keep, (T a) {
+      assert(mixin(c.eqOut), c.func ~ ": unexpected in place value");
+      release(a); // Must not free the borrowed C instance (C checks and frees it)
+    });
+
+    T kept;
+    fn(InOutMode.Replace, (T a) {
+      assert(mixin(c.eqOut), c.func ~ ": unexpected in place value");
+      assert(a._cBorrowed, c.func ~ ": argument is not borrowed");
+      auto inVal = mixin(c.makeIn);
+      static if (is(T : Value))
+        a.setInt(inVal.getInt);
+      else
+        a.value = inVal.value;
+      release(inVal);
+      kept = a;
+    });
+    assert(kept && !kept._cBorrowed && mixin("{ auto a = kept; return " ~ c.eqIn ~ "; }()"),
+      c.func ~ ": kept reference is not an owned copy of the written value");
+    release(kept);
   }
   else static if (c.pos == "cb_borrow_array")
   { // C passes an array of borrowed structures (Out values) which D writes the In value to (checked by C) and dups

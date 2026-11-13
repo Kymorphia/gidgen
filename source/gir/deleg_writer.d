@@ -411,6 +411,15 @@ class DelegWriter
               ~ param.dName ~ ", " ~ param.fullOwnerFlag ~ ".Take) : null;";
             addCallParam("_" ~ param.dName);
           }
+          else if (param.isInPlaceBoxedArg) // Borrows the C instance during the call, so changes are seen by the caller
+          {
+            preCall ~= "auto _" ~ param.dName ~ " = " ~ param.dName ~ " ? new " ~ param.fullDType ~ "(cast(void*)"
+              ~ param.dName ~ ", Yes.Take)._cBorrow : null;";
+            addCallParam("_" ~ param.dName);
+
+            // The wrapper takes a copy of the C instance after the call, in case the delegate kept a reference
+            postCall ~= "if (_" ~ param.dName ~ ")\n  _" ~ param.dName ~ "._cUnborrow;";
+          }
           else
             addCallParam(param.dName ~ " ? new " ~ param.fullDType ~ "(cast(void*)" ~ param.dName ~ ", "
               ~ param.fullOwnerFlag ~ ".Take) : null");
