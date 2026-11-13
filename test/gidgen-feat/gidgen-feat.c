@@ -994,3 +994,66 @@ gidgen_feat_child_object_new (gint value)
 {
   return g_object_new (GIDGEN_FEAT_TYPE_CHILD_OBJECT, "value", value, NULL);
 }
+
+/* ---- Object type requiring an initialization function before its get_type() ---- */
+
+struct _GidgenFeatLateObject
+{
+  GObject parent_instance;
+};
+
+static gboolean late_initialized;
+static gboolean late_type_early;
+
+static void
+gidgen_feat_late_object_check_init (void)
+{
+  if (!late_initialized)
+    late_type_early = TRUE;
+}
+
+G_DEFINE_FINAL_TYPE_WITH_CODE (GidgenFeatLateObject, gidgen_feat_late_object, G_TYPE_OBJECT,
+                               gidgen_feat_late_object_check_init ())
+
+static void
+gidgen_feat_late_object_class_init (GidgenFeatLateObjectClass *klass)
+{
+}
+
+static void
+gidgen_feat_late_object_init (GidgenFeatLateObject *self)
+{
+}
+
+/**
+ * gidgen_feat_late_init:
+ *
+ * Initialization function which must be called before gidgen_feat_late_object_get_type().
+ */
+void
+gidgen_feat_late_init (void)
+{
+  late_initialized = TRUE;
+}
+
+/**
+ * gidgen_feat_late_type_early:
+ *
+ * Returns: %TRUE if gidgen_feat_late_object_get_type() was called before gidgen_feat_late_init()
+ */
+gboolean
+gidgen_feat_late_type_early (void)
+{
+  return late_type_early;
+}
+
+/**
+ * gidgen_feat_new_late_object:
+ *
+ * Returns: (transfer full): A new #GidgenFeatLateObject returned as a #GObject
+ */
+GObject *
+gidgen_feat_new_late_object (void)
+{
+  return g_object_new (GIDGEN_FEAT_TYPE_LATE_OBJECT, NULL);
+}

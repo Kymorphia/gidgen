@@ -793,6 +793,11 @@ final class Structure : TypeNode
     if (kind.among(TypeKind.Struct, TypeKind.Object) || boxedGType || reffedGType)
       writer ~= ["", "/** */", overrideStr ~ "@property GType _gType() nothrow", "{", "return _getGType();", "}"];
 
+    // GType name of Object classes, used by ObjectWrap for mapping GTypes to D classes without calling get_type()
+    if (kind == TypeKind.Object && !glibTypeName.empty)
+      writer ~= ["", "/** */", "override @property string _gTypeName() nothrow", "{", "return \"" ~ glibTypeName
+        ~ "\";", "}"];
+
     if (boxedGType || kind == TypeKind.Struct) // Boxed copy and free functions require the type's GType
       writer ~= ["", "/** */", "static void* _cDup(void* ptr) nothrow", "{", "return boxedCopy(_getGType, ptr);", "}",
         "", "/** */", "static void _cFree(void* ptr) nothrow", "{", "boxedFree(_getGType, ptr);", "}"];

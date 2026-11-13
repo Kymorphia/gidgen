@@ -149,6 +149,16 @@ G_DECLARE_FINAL_TYPE (GidgenFeatChildObject, gidgen_feat_child_object, GIDGEN_FE
 
 GidgenFeatChildObject *gidgen_feat_child_object_new (gint value);
 
+/* Object whose get_type() must not be called before an initialization function (like GStreamer types which require
+ * gst_init()), used to check that D class lookup doesn't call the get_type() function of every D class */
+
+#define GIDGEN_FEAT_TYPE_LATE_OBJECT (gidgen_feat_late_object_get_type ())
+G_DECLARE_FINAL_TYPE (GidgenFeatLateObject, gidgen_feat_late_object, GIDGEN_FEAT, LATE_OBJECT, GObject)
+
+void gidgen_feat_late_init (void);
+gboolean gidgen_feat_late_type_early (void);
+GObject *gidgen_feat_new_late_object (void);
+
 /* Callbacks */
 
 typedef gint (*GidgenFeatIntFunc) (gint value, gpointer user_data);
