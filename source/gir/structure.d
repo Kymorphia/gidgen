@@ -1175,7 +1175,7 @@ final class Structure : TypeNode
           ~ "' for " ~ field.fullDName.to!string);
     }
 
-    return ["return g" ~ field.containerType.to!dstring ~ "ToD!(" ~ toDParams ~ ")("
+    return ["return g" ~ containerConvName(field.containerType) ~ "ToD!(" ~ toDParams ~ ")("
       ~ cPtr ~ "." ~ field.dName ~ ");"];
   }
 

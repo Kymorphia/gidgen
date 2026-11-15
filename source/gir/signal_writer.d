@@ -257,7 +257,7 @@ class SignalWriter
           ~ param.fullDName.to!string);
     }
 
-    preCall ~= "_paramTuple[" ~ cbIndex.to!dstring ~ "] = g" ~ param.containerType.to!dstring ~ "ToD!("
+    preCall ~= "_paramTuple[" ~ cbIndex.to!dstring ~ "] = g" ~ containerConvName(param.containerType) ~ "ToD!("
       ~ templateParams ~ ")(cast(" ~ param.containerType.containerTypeCType ~ "*)getVal!(void*)(&_paramVals["
       ~ (paramIndex + 1).to!dstring ~ "]));\n"; // The parameter index is +1 because the first one is the object instance
 

@@ -336,7 +336,7 @@ class FuncWriter
     decl ~= retVal.fullDType ~ " ";
     preCall ~= retVal.cType ~ " _cretval;";
     call ~= "_cretval = ";
-    postCall ~= "auto _retval = g" ~ retVal.containerType.to!dstring ~ "ToD" ~ templateArgs ~ "(cast("
+    postCall ~= "auto _retval = g" ~ containerConvName(retVal.containerType) ~ "ToD" ~ templateArgs ~ "(cast("
       ~ retVal.cType.stripConst ~ ")_cretval);";
   }
 
@@ -1048,7 +1048,7 @@ class FuncWriter
 
     addDeclParam(param.directionStr ~ param.fullDType ~ " " ~ param.dName);
 
-    preCall ~= "auto _" ~ param.dName ~ " = g" ~ param.containerType.to!dstring ~ "FromD" ~ templateParams ~ "("
+    preCall ~= "auto _" ~ param.dName ~ " = g" ~ containerConvName(param.containerType) ~ "FromD" ~ templateParams ~ "("
       ~ param.dName ~ ");";
 
     if (param.ownership != Ownership.Full)
@@ -1089,13 +1089,13 @@ class FuncWriter
     addCallParam(((isList || !param.callerAllocates) ? "&_"d : "_"d) ~ param.dName);
 
     if (param.callerAllocates)
-      preCall ~= ["auto _" ~ param.dName ~ " = g" ~ param.containerType.to!dstring ~ "FromD(" ~ param.dName ~ ");",
+      preCall ~= ["auto _" ~ param.dName ~ " = g" ~ containerConvName(param.containerType) ~ "FromD(" ~ param.dName ~ ");",
         "scope(failure) containerFree!(" ~ (isList ? param.cTypeRemPtr : param.cType) ~ ", "
         ~ param.elemTypes[0].fullDType ~ ", GidOwnership.None)(_" ~ param.dName ~ ");"]; // GidOwnership.None for containerFree frees container and elements
     else
       preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";";
 
-    postCall ~= param.dName ~ " = g" ~ param.containerType.to!dstring ~ "ToD!(" ~ toDParams ~ ")(_"
+    postCall ~= param.dName ~ " = g" ~ containerConvName(param.containerType) ~ "ToD!(" ~ toDParams ~ ")(_"
       ~ param.dName ~ ");";
   }
 

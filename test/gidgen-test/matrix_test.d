@@ -257,7 +257,7 @@ private T getFilled(MatrixCell c, T)()
   auto o = new Fields;
   T a;
   mixin("o." ~ c.func ~ "(a);");
-  assert(mixin(c.eqOut) && !a._cBorrowed && a._owner is o, c.func ~ ": unexpected filled structure");
+  assert(mixin(c.eqOut) && !a._cBorrowedPtr && a._owner is o, c.func ~ ": unexpected filled structure");
   return a;
 }
 
@@ -385,7 +385,7 @@ private template hasNoArgCtor(T)
 private T makeInitWrap(T)(int v)
 {
   auto a = new T;
-  assert(a._cOwned && !a._cBorrowed && a.name == "init", T.stringof ~ ": constructor did not initialize a C allocated instance");
+  assert(a._cOwned && !a._cBorrowedPtr && a.name == "init", T.stringof ~ ": constructor did not initialize a C allocated instance");
   a.value = v;
   a.name = "iw";
   return a;
@@ -528,7 +528,7 @@ private void testCell(MatrixCell c)()
     static if (c.pos == "out")
       checkReceived!c(a, base);
     static if (c.pos == "out_ca" && isInitWrap!T) // Callee filled C allocated structure taken by the wrapper
-      assert(a._cOwned && !a._cBorrowed && !a._owner, c.func ~ ": caller allocated structure not owned by the wrapper");
+      assert(a._cOwned && !a._cBorrowedPtr && !a._owner, c.func ~ ": caller allocated structure not owned by the wrapper");
     release(a);
 
     static if (c.nullable)
@@ -809,15 +809,15 @@ private void testCell(MatrixCell c)()
   { // Static C structure: borrowed without an owner (the same C structure each call), a dup is an owned copy
     auto a = fn();
     assert(mixin(c.eqRet), c.func ~ ": unexpected static value");
-    assert(a._cBorrowed && !a._owner && a._cPtr is fn()._cPtr, c.func ~ ": static structure is not borrowed");
+    assert(a._cBorrowedPtr && !a._owner && a._cPtr is fn()._cPtr, c.func ~ ": static structure is not borrowed");
     auto kept = a._dup;
-    assert(!kept._cBorrowed && kept._cPtr !is a._cPtr && kept.value == a.value, c.func ~ ": dup is not an owned copy");
+    assert(!kept._cBorrowedPtr && kept._cPtr !is a._cPtr && kept.value == a.value, c.func ~ ": dup is not an owned copy");
 
     // A D constructed (inline) structure is copied inline (not by the copy function), keeping the source alive
     alias T = ReturnType!fn;
     T local = mixin(c.makeIn);
     auto localDup = local._dup;
-    assert(!localDup._cBorrowed && !localDup._cOwned && localDup._owner is local
+    assert(!localDup._cBorrowedPtr && !localDup._cOwned && localDup._owner is local
       && localDup._cPtr !is local._cPtr && localDup.value == local.value && localDup.name == "pw",
       c.func ~ ": dup of a D structure is not an inline copy");
   }
@@ -828,10 +828,10 @@ private void testCell(MatrixCell c)()
     T kept;
     auto dg = (T a) {
       assert(mixin(c.eqOut), c.func ~ ": unexpected borrowed value");
-      assert(a._cBorrowed && !a._owner, c.func ~ ": argument is not borrowed without an owner");
+      assert(a._cBorrowedPtr && !a._owner, c.func ~ ": argument is not borrowed without an owner");
       a.value = mixin(c.makeIn).value;
       kept = a._dup;
-      assert(!kept._cBorrowed && kept._cPtr !is a._cPtr, c.func ~ ": dup is not an owned copy");
+      assert(!kept._cBorrowedPtr && kept._cPtr !is a._cPtr, c.func ~ ": dup is not an owned copy");
     };
 
     static if (c.pos == "cb_borrow")
@@ -860,7 +860,7 @@ private void testCell(MatrixCell c)()
     T kept;
     fn(InOutMode.Replace, (T a) {
       assert(mixin(c.eqOut), c.func ~ ": unexpected in place value");
-      assert(a._cBorrowed, c.func ~ ": argument is not borrowed");
+      assert(a._isBorrowed, c.func ~ ": argument is not borrowed");
       auto inVal = mixin(c.makeIn);
       static if (is(T : Value))
         a.setInt(inVal.getInt);
@@ -869,7 +869,7 @@ private void testCell(MatrixCell c)()
       release(inVal);
       kept = a;
     });
-    assert(kept && !kept._cBorrowed && mixin("{ auto a = kept; return " ~ c.eqIn ~ "; }()"),
+    assert(kept && !kept._isBorrowed && mixin("{ auto a = kept; return " ~ c.eqIn ~ "; }()"),
       c.func ~ ": kept reference is not an owned copy of the written value");
     release(kept);
   }
@@ -884,10 +884,10 @@ private void testCell(MatrixCell c)()
       foreach (a; arr)
       {
         assert(mixin(c.eqOut), c.func ~ ": unexpected borrowed value");
-        assert(a._cBorrowed && !a._owner, c.func ~ ": array element is not borrowed without an owner");
+        assert(a._cBorrowedPtr && !a._owner, c.func ~ ": array element is not borrowed without an owner");
         a.value = mixin(c.makeIn).value;
         kept ~= a._dup;
-        assert(!kept[$ - 1]._cBorrowed && kept[$ - 1]._cPtr !is a._cPtr, c.func ~ ": dup is not an owned copy");
+        assert(!kept[$ - 1]._cBorrowedPtr && kept[$ - 1]._cPtr !is a._cPtr, c.func ~ ": dup is not an owned copy");
       }
     });
 
@@ -1026,7 +1026,7 @@ private void testCell(MatrixCell c)()
       void dlg(Fields owner, ref T a)
       {
         assert(owner !is null, c.func ~ ": missing owner");
-        assert(a !is null && a._cBorrowed && a._owner is owner, c.func ~ ": value is not borrowed from owner");
+        assert(a !is null && a._cBorrowedPtr && a._owner is owner, c.func ~ ": value is not borrowed from owner");
         assert(mixin(c.eqOut), c.func ~ ": unexpected borrowed value");
 
         if (mode == InOutMode.SetNull)

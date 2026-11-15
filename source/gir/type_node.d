@@ -821,6 +821,15 @@ dstring containerTypeCType(ContainerType type)
   }
 }
 
+/**
+ * Name used in g<Name>ToD / g<Name>FromD conversion templates.
+ * ArrayG maps to "Array" so the templates are named gArrayToD / gArrayFromD (not gArrayGToD).
+ */
+dstring containerConvName(ContainerType type)
+{
+  return type == ContainerType.ArrayG ? "Array"d : type.to!dstring;
+}
+
 /// Basic type names
 immutable string[] BasicTypeValues = [
   "bool", "byte", "char", "dchar", "double", "float", "glong", "gulong", "int", "long", "ptrdiff_t", "real", "short", // glong/gulong are versioned alias types which change depending on if Windows or not
@@ -961,6 +970,17 @@ unittest
   assert(containerTypeCType(ContainerType.Array) is null);
   assert(containerTypeCType(ContainerType.ByteArray) is null);
 }
+
+// Test containerConvName function
+unittest
+{
+  assert(containerConvName(ContainerType.ArrayG) == "Array");
+  assert(containerConvName(ContainerType.PtrArray) == "PtrArray");
+  assert(containerConvName(ContainerType.ByteArray) == "ByteArray");
+  assert(containerConvName(ContainerType.List) == "List");
+  assert(containerConvName(ContainerType.HashTable) == "HashTable");
+}
+
 
 // Test isBasicType function with various basic and non-basic types
 unittest

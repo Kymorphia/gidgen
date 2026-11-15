@@ -267,7 +267,7 @@ class DelegWriter
     decl ~= retVal.cType ~ " ";
     preCall ~= retVal.dType ~ " _dretval;";
     call ~= "_dretval = ";
-    postCall ~= "auto _retval = g" ~ retVal.containerType.to!dstring ~ "FromD" ~ fromDTemplateParams(retVal)
+    postCall ~= "auto _retval = g" ~ containerConvName(retVal.containerType) ~ "FromD" ~ fromDTemplateParams(retVal)
       ~ "(_dretval);";
   }
 
@@ -277,7 +277,7 @@ class DelegWriter
     addDeclParam(param.cType ~ " " ~ param.dName);
     preCall ~= param.fullDType ~ " _" ~ param.dName ~ ";";
     addCallParam("_" ~ param.dName);
-    postCall ~= "*" ~ param.dName ~ " = g" ~ param.containerType.to!dstring ~ "FromD" ~ fromDTemplateParams(param)
+    postCall ~= "*" ~ param.dName ~ " = g" ~ containerConvName(param.containerType) ~ "FromD" ~ fromDTemplateParams(param)
       ~ "(_" ~ param.dName ~ ");";
   }
 
@@ -614,7 +614,7 @@ class DelegWriter
 
     addDeclParam(param.cType ~ " " ~ param.dName);
     addCallParam("_" ~ param.dName);
-    preCall ~= "auto _" ~ param.dName ~ " = g" ~ param.containerType.to!dstring ~ "ToD!(" ~ templateParams ~ ")("
+    preCall ~= "auto _" ~ param.dName ~ " = g" ~ containerConvName(param.containerType) ~ "ToD!(" ~ templateParams ~ ")("
       ~ param.dName ~ ");";
   }
 
