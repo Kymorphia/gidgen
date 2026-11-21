@@ -24,6 +24,12 @@
     },
     "gidg:glib2": {
       "path": ".."
+    },
+    "gidg:shimlib1": {
+      "path": ".."
+    },
+    "gidg:shimlib2": {
+      "path": ".."
     }
   }
 }

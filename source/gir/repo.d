@@ -535,11 +535,71 @@ final class Repo : Base
         en.write(sourcePath);
     }
 
+    if (writeShims)
+      writeShimModules(packagePath);
+
     if (!mergeRepo)
     {
       writeDubJsonFile(buildPath(packagePath, "dub.json"));
       writeReadme(buildPath(packagePath, "README.md"));
     }
+  }
+
+  /**
+   * Write unversioned shim modules for this repo into its package (`gid.gtk.widget` importing `gid.gtk4.widget`).
+   * Params:
+   *   packagePath = Directory of the dub package this repo is written to
+   */
+  private void writeShimModules(string packagePath)
+  {
+    auto shimNs = defs.root.to!dstring ~ "." ~ namespace.toLower;
+    auto shimDir = buildPath([packagePath] ~ shimNs.to!string.split('.'));
+
+    foreach (mod; bindingModules)
+    {
+      auto path = buildPath([shimDir] ~ mod.to!string.split('.')) ~ ".d";
+      auto writer = new CodeWriter(path);
+      auto versioned = packageNamespace ~ "." ~ mod;
+      writer ~= [
+        "/// Unversioned import of the latest major version of this module, [" ~ versioned ~ "]",
+        "module " ~ shimNs ~ "." ~ mod ~ ";",
+        "public import " ~ versioned ~ ";"
+      ];
+      writer.write();
+    }
+  }
+
+  /// Relative module names written for this repo (`widget`, `c.types`, `accessible_mixin`)
+  private dstring[] bindingModules()
+  {
+    dstring[] mods = ["c.types", "c.functions"];
+
+    if (typesStruct)
+      mods ~= "types";
+
+    if (globalStruct)
+      mods ~= "global";
+
+    foreach (st; structs)
+    {
+      if (st.active != Active.Enabled || !((st.defCode && st.defCode.inClass) || st.inModule)
+          || st is globalStruct || st is typesStruct)
+        continue;
+
+      mods ~= st.moduleName;
+
+      if (st.kind == TypeKind.Interface)
+      {
+        mods ~= st.moduleName ~ "_mixin";
+        mods ~= st.moduleName ~ "_iface_proxy";
+      }
+    }
+
+    foreach (en; enums)
+      if (en.active == Active.Enabled && (en.functions.length || en.errorQuarks.length))
+        mods ~= en.moduleName;
+
+    return mods;
   }
 
   // Write an interface proxy object (to use when a GObject has no known applicable D object binding when using the interface)
@@ -1405,6 +1465,7 @@ final class Repo : Base
   dstring dubPackageName; /// Dub package name
   Dependency dependency; /// Dependency repository this repo belongs to (null for repos of the main defs)
   dstring packageNamespace; /// Module name prefix of the package, root and dub package name (`gid.gtk4`), or `gid.core` for the runtime
+  bool writeShims; /// True if this repo writes unversioned shim modules into its package
 
   Alias[] aliases; /// Aliases
   Constant[] constants; /// Constants

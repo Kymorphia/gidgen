@@ -119,6 +119,8 @@ flags accept a string or an array of strings):
 * **report**, **report-file**, **report-options**
 * **log-level**, **log-gir-locs**, **log-code-locs**, **suggest**
 * **root**: Root D package name of the modules of the repository, see [Module Names](#module-names)
+* **shims**: Whether to write unversioned shim modules, see [Unversioned Shim Modules](#unversioned-shim-modules)
+  (boolean, default `true`, overrides the global `//!info shims` command)
 
 An unknown key is an error. The **dependencies** key is described below.
 
@@ -139,6 +141,31 @@ which the generated code of all repositories imports, so any other repository mu
 `gid_apache`, with module names like `gid_apache.arrow23.table`). It must be a valid D identifier and be different from the
 roots of its dependencies. Generated code of all repositories refers to the runtime, GLib, and GObject modules with the
 `gid` root.
+
+### Unversioned Shim Modules
+
+The package of the latest major version of a library also contains unversioned shim modules, one per real module,
+named `<root>.<library>.<module>` where *library* is the GIR namespace in lowercase. For example `gid.gtk.widget` is:
+
+```d
+/// Unversioned import of the latest major version of this module, [gid.gtk4.widget]
+module gid.gtk.widget;
+public import gid.gtk4.widget;
+```
+
+The same is done for `c.types`, `c.functions`, mixins, interface proxies, and merged namespaces (`gid.gobject.object`
+imports `gid.gobject2.object`, `gid.glib.variant` imports `gid.glib2.variant`). The shim files are written next to the
+versioned modules in the same package (`packages/gtk4/gid/gtk/widget.d`), not as a separate dub subpackage, and are
+included in `sourcePaths` so they are compiled (they have ModuleInfo). `gid:gtk3` has no shims.
+
+The latest major is the highest GIR namespace version among packages of that library in the repository. A package can
+override this with `//!info shim yes` (this package provides the shims for its library) or `//!info shim no` (this
+package does not). A shim is not written when the unversioned name would be the same as the versioned one
+(`freetype2`, `libxml2`). The giD runtime (`gid.core`) has no shims.
+
+Shims can be disabled for the whole repository with `"shims": false` in gidgen.json or the global `//!info shims no`
+command (the config file takes precedence; values `yes`/`true`/`on` and `no`/`false`/`off` are accepted in defs).
+This is intended for extra repositories such as **gid_apache**.
 
 ### External Dependency Repositories
 

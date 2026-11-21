@@ -1,5 +1,6 @@
 module defs;
 
+import std.conv : ConvException;
 import std.utf : toUTF32;
 import std.path : relativePath;
 
@@ -552,6 +553,72 @@ class Defs : Base
     }
   }
 
+  /**
+   * Decide which packages write unversioned shim modules (`gid.gtk.widget` importing `gid.gtk4.widget`). The latest
+   * major of a library (highest GIR namespace version among packages that share the GIR namespace) writes one shim
+   * per real module, unless the unversioned name would equal the versioned one, the repo is the giD runtime, or
+   * shims are disabled for the repository.
+   */
+  private void resolveShims()
+  {
+    auto globalSetting = shimsOverride != ShimsSetting.Unset ? shimsOverride
+      : parseShimsSetting(dubInfo.get("shims", null), "//!info shims");
+    shimsEnabled = globalSetting != ShimsSetting.No;
+
+    if (!shimsEnabled)
+      return;
+
+    Repo[][dstring] byLib;
+
+    foreach (repo; repos.filter!(x => !x.external && !x.runtime))
+      byLib[repo.namespace.toLower] ~= repo;
+
+    foreach (lib, group; byLib)
+    {
+      Repo forced;
+      Repo[] candidates;
+
+      foreach (repo; group)
+      {
+        auto setting = parseShimsSetting(repo.dubInfo.get("shim", null),
+          "//!info shim of package '" ~ repo.dubPackageName.to!string ~ "'");
+
+        if (setting == ShimsSetting.Yes)
+        {
+          if (forced)
+            throw new DependencyError("Both '" ~ forced.dubPackageName.to!string ~ "' and '"
+              ~ repo.dubPackageName.to!string ~ "' set //!info shim yes for " ~ lib.to!string);
+
+          forced = repo;
+        }
+        else if (setting != ShimsSetting.No)
+          candidates ~= repo;
+      }
+
+      auto chosen = forced ? forced : latestRepo(candidates);
+
+      if (!chosen)
+        continue;
+
+      if (chosen.namespace.toLower == chosen.dubPackageName) // Unversioned name would equal the versioned one
+        continue;
+
+      chosen.writeShims = true;
+    }
+  }
+
+  /// The package of a group with the highest GIR namespace version, or null if the group is empty
+  private static Repo latestRepo(Repo[] group)
+  {
+    Repo best;
+
+    foreach (repo; group)
+      if (!best || cmpGirVersion(repo.nsVersion, best.nsVersion) > 0)
+        best = repo;
+
+    return best;
+  }
+
   /// Ensure consistent state of repo data and fixup additional data (array parameter indexes, etc)
   private void fixupVerifyRepos()
   {
@@ -596,6 +663,8 @@ class Defs : Base
 
     foreach (repo; repos) // Fix-up repos
       repo.fixup;
+
+    resolveShims;
 
     foreach (repo; repos.filter!(x => x.external)) // Packages of this repo must not replace those of a dependency
     {
@@ -750,6 +819,8 @@ class Defs : Base
   string[] defPaths; /// Paths that definition files were loaded from
   string rootOverride; /// Root D package name from the config file, overrides the `//!info root` command
   string root; /// Root D package name of the modules of this repo (set when repos are loaded)
+  ShimsSetting shimsOverride; /// `shims` key of the config file, overrides the global `//!info shims` command
+  bool shimsEnabled; /// True if this repo writes unversioned shim modules (set when repos are loaded)
   bool[dstring] reservedWords; /// Reserved words (_ appended)
   dstring[dstring] cTypeSubs; /// Global C type substitutions
   dstring[dstring] dTypeSubs; /// Global D type substitutions
@@ -810,6 +881,71 @@ class DependencyError : Exception
     super(msg, file, line);
   }
 }
+
+/// Whether unversioned shim modules are enabled, or whether a package provides them
+enum ShimsSetting
+{
+  Unset, /// Not set, use the next source or the default (enabled)
+  Yes, /// Enabled, or this package provides the shims of its library
+  No, /// Disabled, or this package does not provide shims
+}
+
+/**
+ * Parse a `//!info shim` or `//!info shims` value.
+ * Params:
+ *   vals = Info values, empty if the command was not given
+ *   what = Description of the value for an error message
+ * Returns: The setting, or `Unset` if `vals` is empty
+ */
+ShimsSetting parseShimsSetting(dstring[] vals, string what)
+{
+  if (vals.empty)
+    return ShimsSetting.Unset;
+
+  switch (vals[0].toLower)
+  {
+    case "yes", "true", "on":
+      return ShimsSetting.Yes;
+    case "no", "false", "off":
+      return ShimsSetting.No;
+    default:
+      throw new DependencyError("Invalid " ~ what ~ " value '" ~ vals[0].to!string ~ "', expected yes or no");
+  }
+}
+
+/**
+ * Compare GIR namespace versions such as "4.0" and "2.91".
+ * Returns: < 0 if `a` is older than `b`, 0 if they are equal, > 0 if `a` is newer
+ */
+int cmpGirVersion(dstring a, dstring b)
+{
+  auto ap = girVersionParts(a);
+  auto bp = girVersionParts(b);
+  auto n = max(ap.length, bp.length);
+
+  foreach (i; 0 .. n)
+  {
+    auto av = i < ap.length ? ap[i] : 0;
+    auto bv = i < bp.length ? bp[i] : 0;
+
+    if (av != bv)
+      return av > bv ? 1 : -1;
+  }
+
+  return 0;
+}
+
+private int[] girVersionParts(dstring ver)
+{
+  if (ver.empty)
+    return [];
+
+  try
+    return ver.split('.').map!(p => p.empty ? 0 : p.to!int).array;
+  catch (ConvException)
+    throw new DependencyError("Invalid GIR version '" ~ ver.to!string ~ "'");
+}
+
 
 /// External dependency repository (such as the main giD repository), loaded for type resolution only and not written
 final class Dependency

@@ -18,7 +18,7 @@ enum DefaultConfigName = "gidgen.json"; /// Default config file name looked up i
 /// Known gidgen.json keys
 enum string[] KnownConfigKeys = [
   "defs", "gir-path", "pkg-path", "subpkg-path", "report", "report-file", "report-options",
-  "log-level", "log-gir-locs", "log-code-locs", "suggest", "dependencies", "root",
+  "log-level", "log-gir-locs", "log-code-locs", "suggest", "dependencies", "root", "shims",
 ];
 
 /// An external dependency repository from the `dependencies` config key
@@ -54,6 +54,8 @@ struct GidgenConfig
   bool hasSuggest; /// True if `suggest` was set
   DependencyConfig[] dependencies; /// External dependency repositories
   string root; /// Root D package name of the modules of this repo (overrides the `//!info root` of the defs)
+  bool shims = true; /// Whether to write unversioned shim modules (overrides the global `//!info shims` command)
+  bool hasShims; /// True if `shims` was set
 }
 
 /// Flags that were explicitly present on the command line (used for config precedence).
@@ -367,6 +369,12 @@ private string loadConfigKey(string filename, string configDir, string key, JSON
         return "Key 'root' cannot be empty in '" ~ filename ~ "'";
 
       cfg.root = strVal;
+      break;
+    case "shims":
+      if ((err = jsonBool(val, key, filename, boolVal)) !is null)
+        return err;
+      cfg.shims = boolVal;
+      cfg.hasShims = true;
       break;
     case "dependencies":
       return loadDependencies(filename, configDir, val, cfg);
@@ -836,5 +844,31 @@ unittest // The root config key of the repo and of dependencies
     assert(cfg.root == "gid_apache");
     assert(cfg.dependencies[0].root == "gid");
     assert(cfg.dependencies[1].root.empty);
+  });
+}
+
+unittest // The shims config key
+{
+  inTempDir({
+    mkdir("defs");
+    GidgenConfig cfg;
+    assert(loadGidgenConfig(writeConfig("none.json", `{ "defs": "defs" }`), cfg) is null);
+    assert(!cfg.hasShims);
+    assert(cfg.shims);
+
+    cfg = GidgenConfig.init;
+    assert(loadGidgenConfig(writeConfig("on.json", `{ "defs": "defs", "shims": true }`), cfg) is null);
+    assert(cfg.hasShims);
+    assert(cfg.shims);
+
+    cfg = GidgenConfig.init;
+    assert(loadGidgenConfig(writeConfig("off.json", `{ "defs": "defs", "shims": false }`), cfg) is null);
+    assert(cfg.hasShims);
+    assert(!cfg.shims);
+
+    cfg = GidgenConfig.init;
+    auto err = loadGidgenConfig(writeConfig("bad.json", `{ "shims": "no" }`), cfg);
+    assert(err !is null);
+    assert(err.canFind("'shims'"));
   });
 }

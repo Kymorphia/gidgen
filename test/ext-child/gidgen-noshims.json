@@ -1,0 +1,2 @@
+{ "defs": "defs", "gir-path": ["gir", "../gir"], "pkg-path": "out-noshims", "subpkg-path": "out-noshims/packages",
+  "shims": false, "dependencies": [ { "defs": "../defs", "gir": "../gir" } ] }

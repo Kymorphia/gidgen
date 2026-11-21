@@ -65,7 +65,7 @@ EXT_OUT = ext-child/out
 
 .PHONY: ext-test
 ext-test: packages/README.md ext-child/gidgen.json ext-child/gir/ExtChild-1.0.gir $(wildcard ext-child/defs/*.d)
-	rm -rf $(EXT_OUT) ext-child/out-bad && mkdir -p $(EXT_OUT)/packages
+	rm -rf $(EXT_OUT) ext-child/out-bad ext-child/out-noshims && mkdir -p $(EXT_OUT)/packages
 	$(EXT_GIDGEN) --config ext-child/gidgen.json --log-level=error
 	test "$$(ls $(EXT_OUT)/packages | grep -v '^README.md$$')" = extchild1
 	grep -q '"gidg:glib2": "~>0.1.0"' $(EXT_OUT)/packages/extchild1/dub.json
@@ -78,6 +78,13 @@ ext-test: packages/README.md ext-child/gidgen.json ext-child/gir/ExtChild-1.0.gi
 	grep -q '^module gidgext.extchild1.thing;' $(EXT_OUT)/packages/extchild1/gidgext/extchild1/thing.d
 	grep -q 'import gid.gobject2.object;' $(EXT_OUT)/packages/extchild1/gidgext/extchild1/thing.d
 	grep -q '"sourcePaths": \["gidgext"\]' $(EXT_OUT)/packages/extchild1/dub.json
+	test -f $(EXT_OUT)/packages/extchild1/gidgext/extchild/thing.d
+	grep -q '^module gidgext.extchild.thing;' $(EXT_OUT)/packages/extchild1/gidgext/extchild/thing.d
+	grep -q 'public import gidgext.extchild1.thing;' $(EXT_OUT)/packages/extchild1/gidgext/extchild/thing.d
+	rm -rf ext-child/out-noshims && mkdir -p ext-child/out-noshims/packages
+	$(EXT_GIDGEN) --config ext-child/gidgen-noshims.json --log-level=error
+	test -f ext-child/out-noshims/packages/extchild1/gidgext/extchild1/thing.d
+	! test -e ext-child/out-noshims/packages/extchild1/gidgext/extchild
 	! $(EXT_GIDGEN) --config ext-child/gidgen-noname.json --log-level=error > ext-child/noname.err 2>&1
 	grep -q 'global //!info name is required' ext-child/noname.err
 	! $(EXT_GIDGEN) --config ext-child/gidgen-dup.json --log-level=error > ext-child/dup.err 2>&1
