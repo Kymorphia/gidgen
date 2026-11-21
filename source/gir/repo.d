@@ -55,6 +55,12 @@ final class Repo : Base
     return dubPackageName;
   }
 
+  /// true if this repo belongs to an external dependency (used for resolution only, never written)
+  @property bool external() const
+  {
+    return dependency !is null;
+  }
+
   override @property dstring dName()
   {
     return packageNamespace;
@@ -479,6 +485,10 @@ final class Repo : Base
    */
   void writePackage(string basePath = "packages")
   {
+    if (external)
+      throw new Exception("External package '" ~ dubPackageName.to!string ~ "' of dependency '"
+        ~ dependency.name ~ "' cannot be written");
+
     auto pkgName = (mergeRepo ? mergeRepo : this).dubPackageName.to!string; // Use the package of the merge namespace if merge specified
     auto packagePath = buildPath(basePath, pkgName);
     auto sourcePath = buildPath(packagePath, packageNamespace.to!string);
@@ -580,8 +590,9 @@ final class Repo : Base
     {
       auto deps = includeRepos.map!(x => x.mergeRepo ? x.mergeRepo : x).assocArray(true.repeat).keys; // Consider merge repos and deduplicate
       output ~= ",\n  \"dependencies\": {\n" ~ deps.map!(r => `    "`
-        ~ defs.dubInfo.get("name", ["gid"])[0].to!string ~ `:` // Construct package dependencies with any specified versions from `info` definition commands
-        ~ r.dubPackageName.to!string ~ `": "` ~ r.dubInfo.get("version", ["*"])[0].to!string
+        ~ (r.external ? r.dependency.name : defs.umbrellaName) ~ `:` // Package dependencies use the umbrella package of the repo (dependency or this one)
+        ~ r.dubPackageName.to!string ~ `": "`
+        ~ (r.external ? r.dependency.version_ : r.dubInfo.get("version", ["*"])[0].to!string) // Version from the dependency config or `info` definition commands
         ~ `"`).array.sort.join(",\n") ~ "\n  }";
     }
 
@@ -609,7 +620,8 @@ final class Repo : Base
     s ~= "|     |     |\n| --- | --- |\n"; // Not sure if headers are required, but it doesn't render in VSC preview otherwise
 
     auto info = [
-      ["Dub Package", "[gid:" ~ dubPackageName ~ "](https://code.dlang.org/packages/gid%3A" ~ dubPackageName ~ ")"],
+      ["Dub Package", "[" ~ defs.umbrellaName.to!dstring ~ ":" ~ dubPackageName ~ "](https://code.dlang.org/packages/"
+        ~ defs.umbrellaName.to!dstring ~ "%3A" ~ dubPackageName ~ ")"],
       ["Library Homepage", dubInfo.get("homepage", [null])[0]],
       ["D API Reference", dubInfo.get("docs", [null])[0]],
       ["C API Reference", dubInfo.get("capi", [null])[0]],
@@ -1350,6 +1362,8 @@ final class Repo : Base
     js["identifierPrefixes"] = identifierPrefixes;
     js["symbolPrefixes"] = symbolPrefixes;
     js["dubPackageName"] = dubPackageName;
+    if (external)
+      js["dependency"] = dependency.name;
     js["packageNamespace"] = packageNamespace;
     js.jsonSetNonDefault("aliases", aliases);
     js.jsonSetNonDefault("constants", constants);
@@ -1384,6 +1398,7 @@ final class Repo : Base
   dstring symbolPrefixes; /// C symbol prefix
 
   dstring dubPackageName; /// Dub package name
+  Dependency dependency; /// Dependency repository this repo belongs to (null for repos of the main defs)
   dstring packageNamespace; /// Namespace directory to use for dub package (usually just namespace.toLower)
 
   Alias[] aliases; /// Aliases

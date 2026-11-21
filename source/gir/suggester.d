@@ -57,7 +57,7 @@ class Suggester
 
   private void addSug(Repo repo, string name, string rule)
   {
-    if (rule !in blacklistRules)
+    if (rule !in blacklistRules && !repo.external) // No suggestions for dependency repos
       suggestions[repo][name] ~= rule;
   }
 

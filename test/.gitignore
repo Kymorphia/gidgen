@@ -13,3 +13,7 @@ matrix-gen/matrix-gen
 matrix-gen/.dub
 coverage
 test-defs/gidgenmatrix1.d
+ext-child/out
+ext-child/out-bad
+ext-child/*.err
+!ext-child/defs

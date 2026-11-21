@@ -57,7 +57,39 @@ class Defs : Base
   void loadDefFiles(string[] defPaths)
   {
     this.defPaths = defPaths;
+    loadDefPaths(defPaths);
+  }
 
+  /**
+   * Load the definition files of an external dependency repository. Its repos are marked external, they are used for
+   * type resolution, includes, and merges but are not written, and its global "//!info" values don't change the
+   * info of this repo. Global rules (substitutions, reserved words, patches) apply to all repos as they do in the
+   * dependency itself.
+   * Params:
+   *   dep = The dependency
+   */
+  void loadDependencyDefs(Dependency dep)
+  {
+    curDep = dep;
+    scope(exit) curDep = null;
+
+    loadDefPaths(dep.defPaths);
+
+    if (dep.name.empty)
+      dep.name = dep.dubInfo.get("name", [null])[0].to!string;
+
+    if (dep.name.empty)
+      throw new DependencyError("Dependency with defs '" ~ dep.defPaths.join(", ")
+        ~ "' has no name, specify \"name\" or add a global //!info name to its defs");
+
+    if (dependencies.canFind!(x => x.name == dep.name))
+      throw new DependencyError("Duplicate dependency name '" ~ dep.name ~ "'");
+
+    dependencies ~= dep;
+  }
+
+  private void loadDefPaths(string[] defPaths)
+  {
     string[] classFiles;
 
     foreach (path; defPaths)
@@ -153,7 +185,7 @@ class Defs : Base
 
     if (classSplitName.length > 1) // Is this a module definition file? Will have a dash separator between the package name and module name.
     {
-      auto findRepo = repos.find!(x => x.dubPackageName.to!string == pkgName);
+      auto findRepo = repos.find!(x => x.dubPackageName.to!string == pkgName && x.dependency is curDep);
       if (findRepo.empty) // No match to package name?
         throw new Exception("Module definition file '" ~ filename ~ "' has no matching package '"
           ~ classSplitName[0] ~ "'");
@@ -305,6 +337,7 @@ class Defs : Base
           break;
         case "gir":
           curRepo = new Repo(this, cmdTokens[1].to!string);
+          curRepo.dependency = curDep;
           curRepo.defsFilename = filename;
           curRepo.dubPackageName = pkgName.to!dstring; // From definition filename
           repos ~= curRepo;
@@ -313,6 +346,8 @@ class Defs : Base
         case "info":
           if (curRepo)
             curRepo.dubInfo[cmdTokens[1].to!string] ~= cmdTokens[2];
+          else if (curDep)
+            curDep.dubInfo[cmdTokens[1].to!string] ~= cmdTokens[2];
           else
             dubInfo[cmdTokens[1].to!string] ~= cmdTokens[2];
           break;
@@ -341,6 +376,7 @@ class Defs : Base
         case "namespace":
           curRepo = new Repo(this, null);
           curRepo.defsFilename = filename;
+          curRepo.dependency = curDep;
           curRepo.namespace = cmdTokens[1];
           curRepo.dubPackageName = pkgName.to!dstring; // From definition filename
           repos ~= curRepo;
@@ -382,6 +418,8 @@ class Defs : Base
   {
     uint patchErrors;
 
+    validateDependencies();
+
     repos = repos.sort!((x, y) => x.namespace < y.namespace).array;
 
     foreach (repo; repos)
@@ -389,11 +427,12 @@ class Defs : Base
       if (repo.filename.empty)
         continue;
 
-      auto repoPaths = girPaths.map!(path => buildPath(path, repo.filename ~ ".gir")).filter!(x => x.exists);
+      auto searchPaths = repo.external ? repo.dependency.girPaths : girPaths;
+      auto repoPaths = searchPaths.map!(path => buildPath(path, repo.filename ~ ".gir")).filter!(x => x.exists);
 
       if (repoPaths.empty)
         throw new Exception("Repository Gir file '" ~ repo.filename ~ "' not found (search paths = "
-          ~ girPaths.join(":") ~ ")");
+          ~ searchPaths.join(":") ~ ")" ~ (repo.external ? " for dependency '" ~ repo.dependency.name ~ "'" : ""));
 
       repo.filename = repoPaths.front;
 
@@ -449,10 +488,35 @@ class Defs : Base
     return true;
   }
 
+  /// Check that the umbrella dub package of this repo is distinct from those of its dependencies
+  private void validateDependencies()
+  {
+    if (dependencies.empty)
+      return;
+
+    auto name = dubInfo.get("name", [null])[0].to!string;
+
+    if (name.empty)
+      throw new DependencyError("A global //!info name is required in the defs when using dependencies");
+
+    foreach (dep; dependencies)
+      if (dep.name == name)
+        throw new DependencyError("The package name '" ~ name ~ "' is also the name of a dependency, change the //!info name");
+  }
+
   /// Ensure consistent state of repo data and fixup additional data (array parameter indexes, etc)
   private void fixupVerifyRepos()
   {
-    repoHash = repos.map!(x => tuple(NamespaceVersion(x.namespace, x.nsVersion), x)).assocArray;
+    foreach (repo; repos) // Duplicate namespaces would silently replace each other, which matters between a repo and its dependencies
+    {
+      auto nsVer = NamespaceVersion(repo.namespace, repo.nsVersion);
+
+      if (auto prev = nsVer in repoHash)
+        throw new DependencyError("Namespace " ~ nsVer.name.to!string ~ " version " ~ nsVer.version_.to!string
+          ~ " is defined by both '" ~ prev.defsFilename ~ "' and '" ~ repo.defsFilename ~ "'");
+
+      repoHash[nsVer] = repo;
+    }
 
     foreach (repo; repos) // Resolve include and merge repos
     {
@@ -472,12 +536,25 @@ class Defs : Base
           throw new Exception("Repo '" ~ repo.mergeNsVer.to!string ~ "' not found to merge '"
             ~ repo.dubPackageName.to!string ~ "' into");
 
+        if (repo.mergeRepo.external != repo.external) // Merging would write into or from a package which is not written by this repo
+          throw new DependencyError("Package '" ~ repo.dubPackageName.to!string ~ "' cannot be merged into '"
+            ~ repo.mergeRepo.dubPackageName.to!string ~ "' of " ~ (repo.mergeRepo.external ? "a dependency" : "the main repo"));
+
         repo.mergeRepo.mergedRepos ~= repo;
       }
     }
 
     foreach (repo; repos) // Fix-up repos
       repo.fixup;
+
+    foreach (repo; repos.filter!(x => x.external)) // Packages of this repo must not replace those of a dependency
+    {
+      auto clash = repos.find!(x => !x.external && x.dubPackageName == repo.dubPackageName);
+
+      if (!clash.empty)
+        throw new DependencyError("Package '" ~ clash.front.dubPackageName.to!string ~ "' ('" ~ clash.front.defsFilename
+          ~ "') has the same name as a package of dependency '" ~ repo.dependency.name ~ "'");
+    }
 
     // Keep trying to resolve types until there are no more or no progress is made
     while (true)
@@ -506,7 +583,7 @@ class Defs : Base
    */
   void writePackages(string pkgPath, string subPkgPath)
   {
-    foreach (repo; repos)
+    foreach (repo; repos.filter!(x => !x.external)) // External repos (dependencies) are not written
       repo.writePackage(subPkgPath);
 
     writeDubJsonFile(pkgPath, subPkgPath);
@@ -539,7 +616,7 @@ class Defs : Base
     output ~= `  "targetType": "none",` ~ "\n";
 	  output ~= `  "dependencies": {` ~ "\n";
 
-    auto sortedRepos = repos.filter!(x => !x.mergeRepo).map!(x => x.dubPackageName.to!string.toLower).array.sort;
+    auto sortedRepos = repos.filter!(x => !x.mergeRepo && !x.external).map!(x => x.dubPackageName.to!string.toLower).array.sort;
 
     output ~= sortedRepos.map!(x => `    ":` ~ x ~ `": "*"`).join(",\n");
     output ~= "\n  },\n";
@@ -566,10 +643,12 @@ class Defs : Base
     // Create a markdown table with info/links
     s ~= "| Library | Dub Package | D API | C API |\n| --- | --- | --- | --- |\n";
 
-    s ~= repos.filter!(x => x.name != "gid").map!(r => format("| %-80s | %-80s | %-80s | %-80s |\n"d,
+    auto umbrella = umbrellaName.to!dstring;
+
+    s ~= repos.filter!(x => x.name != "gid" && !x.external).map!(r => format("| %-80s | %-80s | %-80s | %-80s |\n"d,
       "homepage" in r.dubInfo ? ("[" ~ r.namespace ~ " " ~ r.nsVersion ~ "](" ~ r.dubInfo["homepage"][0] ~ ")")
       : r.namespace ~ " " ~ r.nsVersion,
-      "[gid:" ~ r.dubPackageName ~ "](https://code.dlang.org/packages/gid%3A" ~ r.dubPackageName ~ ")",
+      "[" ~ umbrella ~ ":" ~ r.dubPackageName ~ "](https://code.dlang.org/packages/" ~ umbrella ~ "%3A" ~ r.dubPackageName ~ ")",
       "docs" in r.dubInfo ? ("[D API](" ~ r.dubInfo["docs"][0] ~ ")") : "",
       "capi" in r.dubInfo ? ("[C API](" ~ r.dubInfo["capi"][0] ~ ")") : "",
     )).join ~ "\n";
@@ -612,13 +691,21 @@ class Defs : Base
     return js;
   }
 
+  /// Dub umbrella package name of this repo
+  @property string umbrellaName()
+  {
+    return dubInfo.get("name", ["gid"])[0].to!string;
+  }
+
   string[] defPaths; /// Paths that definition files were loaded from
   bool[dstring] reservedWords; /// Reserved words (_ appended)
   dstring[dstring] cTypeSubs; /// Global C type substitutions
   dstring[dstring] dTypeSubs; /// Global D type substitutions
   dstring[][string] dubInfo; /// Dub JSON file info (name, description, copyright, authors, license, homepage, docs), only "authors" uses multiple values, docs is a URL for D API docs used in generated README.md files only
   XmlPatch[] patches; /// Global XML patches specified in definitions file
-  Repo[] repos; /// Gir repositories
+  Repo[] repos; /// Gir repositories (including those of dependencies, which are marked external)
+  Dependency[] dependencies; /// External dependency repositories
+  private Dependency curDep; /// Dependency whose defs are being loaded or null for this repo
   Repo[NamespaceVersion] repoHash; /// Hash of repositories by namespace name and version
   TypeNode[dstring] cSymbolHash; /// Hash of all C symbols across all repos
   UnresolvedFlags[TypeNode] unresolvedTypes; /// TypeNode objects which have an unresolved type (for recursive type resolution)
@@ -661,6 +748,25 @@ struct DefCmd
   int argCount;
   BitFlags!DefCmdFlags flags;
   string help;
+}
+
+/// Exception for invalid external dependency repository configurations (reported by gidgen without a stack trace)
+class DependencyError : Exception
+{
+  this(string msg, string file = __FILE__, size_t line = __LINE__)
+  {
+    super(msg, file, line);
+  }
+}
+
+/// External dependency repository (such as the main giD repository), loaded for type resolution only and not written
+final class Dependency
+{
+  string name; /// Dub umbrella package name (from the configuration or the dependency defs "//!info name")
+  string version_ = "*"; /// Dub version constraint used for dependencies on its packages
+  string[] defPaths; /// Definition file or directory paths of the dependency
+  string[] girPaths; /// GIR search paths of the dependency
+  dstring[][string] dubInfo; /// Global dub info (//!info with no repo) of the dependency defs
 }
 
 /// Display binding definition file help

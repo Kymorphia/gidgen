@@ -12,7 +12,8 @@
 # GLib critical warnings are made fatal (G_DEBUG=fatal-criticals) so that they fail the tests.
 #
 # Targets:
-#   run-test          Build and run the unittests
+#   run-test          Build and run the unittests and the external dependency repository test (ext-test)
+#   ext-test          Test generating a child repository which depends on another repository (ext-child/)
 #   run-test-valgrind Run the unittests under valgrind memcheck (memory errors and definite leaks)
 #   run-test-asan     Run the unittests with the C test libraries built with AddressSanitizer (memory errors)
 #   coverage          Build gidgen with coverage instrumentation, run it on the test GIRs and print a per source file
@@ -46,12 +47,41 @@ COV_BIN = coverage/gidgen-cov
 GLIB_SUPP = $(shell pkg-config --variable=prefix glib-2.0)/share/glib-2.0/valgrind/glib.supp
 
 .PHONY: run-test
-run-test: build-test
+run-test: build-test ext-test
 	cd gidgen-test && LD_LIBRARY_PATH="$$(pwd)" G_DEBUG=fatal-criticals ./$(notdir $(TEST_BIN))
 
 .PHONY: build-test
 build-test: packages/README.md $(LIBS) $(MATRIX_MANIFEST)
 	cd gidgen-test && $(DUB) build -q --compiler=$(DC) --build=unittest
+
+# External dependency repository test: ext-child/ is a tiny child repository (a stub GIR including GObject) which
+# depends on the packages, defs and GIRs of the gidgen test repository (above) through the dependencies config of
+# ext-child/gidgen.json. Checks that only the child's package is written, the child's top-level dub.json only lists
+# it, dependencies on the other repository use its umbrella name and the configured version, and that invalid
+# configurations are rejected. The child package is then built against the generated test packages, which are
+# temporarily registered as a local dub package.
+EXT_GIDGEN = $(DUB) --root .. run -q --compiler=$(DC) gidgen --
+EXT_OUT = ext-child/out
+
+.PHONY: ext-test
+ext-test: packages/README.md ext-child/gidgen.json ext-child/gir/ExtChild-1.0.gir $(wildcard ext-child/defs/*.d)
+	rm -rf $(EXT_OUT) ext-child/out-bad && mkdir -p $(EXT_OUT)/packages
+	$(EXT_GIDGEN) --config ext-child/gidgen.json --log-level=error
+	test "$$(ls $(EXT_OUT)/packages | grep -v '^README.md$$')" = extchild1
+	grep -q '"gidg:glib2": "~>0.1.0"' $(EXT_OUT)/packages/extchild1/dub.json
+	! grep -q '"gidg:glib2": "\*"\|"gidgext:' $(EXT_OUT)/packages/extchild1/dub.json
+	grep -q '"name": "gidgext"' $(EXT_OUT)/dub.json
+	grep -q '":extchild1": "\*"' $(EXT_OUT)/dub.json
+	! grep -q 'glib2\|gobject2\|gidgenfeat' $(EXT_OUT)/dub.json $(EXT_OUT)/packages/README.md
+	grep -q 'gidgext:extchild1' $(EXT_OUT)/packages/README.md
+	! $(EXT_GIDGEN) --config ext-child/gidgen-noname.json --log-level=error > ext-child/noname.err 2>&1
+	grep -q 'global //!info name is required' ext-child/noname.err
+	! $(EXT_GIDGEN) --config ext-child/gidgen-dup.json --log-level=error > ext-child/dup.err 2>&1
+	grep -q 'is defined by both' ext-child/dup.err
+	test ! -e ext-child/out-bad
+	$(DUB) add-local . 0.1.0 > /dev/null; status=0; \
+	  (cd $(EXT_OUT)/packages/extchild1 && $(DUB) build -q --compiler=$(DC) --build=debug) || status=$$?; \
+	  $(DUB) remove-local . > /dev/null; exit $$status
 
 .PHONY: run-test-valgrind
 run-test-valgrind: build-test
@@ -133,4 +163,4 @@ $(COV_BIN): $(GIDGEN_SOURCES)
 .PHONY: clean
 clean:
 	-rm -f gidgen-test/libgidgen-*.so* $(TEST_BIN) $(GIRS) $(MATRIX_GEN) $(MATRIX_GEN_C) $(MATRIX_MANIFEST) $(MATRIX_DEFS)
-	-rm -rf packages defs coverage matrix-gen/.dub
+	-rm -rf packages defs coverage matrix-gen/.dub ext-child/out ext-child/out-bad ext-child/*.err

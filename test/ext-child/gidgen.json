@@ -1,0 +1,9 @@
+{
+  "defs": "defs",
+  "gir-path": "gir",
+  "pkg-path": "out",
+  "subpkg-path": "out/packages",
+  "dependencies": [
+    { "defs": "../defs", "gir": "../gir", "version": "~>0.1.0" }
+  ]
+}

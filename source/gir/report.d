@@ -16,7 +16,7 @@ class Report
 {
   this(Defs defs)
   {
-    foreach (repo; defs.repos)
+    foreach (repo; defs.repos.filter!(x => !x.external)) // Only report on repos of the main defs, not dependencies
     {
       auto report = RepoReport(repo);
 

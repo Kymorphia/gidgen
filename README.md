@@ -119,7 +119,45 @@ flags accept a string or an array of strings):
 * **report**, **report-file**, **report-options**
 * **log-level**, **log-gir-locs**, **log-code-locs**, **suggest**
 
-An unknown key is an error. The **dependencies** key is reserved for a future release and is currently ignored.
+An unknown key is an error. The **dependencies** key is described below.
+
+### External Dependency Repositories
+
+A binding repository can depend on the packages of another giD repository, for example a **gid_apache** repository of the
+Apache Arrow and Parquet bindings which uses the glib2, gio2, etc. packages of the main giD repository instead of
+containing them. The **dependencies** key in the config file lists the other repositories:
+
+```json
+{
+  "dependencies": [
+    { "name": "gid", "defs": "gid/defs", "gir": "gid/gir", "version": "~>0.9.15" }
+  ]
+}
+```
+
+* **name**: Dub package name of the dependency's top-level package. Optional, defaults to the global `//!info name` of its defs.
+* **defs**: Definition file or directory path (string or array of strings). Required.
+* **gir**: Directory to search for the GIR files of the dependency (string or array of strings). Required.
+* **version**: Dub version constraint used in package dependencies (defaults to `*`).
+
+Relative paths are resolved relative to the config file's directory.
+
+The definition files and GIRs of the dependency are loaded so that types, GIR includes, and `//!merge` commands resolve
+exactly as they do in the dependency repository, but its packages are *external*:
+they are not written, are not listed in the top-level dub.json, are left out of the README.md and the `--report`, and package dependencies on them are written
+as `"gid:glib2": "~>0.9.15"` (dependency name and version) rather than with the name of the repository being generated.
+The packages of the repository itself keep its own top-level name (for example `"gid_apache:arrow19"`).
+
+Notes and restrictions:
+
+* The repository's defs need a global `//!info name` (and description, etc.) which is different from the dependency names.
+  The global `//!info` values of the dependency are not used for the repository.
+* Global rules in the dependency defs (reserved words, type substitutions, XML patches) apply to the whole run, so the repository's defs
+  should only add rules for its own packages.
+* The dependency defs must not define a namespace or package name which the repository also defines (this is an error),
+  nor may a package of one be merged into a package of the other.
+* All defs of the dependency and the GIRs they name are loaded, even those which the repository does not use.
+* The dependencies are only configurable in the config file, there is no command line form.
 
 ```json
 {

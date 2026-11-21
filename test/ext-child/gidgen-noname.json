@@ -1,0 +1,2 @@
+{ "defs": "bad-defs/noname", "gir-path": "gir", "pkg-path": "out-bad", "subpkg-path": "out-bad/packages",
+  "dependencies": [ { "defs": "../defs", "gir": "../gir" } ] }

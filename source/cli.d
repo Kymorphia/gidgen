@@ -15,11 +15,20 @@ enum DefaultPkgPath = "."; /// Default top-level package output path
 enum DefaultSubPkgPath = "packages"; /// Default subpackage output path
 enum DefaultConfigName = "gidgen.json"; /// Default config file name looked up in the current directory
 
-/// Known gidgen.json keys. `dependencies` is reserved for a future release and otherwise ignored.
+/// Known gidgen.json keys
 enum string[] KnownConfigKeys = [
   "defs", "gir-path", "pkg-path", "subpkg-path", "report", "report-file", "report-options",
   "log-level", "log-gir-locs", "log-code-locs", "suggest", "dependencies",
 ];
+
+/// An external dependency repository from the `dependencies` config key
+struct DependencyConfig
+{
+  string name; /// Dub umbrella package name, empty to use the global //!info name of the dependency defs
+  string version_ = "*"; /// Dub version constraint for dependencies on its packages
+  string[] defPaths; /// Definition file or directory paths of the dependency
+  string[] girPaths; /// GIR search paths of the dependency
+}
 
 /// Options loaded from a gidgen.json file. Path values are stored as absolute, normalized paths.
 struct GidgenConfig
@@ -42,6 +51,7 @@ struct GidgenConfig
   bool hasLogCodeLocs; /// True if `log-code-locs` was set
   bool suggest; /// Output definition file command suggestions
   bool hasSuggest; /// True if `suggest` was set
+  DependencyConfig[] dependencies; /// External dependency repositories
 }
 
 /// Flags that were explicitly present on the command line (used for config precedence).
@@ -349,9 +359,84 @@ private string loadConfigKey(string filename, string configDir, string key, JSON
       cfg.hasSuggest = true;
       break;
     case "dependencies":
-      break; // Reserved for a later release; accepted so configs can already include it
+      return loadDependencies(filename, configDir, val, cfg);
     default:
       assert(0);
+  }
+
+  return null;
+}
+
+private string loadDependencies(string filename, string configDir, JSONValue val, ref GidgenConfig cfg)
+{
+  if (val.type != JSONType.array)
+    return "Key 'dependencies' in '" ~ filename ~ "' must be an array of objects";
+
+  foreach (i, depVal; val.array)
+  {
+    auto where = "dependencies[" ~ i.to!string ~ "] in '" ~ filename ~ "'";
+
+    if (depVal.type != JSONType.object)
+      return "Entry " ~ where ~ " must be an object";
+
+    DependencyConfig dep;
+    bool hasDefs, hasGir;
+    string err;
+    string strVal;
+    string[] arrVal;
+
+    foreach (string key, v; depVal.object)
+    {
+      switch (key)
+      {
+        case "name":
+          if ((err = jsonString(v, key, where, strVal)) !is null)
+            return err;
+          dep.name = strVal;
+          break;
+        case "version":
+          if ((err = jsonString(v, key, where, strVal)) !is null)
+            return err;
+          dep.version_ = strVal;
+          break;
+        case "defs":
+          if ((err = jsonStringOrArray(v, key, where, arrVal)) !is null)
+            return err;
+          dep.defPaths = resolveConfigPaths(arrVal, configDir);
+          hasDefs = true;
+          break;
+        case "gir":
+          if ((err = jsonStringOrArray(v, key, where, arrVal)) !is null)
+            return err;
+          dep.girPaths = resolveConfigPaths(arrVal, configDir);
+          hasGir = true;
+          break;
+        default:
+          return "Unknown key '" ~ key ~ "' in " ~ where;
+      }
+    }
+
+    if (!hasDefs || dep.defPaths.empty)
+      return "Key 'defs' is required in " ~ where;
+
+    if (!hasGir || dep.girPaths.empty)
+      return "Key 'gir' is required in " ~ where;
+
+    foreach (path; dep.defPaths)
+      if (!path.exists)
+        return "Dependency defs path '" ~ path ~ "' does not exist in " ~ where;
+
+    foreach (path; dep.girPaths)
+      if (!path.exists || !path.isDir)
+        return "Dependency gir path '" ~ path ~ "' is not a directory in " ~ where;
+
+    if (dep.version_.empty)
+      return "Key 'version' cannot be empty in " ~ where;
+
+    if (dep.name && cfg.dependencies.canFind!(x => x.name == dep.name))
+      return "Duplicate dependency name '" ~ dep.name ~ "' in " ~ where;
+
+    cfg.dependencies ~= dep;
   }
 
   return null;
@@ -557,7 +642,7 @@ unittest // Absolute paths in the config are left absolute
   });
 }
 
-unittest // Unknown keys are an error; dependencies is reserved and accepted
+unittest // Unknown keys are an error
 {
   inTempDir({
     auto unknown = writeConfig("bad.json", `{ "foo": true }`);
@@ -565,12 +650,6 @@ unittest // Unknown keys are an error; dependencies is reserved and accepted
     auto err = loadGidgenConfig(unknown, cfg);
     assert(err !is null);
     assert(err.canFind("Unknown key 'foo'"));
-
-    auto reserved = writeConfig("ok.json", `{ "dependencies": [ { "name": "gid" } ], "report": true }`);
-    cfg = GidgenConfig.init;
-    assert(loadGidgenConfig(reserved, cfg) is null);
-    assert(cfg.hasReport);
-    assert(cfg.report);
   });
 }
 
@@ -666,4 +745,55 @@ unittest // cliOptionGiven recognizes long, short, and equals forms without pref
   assert(cliOptionGiven(["gidgen", "-d", "foo"], "defs", "d"));
   assert(cliOptionGiven(["gidgen", "-dfoo"], "defs", "d"));
   assert(!cliOptionGiven(["gidgen", "--defs", "foo"], "config"));
+}
+
+unittest // Dependencies config: relative paths, string or array gir, optional name, default version
+{
+  inTempDir({
+    mkdir("depdefs");
+    mkdir("depgir");
+    mkdir("depgir2");
+    auto file = writeConfig("gidgen.json", `{ "dependencies": [`
+        ~ ` { "name": "gid", "defs": "depdefs", "gir": ["depgir", "depgir2"], "version": "~>0.9.15" },`
+        ~ ` { "defs": ["depdefs"], "gir": "depgir" } ] }`);
+
+    GidgenConfig cfg;
+    assert(loadGidgenConfig(file, cfg) is null);
+    assert(cfg.dependencies.length == 2);
+    assert(cfg.dependencies[0].name == "gid");
+    assert(cfg.dependencies[0].version_ == "~>0.9.15");
+    assert(cfg.dependencies[0].defPaths == [normPath("depdefs")]);
+    assert(cfg.dependencies[0].girPaths == [normPath("depgir"), normPath("depgir2")]);
+    assert(cfg.dependencies[1].name.empty);
+    assert(cfg.dependencies[1].version_ == "*");
+    assert(cfg.dependencies[1].girPaths == [normPath("depgir")]);
+  });
+}
+
+unittest // Dependencies config validation errors
+{
+  inTempDir({
+    mkdir("d");
+    mkdir("g");
+    GidgenConfig cfg;
+
+    void check(string json, string expected)
+    {
+      cfg = GidgenConfig.init;
+      auto err = loadGidgenConfig(writeConfig("bad.json", json), cfg);
+      assert(err !is null, json);
+      assert(err.canFind(expected), err);
+    }
+
+    check(`{ "dependencies": {} }`, "must be an array");
+    check(`{ "dependencies": [ 1 ] }`, "must be an object");
+    check(`{ "dependencies": [ { "gir": "g" } ] }`, "'defs' is required");
+    check(`{ "dependencies": [ { "defs": "d" } ] }`, "'gir' is required");
+    check(`{ "dependencies": [ { "defs": "d", "gir": "g", "foo": 1 } ] }`, "Unknown key 'foo'");
+    check(`{ "dependencies": [ { "defs": "nope", "gir": "g" } ] }`, "defs path");
+    check(`{ "dependencies": [ { "defs": "d", "gir": "nope" } ] }`, "gir path");
+    check(`{ "dependencies": [ { "defs": "d", "gir": "g", "version": "" } ] }`, "'version' cannot be empty");
+    check(`{ "dependencies": [ { "name": "a", "defs": "d", "gir": "g" }, { "name": "a", "defs": "d", "gir": "g" } ] }`,
+        "Duplicate dependency");
+  });
 }

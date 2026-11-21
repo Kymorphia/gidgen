@@ -1,0 +1,69 @@
+<?xml version="1.0"?>
+<!-- Hand written stub GIR (no C library), for the gidgen external dependency test -->
+<repository version="1.2"
+            xmlns="http://www.gtk.org/introspection/core/1.0"
+            xmlns:c="http://www.gtk.org/introspection/c/1.0"
+            xmlns:glib="http://www.gtk.org/introspection/glib/1.0">
+  <include name="GObject" version="2.0"/>
+  <package name="gobject-2.0"/>
+  <c:include name="ext-child.h"/>
+  <namespace name="ExtChild"
+             version="1.0"
+             shared-library="libext-child.so.0"
+             c:identifier-prefixes="ExtChild"
+             c:symbol-prefixes="ext_child">
+    <class name="Thing"
+           c:symbol-prefix="thing"
+           c:type="ExtChildThing"
+           parent="GObject.Object"
+           glib:type-name="ExtChildThing"
+           glib:get-type="ext_child_thing_get_type"
+           glib:type-struct="ThingClass">
+      <constructor name="new" c:identifier="ext_child_thing_new">
+        <return-value transfer-ownership="full">
+          <type name="Thing" c:type="ExtChildThing*"/>
+        </return-value>
+      </constructor>
+      <method name="get_name" c:identifier="ext_child_thing_get_name">
+        <return-value transfer-ownership="none">
+          <type name="utf8" c:type="const gchar*"/>
+        </return-value>
+        <parameters>
+          <instance-parameter name="self" transfer-ownership="none">
+            <type name="Thing" c:type="ExtChildThing*"/>
+          </instance-parameter>
+        </parameters>
+      </method>
+      <method name="get_variant" c:identifier="ext_child_thing_get_variant">
+        <return-value transfer-ownership="full">
+          <type name="GLib.Variant" c:type="GVariant*"/>
+        </return-value>
+        <parameters>
+          <instance-parameter name="self" transfer-ownership="none">
+            <type name="Thing" c:type="ExtChildThing*"/>
+          </instance-parameter>
+        </parameters>
+      </method>
+      <method name="set_value" c:identifier="ext_child_thing_set_value">
+        <return-value transfer-ownership="none">
+          <type name="none" c:type="void"/>
+        </return-value>
+        <parameters>
+          <instance-parameter name="self" transfer-ownership="none">
+            <type name="Thing" c:type="ExtChildThing*"/>
+          </instance-parameter>
+          <parameter name="value" transfer-ownership="none">
+            <type name="GObject.Value" c:type="const GValue*"/>
+          </parameter>
+        </parameters>
+      </method>
+    </class>
+    <record name="ThingClass"
+            c:type="ExtChildThingClass"
+            glib:is-gtype-struct-for="Thing">
+      <field name="parent_class">
+        <type name="GObject.ObjectClass" c:type="GObjectClass"/>
+      </field>
+    </record>
+  </namespace>
+</repository>

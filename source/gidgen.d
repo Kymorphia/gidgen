@@ -40,6 +40,7 @@ int main(string[] args)
   bool dumpJsonWithDocs;
   bool suggest;
   string configOption;
+  DependencyConfig[] dependencies;
   auto origArgs = args.dup;
 
   try
@@ -127,6 +128,8 @@ int main(string[] args)
       return 1;
     }
 
+    dependencies = cfg.dependencies;
+
     applyGidgenConfig(cfg, cliFlagsFromArgs(origArgs), defPaths, girPaths, pkgPath, subPkgPath, enableReport,
         reportFile, reportOptions, logLevel, Repo.logGirLoc, Repo.logCodeLoc, suggest);
   }
@@ -174,9 +177,29 @@ int main(string[] args)
   }
 
   auto defs = new Defs();
-  defs.loadDefFiles(defPaths);
-  if (!defs.loadRepos(girPaths))
+
+  try
+  {
+    defs.loadDefFiles(defPaths);
+
+    foreach (depCfg; dependencies)
+    {
+      auto dep = new Dependency;
+      dep.name = depCfg.name;
+      dep.version_ = depCfg.version_;
+      dep.defPaths = depCfg.defPaths;
+      dep.girPaths = depCfg.girPaths;
+      defs.loadDependencyDefs(dep);
+    }
+
+    if (!defs.loadRepos(girPaths))
+      return 1;
+  }
+  catch (DependencyError e)
+  {
+    error(e.msg);
     return 1;
+  }
 
   if (dumpJson || dumpJsonWithDocs)
   {
