@@ -1,5 +1,6 @@
 <?xml version="1.0"?>
 <!-- Hand written stub GIR (no C library), for unversioned shim module tests -->
+<!-- Both majors use the same C symbol names, as GTK 3 and GTK 4 do, to test that they can be linked together -->
 <repository version="1.2"
             xmlns="http://www.gtk.org/introspection/core/1.0"
             xmlns:c="http://www.gtk.org/introspection/c/1.0"
@@ -14,14 +15,14 @@
              c:symbol-prefixes="shim_lib">
     <class name="Widget"
            c:symbol-prefix="widget"
-           c:type="ShimLib1Widget"
+           c:type="ShimLibWidget"
            parent="GObject.Object"
-           glib:type-name="ShimLib1Widget"
-           glib:get-type="shim_lib1_widget_get_type"
+           glib:type-name="ShimLibWidget"
+           glib:get-type="shim_lib_widget_get_type"
            glib:type-struct="WidgetClass">
     </class>
     <record name="WidgetClass"
-            c:type="ShimLib1WidgetClass"
+            c:type="ShimLibWidgetClass"
             glib:is-gtype-struct-for="Widget">
       <field name="parent_class">
         <type name="GObject.ObjectClass" c:type="GObjectClass"/>

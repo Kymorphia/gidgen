@@ -795,19 +795,27 @@ final class Repo : Base
 
     writeSharedLibs(writer);
 
-    writer ~= ["__gshared extern(C) nothrow", "{"];
+    // The c_* variables have D linkage so two majors of a library (gtk3 and gtk4) can be linked together.
+    // Their types stay extern(C) nothrow. The source names (c_* and the plain C-name aliases) are unchanged.
+    void writeCFnPtr(dstring proto, dstring cName, ref dstring[] preamble)
+    {
+      writer ~= preamble ~ [
+        "private alias c_" ~ cName ~ "Fn = extern(C) " ~ proto ~ " nothrow;",
+        "__gshared c_" ~ cName ~ "Fn c_" ~ cName ~ "; ///" // Comment so that adrdox includes function in API docs
+      ];
+      preamble = null;
+    }
 
     foreach (st; structs)
     {
       auto preamble = ["", "// " ~ st.dType];
 
-      if (writer.lastLine == "{")
+      if (writer.lastLine == "")
         preamble = preamble[1 .. $];
 
       if (!st.glibGetType.empty)
       { // Write GType function if set
-        writer ~= preamble ~ ["GType function() c_" ~ st.glibGetType ~ "; ///"]; // Add comment so that adrdox includes function in API docs
-        preamble = null;
+        writeCFnPtr("GType function()", st.glibGetType, preamble);
       }
 
       foreach (f; st.functions)
@@ -815,8 +823,7 @@ final class Repo : Base
         if (f.movedTo || !f.funcType.among(FuncType.Function, FuncType.Constructor, FuncType.Method))
           continue;
 
-        writer ~= preamble ~ [f.getCPrototype ~ " c_" ~ f.cName ~ "; ///"]; // Add comment so that adrdox includes function in API docs
-        preamble = null;
+        writeCFnPtr(f.getCPrototype, f.cName, preamble);
       }
     }
 
@@ -824,7 +831,7 @@ final class Repo : Base
     {
       auto preamble = ["", "// " ~ en.dType];
 
-      if (writer.lastLine == "{")
+      if (writer.lastLine == "")
         preamble = preamble[1 .. $];
 
       foreach (f; en.functions)
@@ -832,12 +839,9 @@ final class Repo : Base
         if (f.movedTo || f.funcType != FuncType.Function)
           continue;
 
-        writer ~= preamble ~ [f.getCPrototype ~ " c_" ~ f.cName ~ "; ///"]; // Add comment so that adrdox includes function in API docs
-        preamble = null;
+        writeCFnPtr(f.getCPrototype, f.cName, preamble);
       }
     }
-
-    writer ~= ["}"];
 
     foreach (st; structs)
     {
