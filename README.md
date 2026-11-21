@@ -67,10 +67,10 @@ Command line help reference is produced with the `--help` command argument:
 ```sh
 ./gidgen --help
 GObject Introspection Dlang binding generator
--d           --defs Add a path to a directory of binding definition files or a single file (one or more required)
--g       --gir-path Add a path to search for GIR files (one or more required)
--p       --pkg-path Top-level package binding output path (required)
--s    --subpkg-path Subpackage path to write individual library packages to (required)
+-d           --defs Add a path to a directory of binding definition files or a single file (default: defs/)
+-g       --gir-path Add a path to search for GIR files (default: gir/ if present, otherwise /usr/share/gir-1.0)
+-p       --pkg-path Top-level package binding output path (default: .)
+-s    --subpkg-path Subpackage path to write individual library packages to (default: packages/)
          --def-help Display binding definition file command help
         --log-level Log level (all, trace, info, warning, error, critical, fatal, off)
      --log-gir-locs Log GIR file locations in warnings
@@ -93,8 +93,12 @@ GObject Introspection Dlang binding generator
 
 These are basic commands which are used for general use cases.
 
-* **-d, --defs**: Add a path to a directory of giD binding definition files or a single file. Option is required and can be specified multiple times.
-* **-g, --gir-path**: Add a path to the GIR search path. This option is required and can be specified multiple times.
+* **-d, --defs**: Add a path to a directory of giD binding definition files or a single file. Can be specified multiple times.
+  Defaults to **defs/** if that directory exists.
+* **-g, --gir-path**: Add a path to the GIR search path. Can be specified multiple times.
+  Defaults to **gir/** if that directory exists, otherwise **/usr/share/gir-1.0**.
+* **-p, --pkg-path**: Top-level package binding output path. Defaults to the current directory (**.**).
+* **-s, --subpkg-path**: Subpackage path to write individual library packages to. Defaults to **packages/**.
 * **--log-level**: Set the output log level. Can be one of: all, trace, info, warning, error, critical, fatal, or off.
   The default value is **warning**. A value of **info** can be used to display useful information about automatic binding decisions,
   which are potentially problematic.

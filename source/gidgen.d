@@ -6,6 +6,7 @@ import std.getopt;
 import std.path : absolutePath, asNormalizedPath;
 import std.stdio : writeln;
 
+import cli;
 import code_traps;
 import code_writer;
 import defs;
@@ -43,10 +44,10 @@ int main(string[] args)
   {
     auto helpInformation = getopt(
         args,
-        "d|defs", "Add a path to a directory of binding definition files or a single file (one or more required)", &defPaths,
-        "g|gir-path", "Add a path to search for GIR files (one or more required)", &girPaths,
-        "p|pkg-path", "Top-level package binding output path (required)", &pkgPath,
-        "s|subpkg-path", "Subpackage path to write individual library packages to (required)", &subPkgPath,
+        "d|defs", "Add a path to a directory of binding definition files or a single file (default: " ~ DefaultDefsPath ~ "/)", &defPaths,
+        "g|gir-path", "Add a path to search for GIR files (default: " ~ DefaultGirDir ~ "/ if present, otherwise " ~ DefaultGirPath ~ ")", &girPaths,
+        "p|pkg-path", "Top-level package binding output path (default: " ~ DefaultPkgPath ~ ")", &pkgPath,
+        "s|subpkg-path", "Subpackage path to write individual library packages to (default: " ~ DefaultSubPkgPath ~ "/)", &subPkgPath,
         "def-help", "Display binding definition file command help", &defHelp,
         "log-level", "Log level (" ~ [EnumMembers!LogLevel].map!(x => x.to!string).join(", ") ~ ")", &logLevel,
         "log-gir-locs", "Log GIR file locations in warnings", &Repo.logGirLoc,
@@ -106,21 +107,9 @@ int main(string[] args)
     return 1;
   }
 
-  if (girPaths.empty)
+  if (auto err = applyPathDefaults(defPaths, girPaths, pkgPath, subPkgPath))
   {
-    error("At least one --gir-path (-g) option is required");
-    return 1;
-  }
-
-  if (!pkgPath)
-  {
-    error("A package output path must be specified with --pkg-path (-p)");
-    return 1;
-  }
-
-  if (!subPkgPath)
-  {
-    error("A sub-package output path must be specified with --subpkg-path (-s)");
+    error(err);
     return 1;
   }
 
