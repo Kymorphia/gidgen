@@ -1,13 +1,13 @@
 /// GidgenFeat interface tests (interface prerequisites, interface signals)
 module feat_iface;
 
-import gidgenfeat.child_iface;
-import gidgenfeat.child_iface_iface_proxy : ChildIfaceIfaceProxy;
-import gidgenfeat.child_object;
-import gidgenfeat.global : liveCount, newHiddenChild;
-import gidgenfeat.iface;
-import gidgenfeat.object : FeatObject = ObjectWrap;
-import gidgenfeat.types : Counter;
+import gid.gidgenfeat1.child_iface;
+import gid.gidgenfeat1.child_iface_iface_proxy : ChildIfaceIfaceProxy;
+import gid.gidgenfeat1.child_object;
+import gid.gidgenfeat1.global : liveCount, newHiddenChild;
+import gid.gidgenfeat1.iface;
+import gid.gidgenfeat1.object : FeatObject = ObjectWrap;
+import gid.gidgenfeat1.types : Counter;
 import std.typecons : Yes;
 
 /// Interface derives from its prerequisite interface (class prerequisites are skipped)

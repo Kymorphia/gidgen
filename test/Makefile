@@ -74,10 +74,18 @@ ext-test: packages/README.md ext-child/gidgen.json ext-child/gir/ExtChild-1.0.gi
 	grep -q '":extchild1": "\*"' $(EXT_OUT)/dub.json
 	! grep -q 'glib2\|gobject2\|gidgenfeat' $(EXT_OUT)/dub.json $(EXT_OUT)/packages/README.md
 	grep -q 'gidgext:extchild1' $(EXT_OUT)/packages/README.md
+	test -f $(EXT_OUT)/packages/extchild1/gidgext/extchild1/thing.d
+	grep -q '^module gidgext.extchild1.thing;' $(EXT_OUT)/packages/extchild1/gidgext/extchild1/thing.d
+	grep -q 'import gid.gobject2.object;' $(EXT_OUT)/packages/extchild1/gidgext/extchild1/thing.d
+	grep -q '"sourcePaths": \["gidgext"\]' $(EXT_OUT)/packages/extchild1/dub.json
 	! $(EXT_GIDGEN) --config ext-child/gidgen-noname.json --log-level=error > ext-child/noname.err 2>&1
 	grep -q 'global //!info name is required' ext-child/noname.err
 	! $(EXT_GIDGEN) --config ext-child/gidgen-dup.json --log-level=error > ext-child/dup.err 2>&1
 	grep -q 'is defined by both' ext-child/dup.err
+	! $(EXT_GIDGEN) --config ext-child/gidgen-badroot.json --log-level=error > ext-child/badroot.err 2>&1
+	grep -q "can't be 'gid'" ext-child/badroot.err
+	! $(EXT_GIDGEN) --config ext-child/gidgen-baddeproot.json --log-level=error > ext-child/baddeproot.err 2>&1
+	grep -q "root of dependency 'gidg' must be 'gid'" ext-child/baddeproot.err
 	test ! -e ext-child/out-bad
 	$(DUB) add-local . 0.1.0 > /dev/null; status=0; \
 	  (cd $(EXT_OUT)/packages/extchild1 && $(DUB) build -q --compiler=$(DC) --build=debug) || status=$$?; \

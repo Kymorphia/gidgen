@@ -145,8 +145,8 @@ final class Enumeration : TypeNode
 
     if (!errorQuarks.empty)
     {
-      importManager.add("glib.types");
-      importManager.add("glib.error");
+      importManager.add("gid.glib2.types");
+      importManager.add("gid.glib2.error");
     }
 
     auto importLine = writer.length; // Save position where imports should go, which are inserted later, to gather all dependencies

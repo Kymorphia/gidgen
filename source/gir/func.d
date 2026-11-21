@@ -175,11 +175,11 @@ final class Func : TypeNode
     return st && st.kind != TypeKind.Namespace ? st : cast(Structure)mapParam.typeObject;
   }
 
-  /// Get the gid.wrap.MapScope template instance type of a map function (see unmapFunc)
+  /// Get the gid.core.wrap.MapScope template instance type of a map function (see unmapFunc)
   dstring mapScopeTemplate()
   {
     auto source = mapSource;
-    return "gid.wrap.MapScope!(" ~ mapParam.fullDType ~ ", " ~ unmapFunc ~ ", "
+    return "gid.core.wrap.MapScope!(" ~ mapParam.fullDType ~ ", " ~ unmapFunc ~ ", "
       ~ (source ? source.fullDType : (cast(Structure)parent).fullDType) ~ ")";
   }
 

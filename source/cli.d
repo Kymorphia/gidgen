@@ -18,7 +18,7 @@ enum DefaultConfigName = "gidgen.json"; /// Default config file name looked up i
 /// Known gidgen.json keys
 enum string[] KnownConfigKeys = [
   "defs", "gir-path", "pkg-path", "subpkg-path", "report", "report-file", "report-options",
-  "log-level", "log-gir-locs", "log-code-locs", "suggest", "dependencies",
+  "log-level", "log-gir-locs", "log-code-locs", "suggest", "dependencies", "root",
 ];
 
 /// An external dependency repository from the `dependencies` config key
@@ -28,6 +28,7 @@ struct DependencyConfig
   string version_ = "*"; /// Dub version constraint for dependencies on its packages
   string[] defPaths; /// Definition file or directory paths of the dependency
   string[] girPaths; /// GIR search paths of the dependency
+  string root; /// Root D package name of the dependency modules, empty to use the `//!info root` of its defs or its name
 }
 
 /// Options loaded from a gidgen.json file. Path values are stored as absolute, normalized paths.
@@ -52,6 +53,7 @@ struct GidgenConfig
   bool suggest; /// Output definition file command suggestions
   bool hasSuggest; /// True if `suggest` was set
   DependencyConfig[] dependencies; /// External dependency repositories
+  string root; /// Root D package name of the modules of this repo (overrides the `//!info root` of the defs)
 }
 
 /// Flags that were explicitly present on the command line (used for config precedence).
@@ -358,6 +360,14 @@ private string loadConfigKey(string filename, string configDir, string key, JSON
       cfg.suggest = boolVal;
       cfg.hasSuggest = true;
       break;
+    case "root":
+      if ((err = jsonString(val, key, filename, strVal)) !is null)
+        return err;
+      if (strVal.empty)
+        return "Key 'root' cannot be empty in '" ~ filename ~ "'";
+
+      cfg.root = strVal;
+      break;
     case "dependencies":
       return loadDependencies(filename, configDir, val, cfg);
     default:
@@ -398,6 +408,14 @@ private string loadDependencies(string filename, string configDir, JSONValue val
           if ((err = jsonString(v, key, where, strVal)) !is null)
             return err;
           dep.version_ = strVal;
+          break;
+        case "root":
+          if ((err = jsonString(v, key, where, strVal)) !is null)
+            return err;
+          if (strVal.empty)
+            return "Key 'root' cannot be empty in " ~ where;
+
+          dep.root = strVal;
           break;
         case "defs":
           if ((err = jsonStringOrArray(v, key, where, arrVal)) !is null)
@@ -793,7 +811,30 @@ unittest // Dependencies config validation errors
     check(`{ "dependencies": [ { "defs": "nope", "gir": "g" } ] }`, "defs path");
     check(`{ "dependencies": [ { "defs": "d", "gir": "nope" } ] }`, "gir path");
     check(`{ "dependencies": [ { "defs": "d", "gir": "g", "version": "" } ] }`, "'version' cannot be empty");
+    check(`{ "dependencies": [ { "defs": "d", "gir": "g", "root": "" } ] }`, "'root' cannot be empty");
+    check(`{ "dependencies": [ { "defs": "d", "gir": "g", "root": 1 } ] }`, "'root'");
+    check(`{ "root": "" }`, "'root' cannot be empty");
+    check(`{ "root": 1 }`, "'root'");
     check(`{ "dependencies": [ { "name": "a", "defs": "d", "gir": "g" }, { "name": "a", "defs": "d", "gir": "g" } ] }`,
         "Duplicate dependency");
+  });
+}
+
+unittest // The root config key of the repo and of dependencies
+{
+  inTempDir({
+    mkdir("d");
+    mkdir("g");
+    mkdir("defs");
+    GidgenConfig cfg;
+    assert(loadGidgenConfig(writeConfig("none.json", `{ "defs": "defs" }`), cfg) is null);
+    assert(cfg.root.empty);
+
+    cfg = GidgenConfig.init;
+    assert(loadGidgenConfig(writeConfig("gidgen.json", `{ "defs": "defs", "root": "gid_apache", "dependencies": [`
+        ~ ` { "name": "gid", "defs": "d", "gir": "g", "root": "gid" }, { "defs": "d", "gir": "g" } ] }`), cfg) is null);
+    assert(cfg.root == "gid_apache");
+    assert(cfg.dependencies[0].root == "gid");
+    assert(cfg.dependencies[1].root.empty);
   });
 }

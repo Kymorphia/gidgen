@@ -85,6 +85,9 @@ class Defs : Base
     if (dependencies.canFind!(x => x.name == dep.name))
       throw new DependencyError("Duplicate dependency name '" ~ dep.name ~ "'");
 
+    if (dep.root.empty)
+      dep.root = dep.dubInfo.get("root", [dep.name.to!dstring])[0].to!string;
+
     dependencies ~= dep;
   }
 
@@ -504,6 +507,51 @@ class Defs : Base
         throw new DependencyError("The package name '" ~ name ~ "' is also the name of a dependency, change the //!info name");
   }
 
+  /**
+   * Check the root D package names of the modules of this repo and its dependencies. The root of a repo is the first
+   * component of the module names of its packages (`gid` in `gid.gtk4.widget`). Only the main giD repo, which has the
+   * runtime (`gid.core`), GLib, and GObject modules which generated code of all repos imports, can use `gid`.
+   */
+  private void resolveRoot()
+  {
+    static bool validRoot(string name)
+    {
+      if (name.empty || (name[0] >= '0' && name[0] <= '9'))
+        return false;
+
+      foreach (c; name)
+        if (c != '_' && !(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') && !(c >= '0' && c <= '9'))
+          return false;
+
+      return true;
+    }
+
+    void check(string root, string what, bool runtime)
+    {
+      if (!validRoot(root))
+        throw new DependencyError("Invalid root '" ~ root ~ "' of " ~ what ~ ", it must be a D identifier");
+
+      if (runtime && root != GidRoot)
+        throw new DependencyError("The root of " ~ what ~ " must be '" ~ GidRoot ~ "', since it contains the giD runtime");
+
+      if (!runtime && root == GidRoot)
+        throw new DependencyError("The root of " ~ what ~ " can't be '" ~ GidRoot ~ "', which is used by the main giD"
+          ~ " repository, set a root with the //!info root defs command or the root gidgen.json key");
+    }
+
+    root = !rootOverride.empty ? rootOverride : dubInfo.get("root", [umbrellaName.to!dstring])[0].to!string;
+    check(root, "this repo", repos.canFind!(x => !x.external && x.runtime));
+
+    foreach (dep; dependencies)
+    {
+      check(dep.root, "dependency '" ~ dep.name ~ "'", repos.canFind!(x => x.dependency is dep && x.runtime));
+
+      if (dep.root == root)
+        throw new DependencyError("The root '" ~ root ~ "' is also the root of dependency '" ~ dep.name
+          ~ "', change the root of one of them");
+    }
+  }
+
   /// Ensure consistent state of repo data and fixup additional data (array parameter indexes, etc)
   private void fixupVerifyRepos()
   {
@@ -543,6 +591,8 @@ class Defs : Base
         repo.mergeRepo.mergedRepos ~= repo;
       }
     }
+
+    resolveRoot;
 
     foreach (repo; repos) // Fix-up repos
       repo.fixup;
@@ -698,6 +748,8 @@ class Defs : Base
   }
 
   string[] defPaths; /// Paths that definition files were loaded from
+  string rootOverride; /// Root D package name from the config file, overrides the `//!info root` command
+  string root; /// Root D package name of the modules of this repo (set when repos are loaded)
   bool[dstring] reservedWords; /// Reserved words (_ appended)
   dstring[dstring] cTypeSubs; /// Global C type substitutions
   dstring[dstring] dTypeSubs; /// Global D type substitutions
@@ -767,6 +819,7 @@ final class Dependency
   string[] defPaths; /// Definition file or directory paths of the dependency
   string[] girPaths; /// GIR search paths of the dependency
   dstring[][string] dubInfo; /// Global dub info (//!info with no repo) of the dependency defs
+  string root; /// Root D package name of the modules of the dependency (from the configuration, defs, or its name)
 }
 
 /// Display binding definition file help

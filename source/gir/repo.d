@@ -55,6 +55,12 @@ final class Repo : Base
     return dubPackageName;
   }
 
+  /// true if this is the repo of the giD runtime (modules `gid.core.*`), which is defined by the `//!namespace gid` command
+  @property bool runtime() const
+  {
+    return filename.empty && namespace == "gid";
+  }
+
   /// true if this repo belongs to an external dependency (used for resolution only, never written)
   @property bool external() const
   {
@@ -274,7 +280,7 @@ final class Repo : Base
       dubInfo["name"] = [dubPackageName];
     }
 
-    packageNamespace = namespace.toLower;
+    packageNamespace = runtime ? CoreModule : (external ? dependency.root : defs.root).to!dstring ~ "." ~ dubPackageName;
 
     if ("version" !in dubInfo && "version" in defs.dubInfo)
       dubInfo["version"] = defs.dubInfo["version"];
@@ -491,7 +497,7 @@ final class Repo : Base
 
     auto pkgName = (mergeRepo ? mergeRepo : this).dubPackageName.to!string; // Use the package of the merge namespace if merge specified
     auto packagePath = buildPath(basePath, pkgName);
-    auto sourcePath = buildPath(packagePath, packageNamespace.to!string);
+    auto sourcePath = buildPath([packagePath] ~ packageNamespace.to!string.split('.'));
     auto cSourcePath = buildPath(sourcePath, "c");
 
     codeTrap("repo.write", namespace);
@@ -545,7 +551,7 @@ final class Repo : Base
     auto writer = new CodeWriter(buildPath(path, modName.to!string ~ ".d"));
     writer ~= ["/// Module for [" ~ className ~ "] interface proxy object",
       "module " ~ packageNamespace ~ "." ~ modName ~ ";", "",
-      "import gobject.object;"];
+      "import gid.gobject2.object;"];
     writer ~= ifaces.map!(x => ["import " ~ x.fullModuleName ~ ";", "import " ~ x.fullModuleName ~ "_mixin;"]).join;
     writer ~= ["",
       "/// Proxy object for [" ~ st.fullDName ~ "] interface when a GObject has no applicable D binding",
@@ -580,11 +586,10 @@ final class Repo : Base
     }
 
     output ~= `  "targetType": "library",` ~ "\n";
-    output ~= `  "importPaths": [".", ".."],` ~ "\n";
+    output ~= `  "importPaths": ["."],` ~ "\n";
 
-    // Include merged repos in sourcePaths list
-    output ~= `  "sourcePaths": [` ~ ([this] ~ mergedRepos).map!(x => '"' ~ x.packageNamespace.to!string ~ '"').array
-      .join(", ") ~ `]`;
+    // The module root directory contains the directories of this repo and merged repos
+    output ~= `  "sourcePaths": ["` ~ defs.root ~ `"]`;
 
     if (!includeRepos.empty)
     {
@@ -646,8 +651,8 @@ final class Repo : Base
 
     writer ~= "/// C types for " ~ dubPackageName ~ " library";
     writer ~= ["module " ~ packageNamespace ~ ".c.types;", ""];
-    writer ~= "public import gid.basictypes;"; // Imported for glong/gulong types which change size depending on Windows or not
-    writer ~= includes.map!(x => "public import " ~ x.name.toLower ~ ".c.types;").array;
+    writer ~= "public import gid.core.basictypes;"; // Imported for glong/gulong types which change size depending on Windows or not
+    writer ~= includeRepos.map!(x => "public import " ~ x.packageNamespace ~ ".c.types;").array;
     writer ~= "";
 
     foreach (a; aliases)
@@ -718,14 +723,14 @@ final class Repo : Base
 
     writer ~= "/// C functions for " ~ dubPackageName ~ " library";
     writer ~= ["module " ~ packageNamespace ~ ".c.functions;", ""];
-    writer ~= ["public import gid.basictypes;", "import gid.loader;", "import " ~ packageNamespace ~ ".c.types;"]; // Import gid.basictypes for glong/gulong types which change size depending on Windows or not
+    writer ~= ["public import gid.core.basictypes;", "import gid.core.loader;", "import " ~ packageNamespace ~ ".c.types;"]; // Import gid.core.basictypes for glong/gulong types which change size depending on Windows or not
 
-    auto importNames = includes.map!(x => x.name).array;
+    auto importNames = includeRepos.map!(x => x.packageNamespace).array;
 
     if (namespace == "GLib") // HACK - Add GObject to includes for GLib for GType
-      importNames ~= "GObject";
+      importNames ~= defs.repoHash[NamespaceVersion("GObject", "2.0")].packageNamespace;
 
-    writer ~= importNames.sort.map!(x => "public import " ~ x.toLower ~ ".c.types;").array;
+    writer ~= importNames.sort.map!(x => "public import " ~ x ~ ".c.types;").array;
     writer ~= "";
 
     writeSharedLibs(writer);
@@ -1399,7 +1404,7 @@ final class Repo : Base
 
   dstring dubPackageName; /// Dub package name
   Dependency dependency; /// Dependency repository this repo belongs to (null for repos of the main defs)
-  dstring packageNamespace; /// Namespace directory to use for dub package (usually just namespace.toLower)
+  dstring packageNamespace; /// Module name prefix of the package, root and dub package name (`gid.gtk4`), or `gid.core` for the runtime
 
   Alias[] aliases; /// Aliases
   Constant[] constants; /// Constants

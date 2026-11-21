@@ -41,6 +41,7 @@ int main(string[] args)
   bool suggest;
   string configOption;
   DependencyConfig[] dependencies;
+  string root;
   auto origArgs = args.dup;
 
   try
@@ -129,6 +130,7 @@ int main(string[] args)
     }
 
     dependencies = cfg.dependencies;
+    root = cfg.root;
 
     applyGidgenConfig(cfg, cliFlagsFromArgs(origArgs), defPaths, girPaths, pkgPath, subPkgPath, enableReport,
         reportFile, reportOptions, logLevel, Repo.logGirLoc, Repo.logCodeLoc, suggest);
@@ -177,6 +179,7 @@ int main(string[] args)
   }
 
   auto defs = new Defs();
+  defs.rootOverride = root;
 
   try
   {
@@ -189,6 +192,7 @@ int main(string[] args)
       dep.version_ = depCfg.version_;
       dep.defPaths = depCfg.defPaths;
       dep.girPaths = depCfg.girPaths;
+      dep.root = depCfg.root;
       defs.loadDependencyDefs(dep);
     }
 

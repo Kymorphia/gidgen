@@ -2,7 +2,7 @@
  * Generic GidgenMatrix unittest, written once for all matrix cells.
  *
  * The cells are listed in the generated matrix_manifest.d (from matrix-gen's type and position tables). For each
- * cell the gidgen generated D function is looked up in gidgenmatrix.global by name, the D value type `T` is taken
+ * cell the gidgen generated D function is looked up in gid.gidgenmatrix1.global by name, the D value type `T` is taken
  * from the function signature with std.traits, and the function is called according to the cell's position. The C
  * side verifies received values (failures are counted by the library) and returns known values which are checked
  * here. Live counters of the instance test types verify that nothing is leaked or freed too often.
@@ -15,12 +15,12 @@ import std.meta : Filter;
 import std.traits : isDynamicArray, ParameterStorageClass, ParameterStorageClassTuple, Parameters, ReturnType;
 import std.conv : to;
 
-import glib.c.functions : g_quark_from_string, g_set_error_literal;
-import glib.c.types : GError, GLogLevelFlags;
-import gobject.object : ObjectWrap;
-import gobject.value : Value;
-import gidgenmatrix.global;
-import gidgenmatrix.types : Counter;
+import gid.glib2.c.functions : g_quark_from_string, g_set_error_literal;
+import gid.glib2.c.types : GError, GLogLevelFlags;
+import gid.gobject2.object : ObjectWrap;
+import gid.gobject2.value : Value;
+import gid.gidgenmatrix1.global;
+import gid.gidgenmatrix1.types : Counter;
 import matrix_manifest;
 
 /// Destroy a D value which wraps a C instance, or the elements of an array or associative array of them (no-op for
@@ -188,7 +188,7 @@ private string sizeArgs(Ps...)(string array)
 private void testBorrow(MatrixCell c, T)()
 {
   import core.memory : GC;
-  import gidgenmatrix.types : Counter;
+  import gid.gidgenmatrix1.types : Counter;
 
   auto base = liveCount(Counter.Fields);
   auto a = getBorrowed!(c, T);
@@ -204,7 +204,7 @@ private void testBorrow(MatrixCell c, T)()
 /// Get a borrowed structure from a new fields record (dropped on return) and check identity and writes (see testBorrow)
 private T getBorrowed(MatrixCell c, T)()
 {
-  import gidgenmatrix.fields : Fields;
+  import gid.gidgenmatrix1.fields : Fields;
 
   auto o = new Fields;
   T a;
@@ -252,7 +252,7 @@ private void testFillOut(MatrixCell c, T)()
 /// Fill a structure from a new fields record (dropped on return, see testFillOut)
 private T getFilled(MatrixCell c, T)()
 {
-  import gidgenmatrix.fields : Fields;
+  import gid.gidgenmatrix1.fields : Fields;
 
   auto o = new Fields;
   T a;
@@ -282,20 +282,20 @@ private void testMap(MatrixCell c)()
 /// MapScope type of a map position cell
 private template MapScopeOf(MatrixCell c)
 {
-  import gidgenmatrix.fields : Fields;
+  import gid.gidgenmatrix1.fields : Fields;
 
   import std.uni : toUpper;
 
   static if (c.pos == "map_method") // Fields has map functions of several types: "<FuncName>Scope" aliases
     alias MapScopeOf = mixin("Fields." ~ c.func[0 .. 1].toUpper ~ c.func[1 .. $] ~ "Scope");
   else // Global map function: "MapScope" alias of the mapped structure class
-    alias MapScopeOf = Parameters!(__traits(getMember, gidgenmatrix.global, c.inFunc))[$ - 1].MapScope;
+    alias MapScopeOf = Parameters!(__traits(getMember, gid.gidgenmatrix1.global, c.inFunc))[$ - 1].MapScope;
 }
 
 /// Map a new fields record with a map position cell
 private bool doMap(MatrixCell c)(out MapScopeOf!c m)
 {
-  import gidgenmatrix.fields : Fields;
+  import gid.gidgenmatrix1.fields : Fields;
 
   auto o = new Fields;
 
@@ -346,7 +346,7 @@ private extern(C) void refusedStoreHandler(const(char)* domain, GLogLevelFlags l
  */
 private void testRefusedStore(MatrixCell c, T)(T a)
 {
-  import glib.c.functions : g_log_remove_handler, g_log_set_always_fatal, g_log_set_handler;
+  import gid.glib2.c.functions : g_log_remove_handler, g_log_set_always_fatal, g_log_set_handler;
 
   static if (__traits(compiles, a.name = ""))
   {
@@ -442,10 +442,10 @@ private void testCell(MatrixCell c)()
 {
   static if (c.pos.startsWith("self_") || c.pos.startsWith("borrow_") || c.pos == "map_method" || c.pos == "fill_out_ca") // Methods of the type (c.member) or the
     // fields record (c.func), T is the D value type of the type's in cell
-    alias T = Parameters!(__traits(getMember, gidgenmatrix.global, c.inFunc))[$ - 1];
+    alias T = Parameters!(__traits(getMember, gid.gidgenmatrix1.global, c.inFunc))[$ - 1];
   else
   {
-    alias fn = __traits(getMember, gidgenmatrix.global, c.func);
+    alias fn = __traits(getMember, gid.gidgenmatrix1.global, c.func);
     alias Params = Parameters!fn;
   }
 
@@ -540,7 +540,7 @@ private void testCell(MatrixCell c)()
   }
   else static if (c.pos == "out_ca_throws")
   { // Receive the Out value, then fail with an error after the callee filled it (the wrapper frees its allocation)
-    import glib.error : ErrorWrap;
+    import gid.glib2.error : ErrorWrap;
     alias T = Params[$ - 1];
     T a;
     auto base = typeLive!c;
@@ -960,7 +960,7 @@ private void testCell(MatrixCell c)()
   else static if (c.pos == "prop_ro" || c.pos == "prop_wo" || c.pos == "prop_co")
   { // Read-only: C sets the Out value, D reads it. Write-only: D sets the In value, C checks it. Construct-only: C
     // constructs an object with the Out value, D reads it.
-    alias T = Parameters!(__traits(getMember, gidgenmatrix.global, c.inFunc))[$ - 1];
+    alias T = Parameters!(__traits(getMember, gid.gidgenmatrix1.global, c.inFunc))[$ - 1];
     static if (c.pos == "prop_co")
       auto o = fn();
     else
@@ -1006,7 +1006,7 @@ private void testCell(MatrixCell c)()
     alias O = Params[0];
     auto o = new O();
     int calls;
-    alias T = Parameters!(__traits(getMember, gidgenmatrix.global, c.inFunc))[$ - 1];
+    alias T = Parameters!(__traits(getMember, gid.gidgenmatrix1.global, c.inFunc))[$ - 1];
     mixin("o." ~ c.member ~ "((" ~ (c.pos == "sig_out" ? "out" : "ref") ~ " T a) { static if (c.pos == \"sig_inout\") assert(mixin(c.eqOut), c.func"
       ~ " ~ \": unexpected signal value\"); a = mixin(c.makeIn); calls++; });");
     fn(o);
@@ -1016,7 +1016,7 @@ private void testCell(MatrixCell c)()
   else static if (c.pos == "cb_inout_borrow")
   { // Borrowed InOut Wrap**: keep the same pointer or set null (remove). Owner is a Fields wrapper.
     import core.memory : GC;
-    import gidgenmatrix.fields : Fields;
+    import gid.gidgenmatrix1.fields : Fields;
 
     alias T = Parameters!(Params[$ - 1])[1];
     int calls;
@@ -1092,8 +1092,8 @@ unittest
 /// stack temporaries (boxedNew), inline fields and arrays of it are aligned like C requires
 unittest
 {
-  import gidgenmatrix.aligned : Aligned;
-  import gidgenmatrix.c.types : GidgenMatrixAligned;
+  import gid.gidgenmatrix1.aligned : Aligned;
+  import gid.gidgenmatrix1.c.types : GidgenMatrixAligned;
 
   assert(GidgenMatrixAligned.sizeof == Aligned.size, "aligned record size differs from C");
   assert(GidgenMatrixAligned.alignof == Aligned.alignment, "aligned record alignment differs from C");

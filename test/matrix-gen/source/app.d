@@ -302,7 +302,7 @@ module matrix_manifest;
 /// A matrix cell: a generated function testing a type in a position
 struct MatrixCell
 {
-  string func; /// D function name in gidgenmatrix.global (not used for method positions, see member)
+  string func; /// D function name in gid.gidgenmatrix1.global (not used for method positions, see member)
   string pos; /// Position ID
   string transfer; /// Ownership transfer ("none" or "full")
   bool nullable; /// true if the function has a leading is_null parameter and also accepts/returns null

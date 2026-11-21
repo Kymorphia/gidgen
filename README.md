@@ -118,8 +118,27 @@ flags accept a string or an array of strings):
 * **defs**, **gir-path**, **pkg-path**, **subpkg-path**
 * **report**, **report-file**, **report-options**
 * **log-level**, **log-gir-locs**, **log-code-locs**, **suggest**
+* **root**: Root D package name of the modules of the repository, see [Module Names](#module-names)
 
 An unknown key is an error. The **dependencies** key is described below.
+
+### Module Names
+
+Modules of a binding package are named `<root>.<dubPackageName>.<module>`, for example `gid.gtk4.widget`, `gid.gtk4.c.types`,
+`gid.gobject2.object`, and `gid.glib2.variant`, where the dub package name includes the library major version (`gtk4`, `gtk3`).
+The module files are written to `packages/<dubPackageName>/<root>/<dubPackageName>/`, and the `dub.json` of each package has
+`importPaths` of `["."]` and `sourcePaths` of `["<root>"]`. The giD runtime modules are `gid.core.gid`, `gid.core.loader`,
+`gid.core.basictypes`, `gid.core.wrap`, `gid.core.types`, `gid.core.global`, `gid.core.c.types`, and `gid.core.c.functions`
+(they have no version, and are written to the glib2 package).
+
+The *root* is configured per repository, in the config file with the **root** key or with the global `//!info root` defs
+command (the config file takes precedence). It defaults to the dub top-level package name (global `//!info name`).
+A dependency repository root is the **root** key of its `dependencies` entry, else its `//!info root`, else its name.
+The root `gid` is reserved for the main giD repository, which contains the runtime (`gid.core`), GLib, and GObject modules
+which the generated code of all repositories imports, so any other repository must use a different root (for example
+`gid_apache`, with module names like `gid_apache.arrow23.table`). It must be a valid D identifier and be different from the
+roots of its dependencies. Generated code of all repositories refers to the runtime, GLib, and GObject modules with the
+`gid` root.
 
 ### External Dependency Repositories
 
@@ -139,6 +158,8 @@ containing them. The **dependencies** key in the config file lists the other rep
 * **defs**: Definition file or directory path (string or array of strings). Required.
 * **gir**: Directory to search for the GIR files of the dependency (string or array of strings). Required.
 * **version**: Dub version constraint used in package dependencies (defaults to `*`).
+* **root**: Root D package name of the modules of the dependency, used in imports of its modules. Optional, defaults to the
+  global `//!info root` of its defs, else its name.
 
 Relative paths are resolved relative to the config file's directory.
 

@@ -1,10 +1,10 @@
 /// GidgenFeat GObject class tests (constructors, wrapper identity, signals, interfaces, virtual methods)
 module feat_object;
 
-import gidgenfeat.global : liveCount;
-import gidgenfeat.iface;
-import gidgenfeat.object : FeatObject = ObjectWrap;
-import gidgenfeat.types : Counter;
+import gid.gidgenfeat1.global : liveCount;
+import gid.gidgenfeat1.iface;
+import gid.gidgenfeat1.object : FeatObject = ObjectWrap;
+import gid.gidgenfeat1.types : Counter;
 
 /// Constructors and builder
 unittest
