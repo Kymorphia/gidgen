@@ -71,6 +71,7 @@ GObject Introspection Dlang binding generator
 -g       --gir-path Add a path to search for GIR files (default: gir/ if present, otherwise /usr/share/gir-1.0)
 -p       --pkg-path Top-level package binding output path (default: .)
 -s    --subpkg-path Subpackage path to write individual library packages to (default: packages/)
+          --config Read options from a JSON config file (defaults to gidgen.json in the current directory if present)
          --def-help Display binding definition file command help
         --log-level Log level (all, trace, info, warning, error, critical, fatal, off)
      --log-gir-locs Log GIR file locations in warnings
@@ -102,6 +103,34 @@ These are basic commands which are used for general use cases.
 * **--log-level**: Set the output log level. Can be one of: all, trace, info, warning, error, critical, fatal, or off.
   The default value is **warning**. A value of **info** can be used to display useful information about automatic binding decisions,
   which are potentially problematic.
+* **--config**: Read options from a JSON config file. If this option is given, the file must exist.
+  If it is omitted, **gidgen.json** in the current directory is used when that file exists.
+
+### Configuration File
+
+Options can be stored in a **gidgen.json** file so that a repo can be generated with `gidgen` and few or no flags.
+Command line flags override the config file, and the config file overrides the path defaults described above.
+
+Relative paths in the config are resolved relative to the configuration file's directory, so `gidgen --config path/to/gidgen.json`
+works even if it is not run from that directory. The following keys are supported (path keys that correspond to repeatable
+flags accept a string or an array of strings):
+
+* **defs**, **gir-path**, **pkg-path**, **subpkg-path**
+* **report**, **report-file**, **report-options**
+* **log-level**, **log-gir-locs**, **log-code-locs**, **suggest**
+
+An unknown key is an error. The **dependencies** key is reserved for a future release and is currently ignored.
+
+```json
+{
+  "defs": "defs",
+  "gir-path": "gir",
+  "pkg-path": ".",
+  "subpkg-path": "packages",
+  "report": true,
+  "report-file": "report.txt"
+}
+```
 
 ### Report Commands
 

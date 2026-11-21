@@ -39,6 +39,8 @@ int main(string[] args)
   bool dumpJson;
   bool dumpJsonWithDocs;
   bool suggest;
+  string configOption;
+  auto origArgs = args.dup;
 
   try
   {
@@ -48,6 +50,8 @@ int main(string[] args)
         "g|gir-path", "Add a path to search for GIR files (default: " ~ DefaultGirDir ~ "/ if present, otherwise " ~ DefaultGirPath ~ ")", &girPaths,
         "p|pkg-path", "Top-level package binding output path (default: " ~ DefaultPkgPath ~ ")", &pkgPath,
         "s|subpkg-path", "Subpackage path to write individual library packages to (default: " ~ DefaultSubPkgPath ~ "/)", &subPkgPath,
+        "config", "Read options from a JSON config file (defaults to " ~ DefaultConfigName
+          ~ " in the current directory if present)", &configOption,
         "def-help", "Display binding definition file command help", &defHelp,
         "log-level", "Log level (" ~ [EnumMembers!LogLevel].map!(x => x.to!string).join(", ") ~ ")", &logLevel,
         "log-gir-locs", "Log GIR file locations in warnings", &Repo.logGirLoc,
@@ -105,6 +109,26 @@ int main(string[] args)
   {
     error(e.msg);
     return 1;
+  }
+
+  string configPath;
+  if (auto err = resolveConfigPath(configOption, configPath))
+  {
+    error(err);
+    return 1;
+  }
+
+  if (configPath)
+  {
+    GidgenConfig cfg;
+    if (auto err = loadGidgenConfig(configPath, cfg))
+    {
+      error(err);
+      return 1;
+    }
+
+    applyGidgenConfig(cfg, cliFlagsFromArgs(origArgs), defPaths, girPaths, pkgPath, subPkgPath, enableReport,
+        reportFile, reportOptions, logLevel, Repo.logGirLoc, Repo.logCodeLoc, suggest);
   }
 
   if (auto err = applyPathDefaults(defPaths, girPaths, pkgPath, subPkgPath))
