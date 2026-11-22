@@ -16,6 +16,8 @@ import gir.return_value;
 import gir.structure;
 import gir.type_node;
 import import_manager;
+import std.file : isDir, rmdirRecurse;
+import std.path : absolutePath, buildNormalizedPath, dirSeparator;
 import std_includes;
 import utils;
 import xml_patch;
@@ -538,6 +540,7 @@ final class Repo : Base
     if (runtime)
       writeCorePackageModule(sourcePath);
 
+    removeShimDirectory(packagePath);
     if (writeShims)
       writeShimModules(packagePath);
 
@@ -571,6 +574,46 @@ final class Repo : Base
   }
 
   /**
+   * Directory of this repo's unversioned shim modules in `packagePath`, or `null` if there is none or it would be
+   * unsafe to remove (the versioned module directory, the giD runtime directory, or a path outside the package).
+   */
+  private string shimDirectory(string packagePath)
+  {
+    auto ns = namespace.toLower.to!string;
+    auto root = defs.root;
+
+    if (ns.empty || ns == dubPackageName.to!string || (root == GidRoot && ns == "core"))
+      return null;
+
+    if (!validRoot(root) || !validRoot(ns))
+      return null;
+
+    auto dir = buildPath(packagePath, root, ns).absolutePath.buildNormalizedPath;
+    auto pkg = packagePath.absolutePath.buildNormalizedPath;
+
+    if (pkg.empty || dir.length <= pkg.length || dir[0 .. pkg.length] != pkg)
+      return null;
+
+    auto sep = dir[pkg.length];
+    if (sep != dirSeparator[0] && sep != '/')
+      return null;
+
+    return dir;
+  }
+
+  /**
+   * Remove this package's unversioned shim directory, if it exists. Called before writing shims and when shims
+   * are disabled or have moved to another package, so stale shim modules are not left in `sourcePaths`.
+   * Only that directory is removed.
+   */
+  private void removeShimDirectory(string packagePath)
+  {
+    auto dir = shimDirectory(packagePath);
+    if (dir && dir.exists && dir.isDir)
+      rmdirRecurse(dir);
+  }
+
+  /**
    * Write unversioned shim modules for this repo into its package (`gid.gtk.widget` importing `gid.gtk4.widget`).
    * Params:
    *   packagePath = Directory of the dub package this repo is written to
@@ -578,7 +621,9 @@ final class Repo : Base
   private void writeShimModules(string packagePath)
   {
     auto shimNs = defs.root.to!dstring ~ "." ~ namespace.toLower;
-    auto shimDir = buildPath([packagePath] ~ shimNs.to!string.split('.'));
+    auto shimDir = shimDirectory(packagePath);
+    if (!shimDir)
+      shimDir = buildPath([packagePath] ~ shimNs.to!string.split('.'));
 
     foreach (mod; bindingModules)
     {
@@ -1599,4 +1644,85 @@ final class DocSection : Base
   }
 
   dstring name; /// Name of doc section
+}
+
+
+version (unittest)
+{
+  import std.file : getcwd, chdir, mkdir, tempDir, writeFile = write;
+  import std.path : buildPath;
+}
+
+private Repo testRepoForShims(string root, dstring ns, dstring pkg)
+{
+  auto defs = new Defs;
+  defs.root = root;
+  auto repo = new Repo(defs);
+  repo.namespace = ns;
+  repo.dubPackageName = pkg;
+  repo.filename = pkg.to!string ~ ".gir";
+  return repo;
+}
+
+unittest // removeShimDirectory deletes only the package shim dir, not versioned modules or siblings
+{
+  auto oldCwd = getcwd;
+  auto dir = buildPath(tempDir, "gidgen-shim-dir-test");
+  if (dir.exists)
+    rmdirRecurse(dir);
+  mkdir(dir);
+  chdir(dir);
+  scope (exit)
+  {
+    chdir(oldCwd);
+    if (dir.exists)
+      rmdirRecurse(dir);
+  }
+
+  auto pkg = buildPath(dir, "packages", "gtk4");
+  mkdirRecurse(buildPath(pkg, "gid", "gtk4"));
+  mkdirRecurse(buildPath(pkg, "gid", "gtk"));
+  mkdirRecurse(buildPath(pkg, "gid", "keepme"));
+  writeFile(buildPath(pkg, "gid", "gtk4", "widget.d"), "module gid.gtk4.widget;\n");
+  writeFile(buildPath(pkg, "gid", "gtk", "widget.d"), "module gid.gtk.widget;\n");
+  writeFile(buildPath(pkg, "gid", "gtk", "stale.d"), "module stale;\n");
+  writeFile(buildPath(pkg, "gid", "keepme", "x.d"), "keep\n");
+
+  auto repo = testRepoForShims("gid", "Gtk", "gtk4");
+  repo.removeShimDirectory(pkg);
+
+  assert(!buildPath(pkg, "gid", "gtk").exists);
+  assert(buildPath(pkg, "gid", "gtk4", "widget.d").exists);
+  assert(buildPath(pkg, "gid", "keepme", "x.d").exists);
+}
+
+unittest // removeShimDirectory does not remove the versioned module directory or gid.core
+{
+  auto oldCwd = getcwd;
+  auto dir = buildPath(tempDir, "gidgen-shim-dir-safe-test");
+  if (dir.exists)
+    rmdirRecurse(dir);
+  mkdir(dir);
+  chdir(dir);
+  scope (exit)
+  {
+    chdir(oldCwd);
+    if (dir.exists)
+      rmdirRecurse(dir);
+  }
+
+  // A package whose unversioned name equals the versioned one must not lose its modules
+  auto pkgA = buildPath(dir, "packages", "freetype2");
+  mkdirRecurse(buildPath(pkgA, "gid", "freetype2"));
+  writeFile(buildPath(pkgA, "gid", "freetype2", "types.d"), "module gid.freetype2.types;\n");
+  auto ft = testRepoForShims("gid", "freetype2", "freetype2");
+  ft.removeShimDirectory(pkgA);
+  assert(buildPath(pkgA, "gid", "freetype2", "types.d").exists);
+
+  auto pkgB = buildPath(dir, "packages", "glib2");
+  mkdirRecurse(buildPath(pkgB, "gid", "core"));
+  writeFile(buildPath(pkgB, "gid", "core", "utils.d"), "module gid.core.utils;\n");
+  auto core = testRepoForShims("gid", "Core", "glib2");
+  core.removeShimDirectory(pkgB);
+  assert(buildPath(pkgB, "gid", "core", "utils.d").exists);
 }

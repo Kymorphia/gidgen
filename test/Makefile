@@ -13,6 +13,7 @@
 #
 # Targets:
 #   run-test          Build and run the unittests and the external dependency repository test (ext-test)
+#   unit-test         Run the gidgen source unittests
 #   ext-test          Test generating a child repository which depends on another repository (ext-child/)
 #   run-test-valgrind Run the unittests under valgrind memcheck (memory errors and definite leaks)
 #   run-test-asan     Run the unittests with the C test libraries built with AddressSanitizer (memory errors)
@@ -47,8 +48,12 @@ COV_BIN = coverage/gidgen-cov
 GLIB_SUPP = $(shell pkg-config --variable=prefix glib-2.0)/share/glib-2.0/valgrind/glib.supp
 
 .PHONY: run-test
-run-test: build-test ext-test
+run-test: unit-test build-test ext-test
 	cd gidgen-test && LD_LIBRARY_PATH="$$(pwd)" G_DEBUG=fatal-criticals ./$(notdir $(TEST_BIN))
+
+.PHONY: unit-test
+unit-test:
+	cd .. && $(DUB) test -q --compiler=$(DC)
 
 .PHONY: build-test
 build-test: packages/README.md $(LIBS) $(MATRIX_MANIFEST)
@@ -65,7 +70,7 @@ EXT_OUT = ext-child/out
 
 .PHONY: ext-test
 ext-test: packages/README.md ext-child/gidgen.json ext-child/gir/ExtChild-1.0.gir $(wildcard ext-child/defs/*.d)
-	rm -rf $(EXT_OUT) ext-child/out-bad ext-child/out-noshims && mkdir -p $(EXT_OUT)/packages
+	rm -rf $(EXT_OUT) ext-child/out-bad ext-child/out-noshims ext-child/out-stale && mkdir -p $(EXT_OUT)/packages
 	$(EXT_GIDGEN) --config ext-child/gidgen.json --log-level=error
 	test "$$(ls $(EXT_OUT)/packages | grep -v '^README.md$$')" = extchild1
 	grep -q '"gidg:glib2": "~>0.1.0"' $(EXT_OUT)/packages/extchild1/dub.json
@@ -74,6 +79,10 @@ ext-test: packages/README.md ext-child/gidgen.json ext-child/gir/ExtChild-1.0.gi
 	grep -q '":extchild1": "\*"' $(EXT_OUT)/dub.json
 	! grep -q 'glib2\|gobject2\|gidgenfeat' $(EXT_OUT)/dub.json $(EXT_OUT)/packages/README.md
 	grep -q 'gidgext:extchild1' $(EXT_OUT)/packages/README.md
+	grep -q 'Modules are named `gidgext.<package>.<module>`' $(EXT_OUT)/packages/README.md
+	grep -q 'import gidgext.extchild1' $(EXT_OUT)/packages/README.md
+	grep -q 'unversioned shims' $(EXT_OUT)/packages/README.md
+	! grep -q 'import gid.gtk' $(EXT_OUT)/packages/README.md
 	test -f $(EXT_OUT)/packages/extchild1/gidgext/extchild1/thing.d
 	grep -q '^module gidgext.extchild1.thing;' $(EXT_OUT)/packages/extchild1/gidgext/extchild1/thing.d
 	grep -q 'import gid.gobject2.object;' $(EXT_OUT)/packages/extchild1/gidgext/extchild1/thing.d
@@ -85,6 +94,18 @@ ext-test: packages/README.md ext-child/gidgen.json ext-child/gir/ExtChild-1.0.gi
 	$(EXT_GIDGEN) --config ext-child/gidgen-noshims.json --log-level=error
 	test -f ext-child/out-noshims/packages/extchild1/gidgext/extchild1/thing.d
 	! test -e ext-child/out-noshims/packages/extchild1/gidgext/extchild
+	grep -q 'Modules are named `gidgext.<package>.<module>`' ext-child/out-noshims/packages/README.md
+	! grep -q 'unversioned shims' ext-child/out-noshims/packages/README.md
+	cp -a $(EXT_OUT) ext-child/out-stale
+	test -f ext-child/out-stale/packages/extchild1/gidgext/extchild/thing.d
+	echo 'module stale;' > ext-child/out-stale/packages/extchild1/gidgext/extchild/stale.d
+	mkdir -p ext-child/out-stale/packages/extchild1/gidgext/keepme
+	echo keep > ext-child/out-stale/packages/extchild1/gidgext/keepme/x.d
+	$(EXT_GIDGEN) --config ext-child/gidgen-noshims.json --pkg-path ext-child/out-stale \
+	  --subpkg-path ext-child/out-stale/packages --log-level=error
+	test -f ext-child/out-stale/packages/extchild1/gidgext/extchild1/thing.d
+	! test -e ext-child/out-stale/packages/extchild1/gidgext/extchild
+	test -f ext-child/out-stale/packages/extchild1/gidgext/keepme/x.d
 	! $(EXT_GIDGEN) --config ext-child/gidgen-noname.json --log-level=error > ext-child/noname.err 2>&1
 	grep -q 'global //!info name is required' ext-child/noname.err
 	! $(EXT_GIDGEN) --config ext-child/gidgen-dup.json --log-level=error > ext-child/dup.err 2>&1
@@ -93,6 +114,9 @@ ext-test: packages/README.md ext-child/gidgen.json ext-child/gir/ExtChild-1.0.gi
 	grep -q "can't be 'gid'" ext-child/badroot.err
 	! $(EXT_GIDGEN) --config ext-child/gidgen-baddeproot.json --log-level=error > ext-child/baddeproot.err 2>&1
 	grep -q "root of dependency 'gidg' must be 'gid'" ext-child/baddeproot.err
+	! $(EXT_GIDGEN) --config ext-child/gidgen-badkeyword.json --log-level=error > ext-child/badkeyword.err 2>&1
+	grep -q "Invalid root 'version'" ext-child/badkeyword.err
+	grep -q "not a keyword" ext-child/badkeyword.err
 	test ! -e ext-child/out-bad
 	$(DUB) add-local . 0.1.0 > /dev/null; status=0; \
 	  (cd $(EXT_OUT)/packages/extchild1 && $(DUB) build -q --compiler=$(DC) --build=debug) || status=$$?; \
@@ -178,4 +202,4 @@ $(COV_BIN): $(GIDGEN_SOURCES)
 .PHONY: clean
 clean:
 	-rm -f gidgen-test/libgidgen-*.so* $(TEST_BIN) $(GIRS) $(MATRIX_GEN) $(MATRIX_GEN_C) $(MATRIX_MANIFEST) $(MATRIX_DEFS)
-	-rm -rf packages defs coverage matrix-gen/.dub ext-child/out ext-child/out-bad ext-child/*.err
+	-rm -rf packages defs coverage matrix-gen/.dub ext-child/out ext-child/out-bad ext-child/out-noshims ext-child/out-stale ext-child/*.err

@@ -180,6 +180,12 @@ External repositories such as **gid_apache** use their own root and typically di
 
 The equivalent defs commands are `//!info root gid_apache` and `//!info shims no` (the config file overrides them).
 
+A new library major, which changes what an unversioned import points to, should only be added in a minor version bump
+of the binding repository. Users who rely on unversioned shim imports should use a dub constraint such as
+`"gid:gtk4": "~>1.0.0"` (`>=1.0.0 <1.1.0`). In dub, `~>1.0` means `>=1.0.0 <2.0.0` and would include a later 1.x that
+might change the default major. Versioned modules of two majors can be linked together; only one major of a library can be
+used per process.
+
 ### External Dependency Repositories
 
 A binding repository can depend on the packages of another giD repository, for example a **gid_apache** repository of the
