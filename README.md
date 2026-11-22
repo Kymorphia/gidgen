@@ -165,7 +165,19 @@ package does not). A shim is not written when the unversioned name would be the 
 
 Shims can be disabled for the whole repository with `"shims": false` in gidgen.json or the global `//!info shims no`
 command (the config file takes precedence; values `yes`/`true`/`on` and `no`/`false`/`off` are accepted in defs).
-This is intended for extra repositories such as **gid_apache**.
+External repositories such as **gid_apache** use their own root and typically disable shims:
+
+```json
+{
+  "root": "gid_apache",
+  "shims": false,
+  "dependencies": [
+    { "name": "gid", "defs": "gid/defs", "gir": "gid/gir", "version": "~>0.9.15", "root": "gid" }
+  ]
+}
+```
+
+The equivalent defs commands are `//!info root gid_apache` and `//!info shims no` (the config file overrides them).
 
 ### External Dependency Repositories
 
