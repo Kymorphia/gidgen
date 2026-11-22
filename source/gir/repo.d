@@ -585,7 +585,12 @@ final class Repo : Base
     if (ns.empty || ns == dubPackageName.to!string || (root == GidRoot && ns == "core"))
       return null;
 
-    if (!validRoot(root) || !validRoot(ns))
+    static bool safeName(string name) // Only a plain package path component can be removed
+    {
+      return !name.empty && name.filter!(c => !(c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))).empty;
+    }
+
+    if (!safeName(root) || !safeName(ns))
       return null;
 
     auto dir = buildPath(packagePath, root, ns).absolutePath.buildNormalizedPath;
@@ -948,7 +953,7 @@ final class Repo : Base
     }
 
     writer ~= ["", "shared static this()", "{"];
-    auto resolvedLibs = ["auto libs = gidResolveLibs(LIBS);"d, ""d];
+    auto resolvedLibs = ["auto libs = gidResolveLibs(LIBS, \"" ~ packageNamespace ~ "\");"d, ""d]; // Package namespace registers the libraries for isLibAvailable
 
     foreach (st; structs)
     {
@@ -1007,6 +1012,9 @@ final class Repo : Base
         preamble = null;
       }
     }
+
+    if (resolvedLibs && !sharedLibrary.empty) // Package without functions, still open its libraries and register them
+      writer ~= resolvedLibs[0 .. 1];
 
     writer ~= ["}"];
 

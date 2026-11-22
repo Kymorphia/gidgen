@@ -30,6 +30,9 @@
     },
     "gidg:shimlib2": {
       "path": ".."
+    },
+    "gidg:shimlib3": {
+      "path": ".."
     }
   }
 }

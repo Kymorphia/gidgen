@@ -186,6 +186,13 @@ of the binding repository. Users who rely on unversioned shim imports should use
 might change the default major. Versioned modules of two majors can be linked together; only one major of a library can be
 used per process.
 
+Each generated `c/functions.d` module lists the shared libraries of its package and registers them with the runtime in its
+`shared static this()` (`gidResolveLibs(LIBS, "gid.gtk4")`). Libraries are opened with `RTLD_LOCAL`, and the symbols are
+resolved from the handles, so linked packages of different major versions do not interfere with each other. Packages are
+recorded by name, which `isLibAvailable` of `gid.core` uses to report whether the library of a package was loaded.
+When several linked packages define a class for the same GType name, the runtime picks the one matching the GType instance
+and the requested D type, without calling any `get_type` function of the other packages.
+
 ### External Dependency Repositories
 
 A binding repository can depend on the packages of another giD repository, for example a **gid_apache** repository of the

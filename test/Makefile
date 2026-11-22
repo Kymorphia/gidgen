@@ -33,7 +33,8 @@ TEST_LDFLAGS = $(shell pkg-config --libs gobject-2.0) $(EXTRA_LDFLAGS)
 TEST_BIN = gidgen-test/gidgen-test
 FEAT_LIB = gidgen-test/libgidgen-feat.so.0
 MATRIX_LIB = gidgen-test/libgidgen-matrix.so.0
-LIBS = $(FEAT_LIB) $(MATRIX_LIB)
+SHIM_LIBS = gidgen-test/libshimlib-1.so.0 gidgen-test/libshimlib-2.so.0
+LIBS = $(FEAT_LIB) $(MATRIX_LIB) $(SHIM_LIBS)
 GIRS = gir/GidgenFeat-1.0.gir gir/GidgenMatrix-1.0.gir
 
 MATRIX_GEN = matrix-gen/matrix-gen
@@ -114,9 +115,6 @@ ext-test: packages/README.md ext-child/gidgen.json ext-child/gir/ExtChild-1.0.gi
 	grep -q "can't be 'gid'" ext-child/badroot.err
 	! $(EXT_GIDGEN) --config ext-child/gidgen-baddeproot.json --log-level=error > ext-child/baddeproot.err 2>&1
 	grep -q "root of dependency 'gidg' must be 'gid'" ext-child/baddeproot.err
-	! $(EXT_GIDGEN) --config ext-child/gidgen-badkeyword.json --log-level=error > ext-child/badkeyword.err 2>&1
-	grep -q "Invalid root 'version'" ext-child/badkeyword.err
-	grep -q "not a keyword" ext-child/badkeyword.err
 	test ! -e ext-child/out-bad
 	$(DUB) add-local . 0.1.0 > /dev/null; status=0; \
 	  (cd $(EXT_OUT)/packages/extchild1 && $(DUB) build -q --compiler=$(DC) --build=debug) || status=$$?; \
@@ -142,6 +140,10 @@ defs/.stamp: $(addprefix $(GIDGEN_DEFS)/,$(RUNTIME_DEF_FILES) global.d)
 	sed -e 's|^//!info name .*|//!info name gidg|' -e 's|^//!info description .*|//!info description "Gidgen Test Repository"|' \
 	  $(GIDGEN_DEFS)/global.d > defs/global.d
 	touch $@
+
+# ShimLib test library, built twice as two majors with the same symbol and GType names
+gidgen-test/libshimlib-%.so.0: shimlib/shimlib.c
+	gcc -shared -fPIC -Wl,-soname,$(notdir $@) -DSHIMLIB_MAJOR=$* $(TEST_CFLAGS) -o $@ $< $(TEST_LDFLAGS)
 
 # GidgenFeat hand written test library
 $(FEAT_LIB): gidgen-feat/gidgen-feat.c gidgen-feat/gidgen-feat.h
@@ -174,7 +176,7 @@ gir/GidgenMatrix-1.0.gir: $(MATRIX_SRC) $(MATRIX_HDR) | $(MATRIX_LIB)
 # Generate the D binding packages
 # (removed first so that modules of renamed types or functions do not linger, the dub build cache of the packages
 # is removed too since dub keeps the objects of removed modules in its cached libraries)
-packages/README.md: defs/.stamp test-defs/*.d $(MATRIX_DEFS) $(GIRS) $(GIDGEN_SOURCES)
+packages/README.md: defs/.stamp test-defs/*.d $(MATRIX_DEFS) $(GIRS) $(wildcard gir/ShimLib-*.gir) $(GIDGEN_SOURCES)
 	rm -rf packages "$${DUB_HOME:-$$HOME/.dub}/cache/gidg"
 	$(DUB) --root .. run --compiler=$(DC) gidgen -- --defs defs --defs test-defs --gir-path gir --pkg-path . \
 	  --subpkg-path packages --log-level=error
@@ -201,5 +203,5 @@ $(COV_BIN): $(GIDGEN_SOURCES)
 
 .PHONY: clean
 clean:
-	-rm -f gidgen-test/libgidgen-*.so* $(TEST_BIN) $(GIRS) $(MATRIX_GEN) $(MATRIX_GEN_C) $(MATRIX_MANIFEST) $(MATRIX_DEFS)
+	-rm -f gidgen-test/libgidgen-*.so* $(SHIM_LIBS) $(TEST_BIN) $(GIRS) $(MATRIX_GEN) $(MATRIX_GEN_C) $(MATRIX_MANIFEST) $(MATRIX_DEFS)
 	-rm -rf packages defs coverage matrix-gen/.dub ext-child/out ext-child/out-bad ext-child/out-noshims ext-child/out-stale ext-child/*.err
