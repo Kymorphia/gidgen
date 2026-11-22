@@ -12,7 +12,7 @@ import core.sys.posix.dlfcn : dlsym;
 import std.algorithm : canFind;
 
 import gid.core : Flag, isLibAvailable, No, Yes;
-import gid.core.loader : gidLibHandleOfAddress, gidPackageLibs, gidSymbolNotFound, gidUnresolvedLibs;
+import gid.core.loader : gidHasOtherMajor, gidLibHandleOfAddress, gidPackageLibs, GidRtldMode, gidSymbolNotFound, gidUnresolvedLibs;
 import gid.gobject2.object : ObjectWrap;
 import gid.gobject2.c.functions : g_type_from_name;
 import Gadget1 = gid.shimlib1.gadget;
@@ -71,11 +71,21 @@ unittest // A symbol of a library which wasn't loaded is gidSymbolNotFound, not 
   assert(Shim3c.shim_lib_widget_get_type !is Shim1c.shim_lib_widget_get_type);
 }
 
-unittest // Libraries are opened with RTLD_LOCAL, their symbols are not in the global scope
+unittest // Two majors of a library are opened with RTLD_LOCAL; a single major uses RTLD_GLOBAL
 {
+  assert(gidHasOtherMajor("gid.shimlib1", "ShimLib"));
+  assert(gidHasOtherMajor("gid.shimlib2", "ShimLib"));
+  assert(!gidHasOtherMajor("gid.glib2", "GLib"));
+  assert(!gidHasOtherMajor("gid.gobject2", "GObject"));
+  assert(gidPackageLibs["gid.shimlib1"].rtldMode == GidRtldMode.local);
+  assert(gidPackageLibs["gid.shimlib2"].rtldMode == GidRtldMode.local);
+  assert(gidPackageLibs["gid.glib2"].rtldMode == GidRtldMode.global);
+  assert(gidPackageLibs["gid.gobject2"].rtldMode == GidRtldMode.global);
+  assert(gidPackageLibs["gid.gidgenfeat1"].rtldMode == GidRtldMode.global);
+
   version (linux)
   {
-    // The global scope has no shim_lib_widget_new, only dlsym on the library handles finds the (different) functions
+    // The two ShimLib majors keep shim_lib_widget_new out of the global scope; each handle has its own function
     assert(dlsym(null, "shim_lib_widget_new") is null); // RTLD_DEFAULT is null
     auto libs1 = gidPackageLibs["gid.shimlib1"].handles;
     auto libs2 = gidPackageLibs["gid.shimlib2"].handles;
@@ -85,6 +95,10 @@ unittest // Libraries are opened with RTLD_LOCAL, their symbols are not in the g
     assert(dlsym(libs1[0], "shim_lib_widget_new") !is dlsym(libs2[0], "shim_lib_widget_new"));
     assert(gidLibHandleOfAddress(dlsym(libs1[0], "shim_lib_widget_new")) is libs1[0]);
     assert(gidLibHandleOfAddress(dlsym(libs2[0], "shim_lib_widget_new")) is libs2[0]);
+
+    // glib and gidgenfeat are the only majors of their libraries, so they were opened with RTLD_GLOBAL
+    assert(dlsym(null, "g_strdup") !is null);
+    assert(dlsym(null, "gidgen_feat_color_next") !is null);
   }
 }
 

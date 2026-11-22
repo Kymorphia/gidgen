@@ -16,7 +16,7 @@ import gir.return_value;
 import gir.structure;
 import gir.type_node;
 import import_manager;
-import std.file : isDir, rmdirRecurse;
+import std.file : isDir, rmdirRecurse, removeFile = remove;
 import std.path : absolutePath, buildNormalizedPath, dirSeparator;
 import std_includes;
 import utils;
@@ -506,6 +506,7 @@ final class Repo : Base
 
     writeCTypes(buildPath(cSourcePath, "types.d"));
     writeCFuncs(buildPath(cSourcePath, "functions.d"));
+    writeLibMarker(cSourcePath);
 
     if (typesStruct)
       writeTypesModule(buildPath(sourcePath, "types.d"));
@@ -859,6 +860,8 @@ final class Repo : Base
     writer ~= "/// C functions for " ~ dubPackageName ~ " library";
     writer ~= ["module " ~ packageNamespace ~ ".c.functions;", ""];
     writer ~= ["public import gid.core.basictypes;", "import gid.core.loader;", "import " ~ packageNamespace ~ ".c.types;"]; // Import gid.core.basictypes for glong/gulong types which change size depending on Windows or not
+    if (auto marker = libMarkerModule)
+      writer ~= "static import " ~ marker ~ ";"; // Marker module, so the loader can see this package in ModuleInfo
 
     auto importNames = includeRepos.map!(x => x.packageNamespace).array;
 
@@ -869,6 +872,8 @@ final class Repo : Base
     writer ~= "";
 
     writeSharedLibs(writer);
+    if (auto marker = libMarkerModule)
+      writer ~= "private __gshared immutable(bool)* _gidLibMarker = &" ~ marker ~ ".gidLibLinked;"; // Runtime ref, so the linker keeps the marker module
 
     // The c_* variables have D linkage so two majors of a library (gtk3 and gtk4) can be linked together.
     // Their types stay extern(C) nothrow. The source names (c_* and the plain C-name aliases) are unchanged.
@@ -953,7 +958,7 @@ final class Repo : Base
     }
 
     writer ~= ["", "shared static this()", "{"];
-    auto resolvedLibs = ["auto libs = gidResolveLibs(LIBS, \"" ~ packageNamespace ~ "\");"d, ""d]; // Package namespace registers the libraries for isLibAvailable
+    auto resolvedLibs = ["auto libs = gidResolveLibs(LIBS, \"" ~ packageNamespace ~ "\", \"" ~ namespace ~ "\");"d, ""d]; // Register the package and its GIR namespace (Gtk) so other majors can be detected
 
     foreach (st; structs)
     {
@@ -1030,6 +1035,64 @@ final class Repo : Base
       "private immutable LIBS = [\"" ~ libsArray.join("\", \"") ~ "\"];",
       ""
     ];
+  }
+
+  /**
+   * Module of the generated marker used by the loader to see that this package is linked, and which library (GIR
+   * namespace) it belongs to (`gid.gtk4.c._gidlib_Gtk`). Null if the package has no shared library, is the giD
+   * runtime, or the namespace is not a D identifier.
+   */
+  private dstring libMarkerModule() const
+  {
+    if (sharedLibrary.empty || runtime || !validDIdent(namespace))
+      return null;
+
+    return packageNamespace ~ ".c._gidlib_" ~ namespace;
+  }
+
+  /**
+   * Write the marker module for this package (and remove any stale `_gidlib_*.d` files in the same directory).
+   * Params:
+   *   cSourcePath = Directory of the package's `c` modules
+   */
+  private void writeLibMarker(string cSourcePath)
+  {
+    if (cSourcePath.exists)
+    {
+      foreach (de; dirEntries(cSourcePath, "_gidlib_*.d", SpanMode.shallow))
+        if (de.isFile)
+          removeFile(de.name);
+    }
+
+    auto mod = libMarkerModule;
+    if (!mod)
+      return;
+
+    auto writer = new CodeWriter(buildPath(cSourcePath, "_gidlib_" ~ namespace.to!string ~ ".d"));
+    writer ~= [
+      "/// Marker used by the giD loader to detect other linked majors of the " ~ namespace ~ " library",
+      "module " ~ mod ~ ";",
+      "",
+      "immutable bool gidLibLinked = true;",
+    ];
+    writer.write();
+  }
+
+  /// true if `name` is a D identifier (used for the `_gidlib_` marker module name)
+  private static bool validDIdent(dstring name)
+  {
+    if (name.empty)
+      return false;
+
+    auto c0 = name[0];
+    if (c0 != '_' && !(c0 >= 'A' && c0 <= 'Z') && !(c0 >= 'a' && c0 <= 'z'))
+      return false;
+
+    foreach (c; name)
+      if (c != '_' && !(c >= 'A' && c <= 'Z') && !(c >= 'a' && c <= 'z') && !(c >= '0' && c <= '9'))
+        return false;
+
+    return true;
   }
 
   /**

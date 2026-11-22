@@ -20,3 +20,4 @@ ext-child/out-noshims
 ext-child/out-stale
 ext-child/*.err
 !ext-child/defs
+gidgen-test/gidgen-loader-override

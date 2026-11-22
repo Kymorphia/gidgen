@@ -51,6 +51,9 @@ GLIB_SUPP = $(shell pkg-config --variable=prefix glib-2.0)/share/glib-2.0/valgri
 .PHONY: run-test
 run-test: unit-test build-test ext-test
 	cd gidgen-test && LD_LIBRARY_PATH="$$(pwd)" G_DEBUG=fatal-criticals ./$(notdir $(TEST_BIN))
+	cd gidgen-test && $(DUB) build -q --compiler=$(DC) --config=loader-override
+	cd gidgen-test && LD_LIBRARY_PATH="$$(pwd)" G_DEBUG=fatal-criticals \
+	  GID_RTLD_LOCAL=gid.gidgenfeat1 GID_RTLD_GLOBAL=gid.shimlib1,gid.shimlib2 ./gidgen-loader-override
 
 .PHONY: unit-test
 unit-test:
@@ -203,5 +206,5 @@ $(COV_BIN): $(GIDGEN_SOURCES)
 
 .PHONY: clean
 clean:
-	-rm -f gidgen-test/libgidgen-*.so* $(SHIM_LIBS) $(TEST_BIN) $(GIRS) $(MATRIX_GEN) $(MATRIX_GEN_C) $(MATRIX_MANIFEST) $(MATRIX_DEFS)
+	-rm -f gidgen-test/libgidgen-*.so* $(SHIM_LIBS) $(TEST_BIN) gidgen-test/gidgen-loader-override $(GIRS) $(MATRIX_GEN) $(MATRIX_GEN_C) $(MATRIX_MANIFEST) $(MATRIX_DEFS)
 	-rm -rf packages defs coverage matrix-gen/.dub ext-child/out ext-child/out-bad ext-child/out-noshims ext-child/out-stale ext-child/*.err
