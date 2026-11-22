@@ -515,18 +515,6 @@ class Defs : Base
    */
   private void resolveRoot()
   {
-    static bool validRoot(string name)
-    {
-      if (name.empty || (name[0] >= '0' && name[0] <= '9'))
-        return false;
-
-      foreach (c; name)
-        if (c != '_' && !(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') && !(c >= '0' && c <= '9'))
-          return false;
-
-      return true;
-    }
-
     void check(string root, string what, bool runtime)
     {
       if (!validRoot(root))
@@ -993,6 +981,17 @@ private int[] girVersionParts(dstring ver)
     throw new DependencyError("Invalid GIR version '" ~ ver.to!string ~ "'");
 }
 
+bool validRoot(string name)
+{
+  if (name.empty || (name[0] >= '0' && name[0] <= '9'))
+    return false;
+
+  foreach (c; name)
+    if (c != '_' && !(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') && !(c >= '0' && c <= '9'))
+      return false;
+
+  return true;
+}
 
 /// External dependency repository (such as the main giD repository), loaded for type resolution only and not written
 final class Dependency
