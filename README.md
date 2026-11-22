@@ -129,9 +129,10 @@ An unknown key is an error. The **dependencies** key is described below.
 Modules of a binding package are named `<root>.<dubPackageName>.<module>`, for example `gid.gtk4.widget`, `gid.gtk4.c.types`,
 `gid.gobject2.object`, and `gid.glib2.variant`, where the dub package name includes the library major version (`gtk4`, `gtk3`).
 The module files are written to `packages/<dubPackageName>/<root>/<dubPackageName>/`, and the `dub.json` of each package has
-`importPaths` of `["."]` and `sourcePaths` of `["<root>"]`. The giD runtime modules are `gid.core.gid`, `gid.core.loader`,
-`gid.core.basictypes`, `gid.core.wrap`, `gid.core.types`, `gid.core.global`, `gid.core.c.types`, and `gid.core.c.functions`
-(they have no version, and are written to the glib2 package).
+`importPaths` of `["."]` and `sourcePaths` of `["<root>"]`. The giD runtime modules are `gid.core.utils`, `gid.core.loader`,
+`gid.core.basictypes`, `gid.core.wrap`, `gid.core.types`, and `gid.core.global`, plus `gid.core.c.types` and
+`gid.core.c.functions` (they have no version, and are written to the glib2 package).
+`import gid.core;` publicly imports the D-facing runtime modules (not the `c.*` modules).
 
 The *root* is configured per repository, in the config file with the **root** key or with the global `//!info root` defs
 command (the config file takes precedence). It defaults to the dub top-level package name (global `//!info name`).

@@ -604,7 +604,7 @@ class FuncWriter
               {
                 preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";";
                 addCallParam("&_" ~ param.dName);
-                addImport("gid.core.gid");
+                addImport("gid.core.utils");
                 auto wrapOut = param.dName ~ " = new " ~ param.fullDType ~ "(boxedCopy(" ~ param.fullDType
                   ~ "._getGType, &_" ~ param.dName ~ "), Yes.Take);";
                 // Only when definitions set gid-valid-if-return; a false return does not generally invalidate outs
@@ -629,7 +629,7 @@ class FuncWriter
               preCall ~= "auto _" ~ param.dName ~ " = cast(" ~ param.cTypeRemPtr ~ "*)gMalloc(" ~ param.cTypeRemPtr
                 ~ ".sizeof);";
               addCallParam("_" ~ param.dName);
-              addImport("gid.core.gid");
+              addImport("gid.core.utils");
               postCall ~= param.dName ~ " = new " ~ param.fullDType ~ "(cast(void*)_" ~ param.dName ~ ", Yes.Take);";
             }
             else if (param.kind == Wrap)

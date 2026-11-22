@@ -1,7 +1,7 @@
 /// GidgenFeat GType to D class map tests (no get_type() calls when the class maps are created)
 module feat_class_map;
 
-import gid.core.gid : Flag, No, Yes;
+import gid.core : Flag, No, Yes;
 import gid.gidgenfeat1.child_iface;
 import gid.gidgenfeat1.global : lateInit, newLateObject, lateTypeEarly, newHiddenChild;
 import gid.gidgenfeat1.late_object;

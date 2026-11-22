@@ -535,6 +535,9 @@ final class Repo : Base
         en.write(sourcePath);
     }
 
+    if (runtime)
+      writeCorePackageModule(sourcePath);
+
     if (writeShims)
       writeShimModules(packagePath);
 
@@ -543,6 +546,28 @@ final class Repo : Base
       writeDubJsonFile(buildPath(packagePath, "dub.json"));
       writeReadme(buildPath(packagePath, "README.md"));
     }
+  }
+
+  /**
+   * Write the `gid.core` package module, which publicly imports the D-facing giD runtime modules.
+   * Params:
+   *   sourcePath = Directory of the runtime modules (`packages/glib2/gid/core`)
+   */
+  private void writeCorePackageModule(string sourcePath)
+  {
+    auto writer = new CodeWriter(buildPath(sourcePath, "package.d"));
+    writer ~= [
+      "/// Public import of the giD runtime modules",
+      "module gid.core;",
+      "",
+      "public import gid.core.utils;",
+      "public import gid.core.loader;",
+      "public import gid.core.basictypes;",
+      "public import gid.core.wrap;",
+      "public import gid.core.types;",
+      "public import gid.core.global;",
+    ];
+    writer.write();
   }
 
   /**
