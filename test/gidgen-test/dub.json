@@ -15,6 +15,27 @@
     "."
   ],
   "mainSourceFile": "test_main.d",
+
+  "configurations": [
+    {
+      "name": "application",
+      "targetType": "executable",
+      "targetName": "gidgen-test",
+      "mainSourceFile": "test_main.d"
+    },
+    {
+      "name": "loader-override",
+      "targetType": "executable",
+      "targetName": "gidgen-loader-override",
+      "mainSourceFile": "loader_override_app.d",
+      "excludedSourceFiles": [
+        "test_main.d"
+      ],
+      "versions": [
+        "GidLoaderOverrideApp"
+      ]
+    }
+  ],
   "dependencies": {
     "gidg:gidgenfeat1": {
       "path": ".."
@@ -23,6 +44,15 @@
       "path": ".."
     },
     "gidg:glib2": {
+      "path": ".."
+    },
+    "gidg:shimlib1": {
+      "path": ".."
+    },
+    "gidg:shimlib2": {
+      "path": ".."
+    },
+    "gidg:shimlib3": {
       "path": ".."
     }
   }

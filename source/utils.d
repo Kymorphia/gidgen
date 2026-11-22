@@ -6,6 +6,9 @@ public import std.experimental.logger;
 public import code_traps;
 public import std_includes;
 
+enum GidRoot = "gid"; /// Root D package name of the main giD repository, which sub repos can't use (modules `gid.glib2.*`, etc)
+enum CoreModule = "gid.core"d; /// Module name prefix of the giD runtime modules (`gid.core.utils`), in the main giD repository
+
 static this()
 {
   sharedLog(cast(shared Logger)new GidLogger);

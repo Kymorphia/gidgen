@@ -1,5 +1,6 @@
 module defs;
 
+import std.conv : ConvException;
 import std.utf : toUTF32;
 import std.path : relativePath;
 
@@ -84,6 +85,9 @@ class Defs : Base
 
     if (dependencies.canFind!(x => x.name == dep.name))
       throw new DependencyError("Duplicate dependency name '" ~ dep.name ~ "'");
+
+    if (dep.root.empty)
+      dep.root = dep.dubInfo.get("root", [dep.name.to!dstring])[0].to!string;
 
     dependencies ~= dep;
   }
@@ -504,6 +508,125 @@ class Defs : Base
         throw new DependencyError("The package name '" ~ name ~ "' is also the name of a dependency, change the //!info name");
   }
 
+  /**
+   * Check the root D package names of the modules of this repo and its dependencies. The root of a repo is the first
+   * component of the module names of its packages (`gid` in `gid.gtk4.widget`). Only the main giD repo, which has the
+   * runtime (`gid.core`), GLib, and GObject modules which generated code of all repos imports, can use `gid`.
+   */
+  private void resolveRoot()
+  {
+    void check(string root, string what, bool runtime)
+    {
+      if (!validRoot(root))
+        throw new DependencyError("Invalid root '" ~ root ~ "' of " ~ what ~ ", it must be a D identifier");
+
+      if (runtime && root != GidRoot)
+        throw new DependencyError("The root of " ~ what ~ " must be '" ~ GidRoot ~ "', since it contains the giD runtime");
+
+      if (!runtime && root == GidRoot)
+        throw new DependencyError("The root of " ~ what ~ " can't be '" ~ GidRoot ~ "', which is used by the main giD"
+          ~ " repository, set a root with the //!info root defs command or the root gidgen.json key");
+    }
+
+    root = !rootOverride.empty ? rootOverride : dubInfo.get("root", [umbrellaName.to!dstring])[0].to!string;
+    check(root, "this repo", repos.canFind!(x => !x.external && x.runtime));
+
+    foreach (dep; dependencies)
+    {
+      check(dep.root, "dependency '" ~ dep.name ~ "'", repos.canFind!(x => x.dependency is dep && x.runtime));
+
+      if (dep.root == root)
+        throw new DependencyError("The root '" ~ root ~ "' is also the root of dependency '" ~ dep.name
+          ~ "', change the root of one of them");
+    }
+  }
+
+  /**
+   * Decide which packages write unversioned shim modules (`gid.gtk.widget` importing `gid.gtk4.widget`). The latest
+   * major of a library (highest GIR namespace version among packages that share the GIR namespace) writes one shim
+   * per real module, unless the unversioned name would equal the versioned one, the repo is the giD runtime, or
+   * shims are disabled for the repository.
+   */
+  private void resolveShims()
+  {
+    auto globalSetting = shimsOverride != ShimsSetting.Unset ? shimsOverride
+      : parseShimsSetting(dubInfo.get("shims", null), "//!info shims");
+    shimsEnabled = globalSetting != ShimsSetting.No;
+
+    if (!shimsEnabled)
+      return;
+
+    Repo[][dstring] byLib;
+
+    foreach (repo; repos.filter!(x => !x.external && !x.runtime))
+      byLib[repo.namespace.toLower] ~= repo;
+
+    foreach (lib, group; byLib)
+    {
+      Repo forced;
+      Repo[] candidates;
+
+      foreach (repo; group)
+      {
+        auto setting = parseShimsSetting(repo.dubInfo.get("shim", null),
+          "//!info shim of package '" ~ repo.dubPackageName.to!string ~ "'");
+
+        if (setting == ShimsSetting.Yes)
+        {
+          if (forced)
+            throw new DependencyError("Both '" ~ forced.dubPackageName.to!string ~ "' and '"
+              ~ repo.dubPackageName.to!string ~ "' set //!info shim yes for " ~ lib.to!string);
+
+          forced = repo;
+        }
+        else if (setting != ShimsSetting.No)
+          candidates ~= repo;
+      }
+
+      auto chosen = forced ? forced : latestRepo(candidates);
+
+      if (!chosen)
+        continue;
+
+      if (chosen.namespace.toLower == chosen.dubPackageName) // Unversioned name would equal the versioned one
+        continue;
+
+      checkShimNamespace(chosen);
+      chosen.writeShims = true;
+    }
+  }
+
+  /**
+   * The unversioned shim namespace `<root>.<namespace>` of `chosen` must not be `gid.core` or the versioned
+   * namespace of another package in this repository (`<root>.<package>`).
+   */
+  private void checkShimNamespace(Repo chosen)
+  {
+    auto shimName = chosen.namespace.toLower;
+    auto shimNs = root ~ "." ~ shimName.to!string;
+
+    if (root == GidRoot && shimName == "core")
+      throw new DependencyError("The unversioned shim namespace '" ~ shimNs ~ "' of package '"
+        ~ chosen.dubPackageName.to!string ~ "' clashes with the giD runtime");
+
+    foreach (repo; repos.filter!(x => !x.external && x !is chosen))
+      if (repo.dubPackageName == shimName)
+        throw new DependencyError("The unversioned shim namespace '" ~ shimNs ~ "' of package '"
+          ~ chosen.dubPackageName.to!string ~ "' clashes with package '" ~ repo.dubPackageName.to!string ~ "'");
+  }
+
+  /// The package of a group with the highest GIR namespace version, or null if the group is empty
+  private static Repo latestRepo(Repo[] group)
+  {
+    Repo best;
+
+    foreach (repo; group)
+      if (!best || cmpGirVersion(repo.nsVersion, best.nsVersion) > 0)
+        best = repo;
+
+    return best;
+  }
+
   /// Ensure consistent state of repo data and fixup additional data (array parameter indexes, etc)
   private void fixupVerifyRepos()
   {
@@ -544,8 +667,12 @@ class Defs : Base
       }
     }
 
+    resolveRoot;
+
     foreach (repo; repos) // Fix-up repos
       repo.fixup;
+
+    resolveShims;
 
     foreach (repo; repos.filter!(x => x.external)) // Packages of this repo must not replace those of a dependency
     {
@@ -634,10 +761,37 @@ class Defs : Base
   /// Write the top-level package README.md file
   private void writePackageReadme(string pkgPath)
   {
-    auto s = "# " ~ ("name" in dubInfo ? (dubInfo["name"][0] ~ " -") : "") ~ dubInfo["description"][0] ~ "\n\n";
+    auto s = "# " ~ ("name" in dubInfo ? (dubInfo["name"][0] ~ " - ") : "") ~ dubInfo["description"][0] ~ "\n\n";
 
-    s ~= "This is the top-level [Dub](https://dub.pm/) package for [giD](https://github.com/Kymorphia/gid) "
-      ~ "the GObject Introspection D Language Binding Repository.\n\n";
+    if (umbrellaName == "gid")
+      s ~= "This is the top-level [Dub](https://dub.pm/) package for [giD](https://github.com/Kymorphia/gid) "
+        ~ "the GObject Introspection D Language Binding Repository.\n\n";
+    else
+      s ~= "This is the top-level [Dub](https://dub.pm/) package for `" ~ umbrellaName.to!dstring ~ "`.\n\n";
+
+    s ~= "Modules are named `" ~ root.to!dstring ~ ".<package>.<module>`";
+    if (auto example = repos.filter!(x => !x.external && !x.runtime && !x.mergeRepo).frontIfNotEmpty(cast(Repo)null))
+      s ~= ", for example `import " ~ root.to!dstring ~ "." ~ example.dubPackageName ~ ".types;`";
+    s ~= ".\n";
+
+    if (shimsEnabled)
+    {
+      s ~= "The latest major of a library also provides unversioned shims";
+      if (auto shimEx = repos.filter!(x => x.writeShims).frontIfNotEmpty(cast(Repo)null))
+        s ~= " such as `import " ~ root.to!dstring ~ "." ~ shimEx.namespace.toLower ~ ".types;`";
+      s ~= ".\n";
+    }
+
+    s ~= "Applications should depend on the versioned subpackages they need";
+    if (auto example = repos.filter!(x => !x.external && !x.runtime && !x.mergeRepo).frontIfNotEmpty(cast(Repo)null))
+      s ~= " (`" ~ umbrellaName.to!dstring ~ ":" ~ example.dubPackageName ~ "`)";
+    s ~= ", not the top-level `" ~ umbrellaName.to!dstring ~ "` package.\n";
+
+    if (shimsEnabled)
+      s ~= "If you rely on unversioned shim imports, use a dub constraint such as `\"~>1.0.0\"` "
+        ~ "(`>=1.0.0 <1.1.0`). In dub, `~>1.0` means `>=1.0.0 <2.0.0`.\n";
+
+    s ~= "\n";
     s ~= "## Sub Package Information\n\n";
 
     // Create a markdown table with info/links
@@ -698,10 +852,14 @@ class Defs : Base
   }
 
   string[] defPaths; /// Paths that definition files were loaded from
+  string rootOverride; /// Root D package name from the config file, overrides the `//!info root` command
+  string root; /// Root D package name of the modules of this repo (set when repos are loaded)
+  ShimsSetting shimsOverride; /// `shims` key of the config file, overrides the global `//!info shims` command
+  bool shimsEnabled; /// True if this repo writes unversioned shim modules (set when repos are loaded)
   bool[dstring] reservedWords; /// Reserved words (_ appended)
   dstring[dstring] cTypeSubs; /// Global C type substitutions
   dstring[dstring] dTypeSubs; /// Global D type substitutions
-  dstring[][string] dubInfo; /// Dub JSON file info (name, description, copyright, authors, license, homepage, docs), only "authors" uses multiple values, docs is a URL for D API docs used in generated README.md files only
+  dstring[][string] dubInfo; /// Package and repository info from `//!info` (name, description, copyright, authors, license, homepage, docs, capi, version, root, shim, shims); only "authors" uses multiple values, docs is a URL for D API docs used in generated README.md files only
   XmlPatch[] patches; /// Global XML patches specified in definitions file
   Repo[] repos; /// Gir repositories (including those of dependencies, which are marked external)
   Dependency[] dependencies; /// External dependency repositories
@@ -759,6 +917,82 @@ class DependencyError : Exception
   }
 }
 
+/// Whether unversioned shim modules are enabled, or whether a package provides them
+enum ShimsSetting
+{
+  Unset, /// Not set, use the next source or the default (enabled)
+  Yes, /// Enabled, or this package provides the shims of its library
+  No, /// Disabled, or this package does not provide shims
+}
+
+/**
+ * Parse a `//!info shim` or `//!info shims` value.
+ * Params:
+ *   vals = Info values, empty if the command was not given
+ *   what = Description of the value for an error message
+ * Returns: The setting, or `Unset` if `vals` is empty
+ */
+ShimsSetting parseShimsSetting(dstring[] vals, string what)
+{
+  if (vals.empty)
+    return ShimsSetting.Unset;
+
+  switch (vals[0].toLower)
+  {
+    case "yes", "true", "on":
+      return ShimsSetting.Yes;
+    case "no", "false", "off":
+      return ShimsSetting.No;
+    default:
+      throw new DependencyError("Invalid " ~ what ~ " value '" ~ vals[0].to!string ~ "', expected yes or no");
+  }
+}
+
+/**
+ * Compare GIR namespace versions such as "4.0" and "2.91".
+ * Returns: < 0 if `a` is older than `b`, 0 if they are equal, > 0 if `a` is newer
+ */
+int cmpGirVersion(dstring a, dstring b)
+{
+  auto ap = girVersionParts(a);
+  auto bp = girVersionParts(b);
+  auto n = max(ap.length, bp.length);
+
+  foreach (i; 0 .. n)
+  {
+    auto av = i < ap.length ? ap[i] : 0;
+    auto bv = i < bp.length ? bp[i] : 0;
+
+    if (av != bv)
+      return av > bv ? 1 : -1;
+  }
+
+  return 0;
+}
+
+private int[] girVersionParts(dstring ver)
+{
+  if (ver.empty)
+    return [];
+
+  try
+    return ver.split('.').map!(p => p.empty ? 0 : p.to!int).array;
+  catch (ConvException)
+    throw new DependencyError("Invalid GIR version '" ~ ver.to!string ~ "'");
+}
+
+bool validRoot(string name)
+{
+  if (name.empty || (name[0] >= '0' && name[0] <= '9'))
+    return false;
+
+  foreach (c; name)
+    if (c != '_' && !(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') && !(c >= '0' && c <= '9'))
+      return false;
+
+  return true;
+}
+
 /// External dependency repository (such as the main giD repository), loaded for type resolution only and not written
 final class Dependency
 {
@@ -767,6 +1001,7 @@ final class Dependency
   string[] defPaths; /// Definition file or directory paths of the dependency
   string[] girPaths; /// GIR search paths of the dependency
   dstring[][string] dubInfo; /// Global dub info (//!info with no repo) of the dependency defs
+  string root; /// Root D package name of the modules of the dependency (from the configuration, defs, or its name)
 }
 
 /// Display binding definition file help
@@ -799,8 +1034,10 @@ immutable DefCmd[] defCommandInfo = [
     ~ " location (defaults to In)"},
   {"del", 1, DefCmdFlags.None, "del <XmlSelect> - Delete an XML attribute or node"},
   {"gir", 1, DefCmdFlags.None, "gir <GirName> - GIR file to load"},
-  {"info", 2, DefCmdFlags.None, "info <name> <value> - Set package info"
-    ~ " (name, description, copyright, authors, license, homepage, docs, capi), multiple authors values can be given"},
+  {"info", 2, DefCmdFlags.None, "info <name> <value> - Set package or repository info. Package keys: name, description,"
+    ~ " copyright, authors, license, homepage, docs, capi, version (multiple authors values can be given)."
+    ~ " Repository keys: root (root D package name, global), shims (yes/no, global), shim (yes/no, per package:"
+    ~ " whether this package provides the unversioned shims of its library)"},
   {"inhibit", 1, DefCmdFlags.ReqClass | DefCmdFlags.VarArgs, "inhibit [" ~ [EnumMembers!DefInhibitFlags]
     .map!(x => x.to!string.toLower).join(" ") ~ "] - Inhibit generation of certain module code (space separated flags)"},
   {"kind", 2, DefCmdFlags.ReqRepo, "kind <TypeName> <TypeKind> - Override a type kind"},

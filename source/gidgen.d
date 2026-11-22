@@ -41,6 +41,8 @@ int main(string[] args)
   bool suggest;
   string configOption;
   DependencyConfig[] dependencies;
+  string root;
+  ShimsSetting shimsOverride;
   auto origArgs = args.dup;
 
   try
@@ -129,6 +131,9 @@ int main(string[] args)
     }
 
     dependencies = cfg.dependencies;
+    root = cfg.root;
+    if (cfg.hasShims)
+      shimsOverride = cfg.shims ? ShimsSetting.Yes : ShimsSetting.No;
 
     applyGidgenConfig(cfg, cliFlagsFromArgs(origArgs), defPaths, girPaths, pkgPath, subPkgPath, enableReport,
         reportFile, reportOptions, logLevel, Repo.logGirLoc, Repo.logCodeLoc, suggest);
@@ -177,6 +182,8 @@ int main(string[] args)
   }
 
   auto defs = new Defs();
+  defs.rootOverride = root;
+  defs.shimsOverride = shimsOverride;
 
   try
   {
@@ -189,6 +196,7 @@ int main(string[] args)
       dep.version_ = depCfg.version_;
       dep.defPaths = depCfg.defPaths;
       dep.girPaths = depCfg.girPaths;
+      dep.root = depCfg.root;
       defs.loadDependencyDefs(dep);
     }
 

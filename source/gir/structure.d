@@ -568,8 +568,8 @@ final class Structure : TypeNode
     beginImports(this);
     scope(exit) endImports;
 
-    if (fullModuleName != "gid.basictypes")
-      writer ~= "public import gid.basictypes;";
+    if (fullModuleName != "gid.core.basictypes")
+      writer ~= "public import gid.core.basictypes;";
 
     if (parentStruct)
       importManager.add(parentStruct.fullModuleName); // Add parent to imports
@@ -586,12 +586,12 @@ final class Structure : TypeNode
 
     if (!errorQuarks.empty)
     {
-      importManager.add("glib.types");
-      importManager.add("glib.error");
+      importManager.add("gid.glib2.types");
+      importManager.add("gid.glib2.error");
     }
 
     if (kind == TypeKind.Interface || kind == TypeKind.Object)
-      importManager.add("gobject.gid_builder");
+      importManager.add("gid.gobject2.gid_builder");
 
     if (!(defCode.inhibitFlags & DefInhibitFlags.Imports) && kind == TypeKind.Interface)
       writer ~= "public import " ~ fullModuleName ~ "_iface_proxy;";
@@ -784,7 +784,7 @@ final class Structure : TypeNode
 
     with (TypeKind) if (kind.among(Struct, Object) || boxedGType || reffedGType
         || (kind == Interface && moduleType == ModuleType.Iface))
-      writer ~= ["", "/** */", "static GType _getGType() nothrow", "{", "import gid.loader : gidSymbolNotFound;",
+      writer ~= ["", "/** */", "static GType _getGType() nothrow", "{", "import gid.core.loader : gidSymbolNotFound;",
         "return cast(void function())" ~ glibGetType
         ~ " != &gidSymbolNotFound ? " ~ glibGetType ~ "() : cast(GType)0;", "}"]; // Return 0 if get_type() function was not resolved
 
@@ -809,7 +809,7 @@ final class Structure : TypeNode
       if (!mapAliases.canFind(name))
       {
         mapAliases ~= name;
-        writer ~= ["", "/** Scope of a structure mapped by [" ~ f.fullDName ~ "] (see [gid.wrap.MapScope]) */",
+        writer ~= ["", "/** Scope of a structure mapped by [" ~ f.fullDName ~ "] (see [gid.core.wrap.MapScope]) */",
           "alias " ~ name ~ " = " ~ f.mapScopeTemplate ~ ";"];
       }
     }
@@ -1034,9 +1034,9 @@ final class Structure : TypeNode
           if (kind == Wrap && !f.owned) // Borrowed pointer, D object kept alive by _<field>Ref
           {
             if (f.kind == Interface)
-              addImport("gobject.object");
+              addImport("gid.gobject2.object");
  
-            auto objExpr = f.kind == Interface ? "(cast(gobject.object.ObjectWrap)propval)"d : "propval"d;
+            auto objExpr = f.kind == Interface ? "(cast(gid.gobject2.object.ObjectWrap)propval)"d : "propval"d;
             lines ~= ["_" ~ f.dName ~ "Ref = propval;", cPtr ~ "." ~ f.dName ~ " = propval ? cast(" ~ f.cType ~ ")"
               ~ objExpr ~ "._cPtr(No.Dup) : null;"];
           }
@@ -1113,10 +1113,10 @@ final class Structure : TypeNode
           "return _retval;"];
         break;
       case Object, Interface:
-        addImport("gobject.object");
+        addImport("gid.gobject2.object");
 
         lines ~= [declareRetval(elemType.fullDType), "foreach (i; 0 .. " ~ lengthStr ~ ")",
-          "_retval[i] = gobject.object.ObjectWrap._getDObject!(" ~ elemType.fullDType ~ ")(cast(void*)" ~ cPtr
+          "_retval[i] = gid.gobject2.object.ObjectWrap._getDObject!(" ~ elemType.fullDType ~ ")(cast(void*)" ~ cPtr
           ~ "." ~ field.dName ~ "[i], No.Take);", "return _retval;"];
         break;
       case Unknown, Callback, Container, Namespace:
@@ -1273,9 +1273,9 @@ final class Structure : TypeNode
             getter = !p.propGet.empty ? chkGetter(cast(Func)repo.defs.cSymbolHash.get(p.propGet, null)) : null; // Use alternative org.gtk.Property.get attribute as a backup (full C symbol function name)
 
           if (!getter)
-            addImport("gobject.object");
+            addImport("gid.gobject2.object");
 
-          lines ~= ["{", getter ? ("return " ~ getter.dName ~ "();") : ("return gobject.object.ObjectWrap.getProperty!("
+          lines ~= ["{", getter ? ("return " ~ getter.dName ~ "();") : ("return gid.gobject2.object.ObjectWrap.getProperty!("
             ~ p.fullDType ~ ")(\"" ~ p.name ~ "\");"), "}"]; // Use getProperty if no getter method
         }
         else
@@ -1309,7 +1309,7 @@ final class Structure : TypeNode
           setter = !p.propSet.empty ? checkSetter(cast(Func)repo.defs.cSymbolHash.get(p.propSet, null)) : null; // Use alternative org.gtk.Property.set attribute as a backup (full C symbol function name)
 
         if (!setter)
-          addImport("gobject.object");
+          addImport("gid.gobject2.object");
 
         // Simple structure setter parameters which are nullable are passed by pointer
         dstring setterAddr;
@@ -1327,7 +1327,7 @@ final class Structure : TypeNode
           }
         }
 
-        lines ~= ["{", setter ? (setter.dName ~ "(" ~ setterAddr ~ "propval);") : ("gobject.object.ObjectWrap.setProperty!("
+        lines ~= ["{", setter ? (setter.dName ~ "(" ~ setterAddr ~ "propval);") : ("gid.gobject2.object.ObjectWrap.setProperty!("
           ~ p.fullDType ~ ")(\"" ~ p.name ~ "\", propval);"), "}"];  // Use setProperty if no setter method
       }
       else
@@ -1356,7 +1356,7 @@ final class Structure : TypeNode
     {
       objIfaces = allImplementStructs.filter!(x => !getIfaceAncestor(x)).array;
       auto parentAndIfaces = ([parentStruct ? (parentStruct.fullDType ~ "GidBuilderImpl!T")
-        : "gobject.gid_builder.GidBuilder!T"] ~ objIfaces.map!(x => x.fullDType ~ "GidBuilderImpl!T").array).join(", ");
+        : "gid.gobject2.gid_builder.GidBuilder!T"] ~ objIfaces.map!(x => x.fullDType ~ "GidBuilderImpl!T").array).join(", ");
 
       writer ~= ["class " ~ dType ~ "GidBuilderImpl(T) : " ~ parentAndIfaces, "{"];
 

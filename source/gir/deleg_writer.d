@@ -136,9 +136,9 @@ class DelegWriter
           ~ ".Dup) : null;";
         break;
       case Interface:
-        addImport("gobject.object");
+        addImport("gid.gobject2.object");
         postCall ~= "auto _retval = _dretval ? cast(" ~ retVal.cTypeRemPtr
-          ~ "*)(cast(gobject.object.ObjectWrap)_dretval)._cPtr(" ~ retVal.fullOwnerFlag ~ ".Dup) : null;";
+          ~ "*)(cast(gid.gobject2.object.ObjectWrap)_dretval)._cPtr(" ~ retVal.fullOwnerFlag ~ ".Dup) : null;";
         break;
       case Callback, Unknown, Container, Namespace:
         assert(0, "Unsupported delegate return value type '" ~ retVal.fullDType.to!string
@@ -201,8 +201,8 @@ class DelegWriter
             ~ ".Dup) : null;";
           break;
         case Interface:
-          addImport("gobject.object");
-          lines ~= cVar ~ "[i] = " ~ dVar ~ "[i] ? cast(typeof(*" ~ cVar ~ "))(cast(gobject.object.ObjectWrap)" ~ dVar
+          addImport("gid.gobject2.object");
+          lines ~= cVar ~ "[i] = " ~ dVar ~ "[i] ? cast(typeof(*" ~ cVar ~ "))(cast(gid.gobject2.object.ObjectWrap)" ~ dVar
             ~ "[i])._cPtr(" ~ arr.fullOwnerFlag ~ ".Dup) : null;";
           break;
         case Enum, Flags, StructAlias, Struct, Pointer, Callback, Unknown, Container, Namespace:
@@ -388,15 +388,15 @@ class DelegWriter
 
           if (param.kind == TypeKind.Object || param.kind == TypeKind.Interface)
           {
-            addImport("gobject.object");
+            addImport("gid.gobject2.object");
             if (needOwnerTemp)
             {
-              preCall ~= "auto _" ~ param.dName ~ " = gobject.object.ObjectWrap._getDObject!(" ~ param.fullDType
+              preCall ~= "auto _" ~ param.dName ~ " = gid.gobject2.object.ObjectWrap._getDObject!(" ~ param.fullDType
                 ~ ")(cast(void*)" ~ param.dName ~ ", " ~ param.fullOwnerFlag ~ ".Take);";
               addCallParam("_" ~ param.dName);
             }
             else
-              addCallParam("gobject.object.ObjectWrap._getDObject!(" ~ param.fullDType ~ ")(cast(void*)" ~ param.dName
+              addCallParam("gid.gobject2.object.ObjectWrap._getDObject!(" ~ param.fullDType ~ ")(cast(void*)" ~ param.dName
                 ~ ", " ~ param.fullOwnerFlag ~ ".Take)");
           }
           else if (param.isBorrowedArg) // Borrowed for the duration of the call (no owner, not copied)
@@ -446,8 +446,8 @@ class DelegWriter
             ~ "(cast(void*)_" ~ param.dName ~ "Orig, _" ~ owner.dName ~ ") : null;";
           addCallParam("_" ~ param.dName);
 
-          addImport("glib.c.functions");
-          addImport("glib.c.types");
+          addImport("gid.glib2.c.functions");
+          addImport("gid.glib2.c.types");
           // Null clears the slot (C removes the value). A different non-null pointer is a programmer error: log a
           // critical, restore the original, and stop a boolean callback. Ownership of the C structure never moves to D.
           auto post = [
@@ -468,8 +468,8 @@ class DelegWriter
         { // receives a new reference or copy of the resulting D object (which may be the same object, another or null)
           if (param.kind == TypeKind.Object || param.kind == TypeKind.Interface)
           {
-            addImport("gobject.object");
-            preCall ~= "auto _" ~ param.dName ~ " = gobject.object.ObjectWrap._getDObject!(" ~ param.fullDType
+            addImport("gid.gobject2.object");
+            preCall ~= "auto _" ~ param.dName ~ " = gid.gobject2.object.ObjectWrap._getDObject!(" ~ param.fullDType
               ~ ")(cast(void*)*" ~ param.dName ~ ", " ~ param.fullOwnerFlag ~ ".Take);";
           }
           else
@@ -480,7 +480,7 @@ class DelegWriter
 
           if (param.kind == TypeKind.Interface)
             postCall ~= "*" ~ outTarget ~ " = _" ~ param.dName ~ " ? cast(" ~ param.cTypeRemPtr.stripConst
-              ~ ")(cast(gobject.object.ObjectWrap)_" ~ param.dName ~ ")._cPtr(" ~ param.fullOwnerFlag ~ ".Dup) : null;";
+              ~ ")(cast(gid.gobject2.object.ObjectWrap)_" ~ param.dName ~ ")._cPtr(" ~ param.fullOwnerFlag ~ ".Dup) : null;";
           else
             postCall ~= "*" ~ outTarget ~ " = _" ~ param.dName ~ " ? cast(" ~ param.cTypeRemPtr.stripConst ~ ")_"
               ~ param.dName ~ "._cPtr(" ~ param.fullOwnerFlag ~ ".Dup) : null;";
@@ -562,9 +562,9 @@ class DelegWriter
               ~ "new " ~ elemType.fullDType ~ "(cast(void*)" ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);"];
           break;
         case Object, Interface:
-          addImport("gobject.object");
+          addImport("gid.gobject2.object");
           preCall ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_" ~ param.dName
-            ~ "[i] = gobject.object.ObjectWrap._getDObject!(" ~ elemType.fullDType ~ ")(" ~ param.dName ~ "[i], "
+            ~ "[i] = gid.gobject2.object.ObjectWrap._getDObject!(" ~ elemType.fullDType ~ ")(" ~ param.dName ~ "[i], "
             ~ param.fullOwnerFlag ~ ".Take);"];
           break;
         case Unknown, Callback, Container, Namespace:

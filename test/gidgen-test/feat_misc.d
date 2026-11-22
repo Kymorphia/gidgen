@@ -1,11 +1,11 @@
 /// GidgenFeat enum and flags methods, error, destroy notify callback and property/method conflict tests
 module feat_misc;
 
-import glib.error : ErrorWrap;
-import gidgenfeat.global;
-import gidgenfeat.color : ColorNs = Color;
-import gidgenfeat.style : StyleNs = Style;
-import gidgenfeat.types : Color, Counter, Style;
+import gid.glib2.error : ErrorWrap;
+import gid.gidgenfeat1.global;
+import gid.gidgenfeat1.color : ColorNs = Color;
+import gid.gidgenfeat1.style : StyleNs = Style;
+import gid.gidgenfeat1.types : Color, Counter, Style;
 
 /// Enum and flags methods (functions are in enum namespace structures since the types have a GType)
 unittest
@@ -52,8 +52,8 @@ unittest
 /// parent class method overrides it
 unittest
 {
-  import gidgenfeat.conflict;
-  import gidgenfeat.conflict_child;
+  import gid.gidgenfeat1.conflict;
+  import gid.gidgenfeat1.conflict_child;
 
   auto c = new Conflict;
   assert(c.level == 1, "getter method");

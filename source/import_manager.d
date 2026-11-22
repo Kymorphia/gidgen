@@ -30,7 +30,7 @@ void beginImports(dstring moduleName, dstring namespace = null)
 {
   assert(!importManager);
   importManager = new ImportManager(moduleName, namespace);
-  importManager.add("gid.gid");
+  importManager.add("gid.core.utils");
   importManager.add("types");
   importManager.add(namespace ~ ".c.functions");
   importManager.add(namespace ~ ".c.types");

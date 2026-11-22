@@ -16,6 +16,8 @@ import gir.return_value;
 import gir.structure;
 import gir.type_node;
 import import_manager;
+import std.file : isDir, rmdirRecurse, removeFile = remove;
+import std.path : absolutePath, buildNormalizedPath, dirSeparator;
 import std_includes;
 import utils;
 import xml_patch;
@@ -53,6 +55,12 @@ final class Repo : Base
   override @property dstring name()
   {
     return dubPackageName;
+  }
+
+  /// true if this is the repo of the giD runtime (modules `gid.core.*`), which is defined by the `//!namespace gid` command
+  @property bool runtime() const
+  {
+    return filename.empty && namespace == "gid";
   }
 
   /// true if this repo belongs to an external dependency (used for resolution only, never written)
@@ -274,7 +282,7 @@ final class Repo : Base
       dubInfo["name"] = [dubPackageName];
     }
 
-    packageNamespace = namespace.toLower;
+    packageNamespace = runtime ? CoreModule : (external ? dependency.root : defs.root).to!dstring ~ "." ~ dubPackageName;
 
     if ("version" !in dubInfo && "version" in defs.dubInfo)
       dubInfo["version"] = defs.dubInfo["version"];
@@ -491,13 +499,14 @@ final class Repo : Base
 
     auto pkgName = (mergeRepo ? mergeRepo : this).dubPackageName.to!string; // Use the package of the merge namespace if merge specified
     auto packagePath = buildPath(basePath, pkgName);
-    auto sourcePath = buildPath(packagePath, packageNamespace.to!string);
+    auto sourcePath = buildPath([packagePath] ~ packageNamespace.to!string.split('.'));
     auto cSourcePath = buildPath(sourcePath, "c");
 
     codeTrap("repo.write", namespace);
 
     writeCTypes(buildPath(cSourcePath, "types.d"));
     writeCFuncs(buildPath(cSourcePath, "functions.d"));
+    writeLibMarker(cSourcePath);
 
     if (typesStruct)
       writeTypesModule(buildPath(sourcePath, "types.d"));
@@ -529,11 +538,144 @@ final class Repo : Base
         en.write(sourcePath);
     }
 
+    if (runtime)
+      writeCorePackageModule(sourcePath);
+
+    removeShimDirectory(packagePath);
+    if (writeShims)
+      writeShimModules(packagePath);
+
     if (!mergeRepo)
     {
       writeDubJsonFile(buildPath(packagePath, "dub.json"));
       writeReadme(buildPath(packagePath, "README.md"));
     }
+  }
+
+  /**
+   * Write the `gid.core` package module, which publicly imports the D-facing giD runtime modules.
+   * Params:
+   *   sourcePath = Directory of the runtime modules (`packages/glib2/gid/core`)
+   */
+  private void writeCorePackageModule(string sourcePath)
+  {
+    auto writer = new CodeWriter(buildPath(sourcePath, "package.d"));
+    writer ~= [
+      "/// Public import of the giD runtime modules",
+      "module gid.core;",
+      "",
+      "public import gid.core.utils;",
+      "public import gid.core.loader;",
+      "public import gid.core.basictypes;",
+      "public import gid.core.wrap;",
+      "public import gid.core.types;",
+      "public import gid.core.global;",
+    ];
+    writer.write();
+  }
+
+  /**
+   * Directory of this repo's unversioned shim modules in `packagePath`, or `null` if there is none or it would be
+   * unsafe to remove (the versioned module directory, the giD runtime directory, or a path outside the package).
+   */
+  private string shimDirectory(string packagePath)
+  {
+    auto ns = namespace.toLower.to!string;
+    auto root = defs.root;
+
+    if (ns.empty || ns == dubPackageName.to!string || (root == GidRoot && ns == "core"))
+      return null;
+
+    static bool safeName(string name) // Only a plain package path component can be removed
+    {
+      return !name.empty && name.filter!(c => !(c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))).empty;
+    }
+
+    if (!safeName(root) || !safeName(ns))
+      return null;
+
+    auto dir = buildPath(packagePath, root, ns).absolutePath.buildNormalizedPath;
+    auto pkg = packagePath.absolutePath.buildNormalizedPath;
+
+    if (pkg.empty || dir.length <= pkg.length || dir[0 .. pkg.length] != pkg)
+      return null;
+
+    auto sep = dir[pkg.length];
+    if (sep != dirSeparator[0] && sep != '/')
+      return null;
+
+    return dir;
+  }
+
+  /**
+   * Remove this package's unversioned shim directory, if it exists. Called before writing shims and when shims
+   * are disabled or have moved to another package, so stale shim modules are not left in `sourcePaths`.
+   * Only that directory is removed.
+   */
+  private void removeShimDirectory(string packagePath)
+  {
+    auto dir = shimDirectory(packagePath);
+    if (dir && dir.exists && dir.isDir)
+      rmdirRecurse(dir);
+  }
+
+  /**
+   * Write unversioned shim modules for this repo into its package (`gid.gtk.widget` importing `gid.gtk4.widget`).
+   * Params:
+   *   packagePath = Directory of the dub package this repo is written to
+   */
+  private void writeShimModules(string packagePath)
+  {
+    auto shimNs = defs.root.to!dstring ~ "." ~ namespace.toLower;
+    auto shimDir = shimDirectory(packagePath);
+    if (!shimDir)
+      shimDir = buildPath([packagePath] ~ shimNs.to!string.split('.'));
+
+    foreach (mod; bindingModules)
+    {
+      auto path = buildPath([shimDir] ~ mod.to!string.split('.')) ~ ".d";
+      auto writer = new CodeWriter(path);
+      auto versioned = packageNamespace ~ "." ~ mod;
+      writer ~= [
+        "/// Unversioned import of the latest major version of this module, [" ~ versioned ~ "]",
+        "module " ~ shimNs ~ "." ~ mod ~ ";",
+        "public import " ~ versioned ~ ";"
+      ];
+      writer.write();
+    }
+  }
+
+  /// Relative module names written for this repo (`widget`, `c.types`, `accessible_mixin`)
+  private dstring[] bindingModules()
+  {
+    dstring[] mods = ["c.types", "c.functions"];
+
+    if (typesStruct)
+      mods ~= "types";
+
+    if (globalStruct)
+      mods ~= "global";
+
+    foreach (st; structs)
+    {
+      if (st.active != Active.Enabled || !((st.defCode && st.defCode.inClass) || st.inModule)
+          || st is globalStruct || st is typesStruct)
+        continue;
+
+      mods ~= st.moduleName;
+
+      if (st.kind == TypeKind.Interface)
+      {
+        mods ~= st.moduleName ~ "_mixin";
+        mods ~= st.moduleName ~ "_iface_proxy";
+      }
+    }
+
+    foreach (en; enums)
+      if (en.active == Active.Enabled && (en.functions.length || en.errorQuarks.length))
+        mods ~= en.moduleName;
+
+    return mods;
   }
 
   // Write an interface proxy object (to use when a GObject has no known applicable D object binding when using the interface)
@@ -545,7 +687,7 @@ final class Repo : Base
     auto writer = new CodeWriter(buildPath(path, modName.to!string ~ ".d"));
     writer ~= ["/// Module for [" ~ className ~ "] interface proxy object",
       "module " ~ packageNamespace ~ "." ~ modName ~ ";", "",
-      "import gobject.object;"];
+      "import gid.gobject2.object;"];
     writer ~= ifaces.map!(x => ["import " ~ x.fullModuleName ~ ";", "import " ~ x.fullModuleName ~ "_mixin;"]).join;
     writer ~= ["",
       "/// Proxy object for [" ~ st.fullDName ~ "] interface when a GObject has no applicable D binding",
@@ -580,11 +722,10 @@ final class Repo : Base
     }
 
     output ~= `  "targetType": "library",` ~ "\n";
-    output ~= `  "importPaths": [".", ".."],` ~ "\n";
+    output ~= `  "importPaths": ["."],` ~ "\n";
 
-    // Include merged repos in sourcePaths list
-    output ~= `  "sourcePaths": [` ~ ([this] ~ mergedRepos).map!(x => '"' ~ x.packageNamespace.to!string ~ '"').array
-      .join(", ") ~ `]`;
+    // The module root directory contains the directories of this repo and merged repos
+    output ~= `  "sourcePaths": ["` ~ defs.root ~ `"]`;
 
     if (!includeRepos.empty)
     {
@@ -646,8 +787,8 @@ final class Repo : Base
 
     writer ~= "/// C types for " ~ dubPackageName ~ " library";
     writer ~= ["module " ~ packageNamespace ~ ".c.types;", ""];
-    writer ~= "public import gid.basictypes;"; // Imported for glong/gulong types which change size depending on Windows or not
-    writer ~= includes.map!(x => "public import " ~ x.name.toLower ~ ".c.types;").array;
+    writer ~= "public import gid.core.basictypes;"; // Imported for glong/gulong types which change size depending on Windows or not
+    writer ~= includeRepos.map!(x => "public import " ~ x.packageNamespace ~ ".c.types;").array;
     writer ~= "";
 
     foreach (a; aliases)
@@ -718,31 +859,43 @@ final class Repo : Base
 
     writer ~= "/// C functions for " ~ dubPackageName ~ " library";
     writer ~= ["module " ~ packageNamespace ~ ".c.functions;", ""];
-    writer ~= ["public import gid.basictypes;", "import gid.loader;", "import " ~ packageNamespace ~ ".c.types;"]; // Import gid.basictypes for glong/gulong types which change size depending on Windows or not
+    writer ~= ["public import gid.core.basictypes;", "import gid.core.loader;", "import " ~ packageNamespace ~ ".c.types;"]; // Import gid.core.basictypes for glong/gulong types which change size depending on Windows or not
+    if (auto marker = libMarkerModule)
+      writer ~= "static import " ~ marker ~ ";"; // Marker module, so the loader can see this package in ModuleInfo
 
-    auto importNames = includes.map!(x => x.name).array;
+    auto importNames = includeRepos.map!(x => x.packageNamespace).array;
 
     if (namespace == "GLib") // HACK - Add GObject to includes for GLib for GType
-      importNames ~= "GObject";
+      importNames ~= defs.repoHash[NamespaceVersion("GObject", "2.0")].packageNamespace;
 
-    writer ~= importNames.sort.map!(x => "public import " ~ x.toLower ~ ".c.types;").array;
+    writer ~= importNames.sort.map!(x => "public import " ~ x ~ ".c.types;").array;
     writer ~= "";
 
     writeSharedLibs(writer);
+    if (auto marker = libMarkerModule)
+      writer ~= "private __gshared immutable(bool)* _gidLibMarker = &" ~ marker ~ ".gidLibLinked;"; // Runtime ref, so the linker keeps the marker module
 
-    writer ~= ["__gshared extern(C) nothrow", "{"];
+    // The c_* variables have D linkage so two majors of a library (gtk3 and gtk4) can be linked together.
+    // Their types stay extern(C) nothrow. The source names (c_* and the plain C-name aliases) are unchanged.
+    void writeCFnPtr(dstring proto, dstring cName, ref dstring[] preamble)
+    {
+      writer ~= preamble ~ [
+        "private alias c_" ~ cName ~ "Fn = extern(C) " ~ proto ~ " nothrow;",
+        "__gshared c_" ~ cName ~ "Fn c_" ~ cName ~ "; ///" // Comment so that adrdox includes function in API docs
+      ];
+      preamble = null;
+    }
 
     foreach (st; structs)
     {
       auto preamble = ["", "// " ~ st.dType];
 
-      if (writer.lastLine == "{")
+      if (writer.lastLine == "")
         preamble = preamble[1 .. $];
 
       if (!st.glibGetType.empty)
       { // Write GType function if set
-        writer ~= preamble ~ ["GType function() c_" ~ st.glibGetType ~ "; ///"]; // Add comment so that adrdox includes function in API docs
-        preamble = null;
+        writeCFnPtr("GType function()", st.glibGetType, preamble);
       }
 
       foreach (f; st.functions)
@@ -750,8 +903,7 @@ final class Repo : Base
         if (f.movedTo || !f.funcType.among(FuncType.Function, FuncType.Constructor, FuncType.Method))
           continue;
 
-        writer ~= preamble ~ [f.getCPrototype ~ " c_" ~ f.cName ~ "; ///"]; // Add comment so that adrdox includes function in API docs
-        preamble = null;
+        writeCFnPtr(f.getCPrototype, f.cName, preamble);
       }
     }
 
@@ -759,7 +911,7 @@ final class Repo : Base
     {
       auto preamble = ["", "// " ~ en.dType];
 
-      if (writer.lastLine == "{")
+      if (writer.lastLine == "")
         preamble = preamble[1 .. $];
 
       foreach (f; en.functions)
@@ -767,12 +919,9 @@ final class Repo : Base
         if (f.movedTo || f.funcType != FuncType.Function)
           continue;
 
-        writer ~= preamble ~ [f.getCPrototype ~ " c_" ~ f.cName ~ "; ///"]; // Add comment so that adrdox includes function in API docs
-        preamble = null;
+        writeCFnPtr(f.getCPrototype, f.cName, preamble);
       }
     }
-
-    writer ~= ["}"];
 
     foreach (st; structs)
     {
@@ -809,7 +958,7 @@ final class Repo : Base
     }
 
     writer ~= ["", "shared static this()", "{"];
-    auto resolvedLibs = ["auto libs = gidResolveLibs(LIBS);"d, ""d];
+    auto resolvedLibs = ["auto libs = gidResolveLibs(LIBS, \"" ~ packageNamespace ~ "\", \"" ~ namespace ~ "\");"d, ""d]; // Register the package and its GIR namespace (Gtk) so other majors can be detected
 
     foreach (st; structs)
     {
@@ -869,6 +1018,9 @@ final class Repo : Base
       }
     }
 
+    if (resolvedLibs && !sharedLibrary.empty) // Package without functions, still open its libraries and register them
+      writer ~= resolvedLibs[0 .. 1];
+
     writer ~= ["}"];
 
     writer.write();
@@ -883,6 +1035,64 @@ final class Repo : Base
       "private immutable LIBS = [\"" ~ libsArray.join("\", \"") ~ "\"];",
       ""
     ];
+  }
+
+  /**
+   * Module of the generated marker used by the loader to see that this package is linked, and which library (GIR
+   * namespace) it belongs to (`gid.gtk4.c._gidlib_Gtk`). Null if the package has no shared library, is the giD
+   * runtime, or the namespace is not a D identifier.
+   */
+  private dstring libMarkerModule() const
+  {
+    if (sharedLibrary.empty || runtime || !validDIdent(namespace))
+      return null;
+
+    return packageNamespace ~ ".c._gidlib_" ~ namespace;
+  }
+
+  /**
+   * Write the marker module for this package (and remove any stale `_gidlib_*.d` files in the same directory).
+   * Params:
+   *   cSourcePath = Directory of the package's `c` modules
+   */
+  private void writeLibMarker(string cSourcePath)
+  {
+    if (cSourcePath.exists)
+    {
+      foreach (de; dirEntries(cSourcePath, "_gidlib_*.d", SpanMode.shallow))
+        if (de.isFile)
+          removeFile(de.name);
+    }
+
+    auto mod = libMarkerModule;
+    if (!mod)
+      return;
+
+    auto writer = new CodeWriter(buildPath(cSourcePath, "_gidlib_" ~ namespace.to!string ~ ".d"));
+    writer ~= [
+      "/// Marker used by the giD loader to detect other linked majors of the " ~ namespace ~ " library",
+      "module " ~ mod ~ ";",
+      "",
+      "immutable bool gidLibLinked = true;",
+    ];
+    writer.write();
+  }
+
+  /// true if `name` is a D identifier (used for the `_gidlib_` marker module name)
+  private static bool validDIdent(dstring name)
+  {
+    if (name.empty)
+      return false;
+
+    auto c0 = name[0];
+    if (c0 != '_' && !(c0 >= 'A' && c0 <= 'Z') && !(c0 >= 'a' && c0 <= 'z'))
+      return false;
+
+    foreach (c; name)
+      if (c != '_' && !(c >= 'A' && c <= 'Z') && !(c >= 'a' && c <= 'z') && !(c >= '0' && c <= '9'))
+        return false;
+
+    return true;
   }
 
   /**
@@ -1399,7 +1609,8 @@ final class Repo : Base
 
   dstring dubPackageName; /// Dub package name
   Dependency dependency; /// Dependency repository this repo belongs to (null for repos of the main defs)
-  dstring packageNamespace; /// Namespace directory to use for dub package (usually just namespace.toLower)
+  dstring packageNamespace; /// Module name prefix of the package, root and dub package name (`gid.gtk4`), or `gid.core` for the runtime
+  bool writeShims; /// True if this repo writes unversioned shim modules into its package
 
   Alias[] aliases; /// Aliases
   Constant[] constants; /// Constants
@@ -1504,4 +1715,85 @@ final class DocSection : Base
   }
 
   dstring name; /// Name of doc section
+}
+
+
+version (unittest)
+{
+  import std.file : getcwd, chdir, mkdir, tempDir, writeFile = write;
+  import std.path : buildPath;
+}
+
+private Repo testRepoForShims(string root, dstring ns, dstring pkg)
+{
+  auto defs = new Defs;
+  defs.root = root;
+  auto repo = new Repo(defs);
+  repo.namespace = ns;
+  repo.dubPackageName = pkg;
+  repo.filename = pkg.to!string ~ ".gir";
+  return repo;
+}
+
+unittest // removeShimDirectory deletes only the package shim dir, not versioned modules or siblings
+{
+  auto oldCwd = getcwd;
+  auto dir = buildPath(tempDir, "gidgen-shim-dir-test");
+  if (dir.exists)
+    rmdirRecurse(dir);
+  mkdir(dir);
+  chdir(dir);
+  scope (exit)
+  {
+    chdir(oldCwd);
+    if (dir.exists)
+      rmdirRecurse(dir);
+  }
+
+  auto pkg = buildPath(dir, "packages", "gtk4");
+  mkdirRecurse(buildPath(pkg, "gid", "gtk4"));
+  mkdirRecurse(buildPath(pkg, "gid", "gtk"));
+  mkdirRecurse(buildPath(pkg, "gid", "keepme"));
+  writeFile(buildPath(pkg, "gid", "gtk4", "widget.d"), "module gid.gtk4.widget;\n");
+  writeFile(buildPath(pkg, "gid", "gtk", "widget.d"), "module gid.gtk.widget;\n");
+  writeFile(buildPath(pkg, "gid", "gtk", "stale.d"), "module stale;\n");
+  writeFile(buildPath(pkg, "gid", "keepme", "x.d"), "keep\n");
+
+  auto repo = testRepoForShims("gid", "Gtk", "gtk4");
+  repo.removeShimDirectory(pkg);
+
+  assert(!buildPath(pkg, "gid", "gtk").exists);
+  assert(buildPath(pkg, "gid", "gtk4", "widget.d").exists);
+  assert(buildPath(pkg, "gid", "keepme", "x.d").exists);
+}
+
+unittest // removeShimDirectory does not remove the versioned module directory or gid.core
+{
+  auto oldCwd = getcwd;
+  auto dir = buildPath(tempDir, "gidgen-shim-dir-safe-test");
+  if (dir.exists)
+    rmdirRecurse(dir);
+  mkdir(dir);
+  chdir(dir);
+  scope (exit)
+  {
+    chdir(oldCwd);
+    if (dir.exists)
+      rmdirRecurse(dir);
+  }
+
+  // A package whose unversioned name equals the versioned one must not lose its modules
+  auto pkgA = buildPath(dir, "packages", "freetype2");
+  mkdirRecurse(buildPath(pkgA, "gid", "freetype2"));
+  writeFile(buildPath(pkgA, "gid", "freetype2", "types.d"), "module gid.freetype2.types;\n");
+  auto ft = testRepoForShims("gid", "freetype2", "freetype2");
+  ft.removeShimDirectory(pkgA);
+  assert(buildPath(pkgA, "gid", "freetype2", "types.d").exists);
+
+  auto pkgB = buildPath(dir, "packages", "glib2");
+  mkdirRecurse(buildPath(pkgB, "gid", "core"));
+  writeFile(buildPath(pkgB, "gid", "core", "utils.d"), "module gid.core.utils;\n");
+  auto core = testRepoForShims("gid", "Core", "glib2");
+  core.removeShimDirectory(pkgB);
+  assert(buildPath(pkgB, "gid", "core", "utils.d").exists);
 }

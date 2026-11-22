@@ -1,13 +1,13 @@
 /// GidgenFeat structure field kinds tests
 module feat_struct;
 
-import gidgenfeat.types : Point;
+import gid.gidgenfeat1.types : Point;
 
 /// Structure field kinds not covered by the matrix field cells: bit fields, array with a length field, zero
 /// terminated array, fixed size structure array, callback fields and an untyped pointer field
 unittest
 {
-  import gidgenfeat.field_kinds;
+  import gid.gidgenfeat1.field_kinds;
 
   auto fk = new FieldKinds;
   fk.fill;

@@ -52,7 +52,7 @@ class FuncWriter
       else
         postCall ~= ["if (_err)", throwLine];
 
-      addImport("glib.error");
+      addImport("gid.glib2.error");
     }
 
     // Write out any C callback embedded functions
@@ -212,8 +212,8 @@ class FuncWriter
         {
           if (retVal.kind == TypeKind.Object || retVal.kind == TypeKind.Interface)
           {
-            addImport("gobject.object");
-            postCall ~= "auto _retval = gobject.object.ObjectWrap._getDObject!("
+            addImport("gid.gobject2.object");
+            postCall ~= "auto _retval = gid.gobject2.object.ObjectWrap._getDObject!("
               ~ retVal.fullDType ~ ")(cast(" ~ retVal.cType.stripConst ~ ")_cretval, " ~ retVal.fullOwnerFlag
               ~ ".Take);";
           }
@@ -304,9 +304,9 @@ class FuncWriter
           ~ ".Take);")];
         break;
       case Object, Interface:
-        addImport("gobject.object");
+        addImport("gid.gobject2.object");
         postCall ~= ["_retval = new " ~ elemType.fullDType ~ "[" ~ lengthStr ~ "];", "foreach (i; 0 .. "
-          ~ lengthStr ~ ")", "_retval[i] = gobject.object.ObjectWrap._getDObject!(" ~ elemType.fullDType
+          ~ lengthStr ~ ")", "_retval[i] = gid.gobject2.object.ObjectWrap._getDObject!(" ~ elemType.fullDType
           ~ ")(_cretval[i], " ~ retVal.fullOwnerFlag ~ ".Take);"];
         break;
       case Callback, Unknown, Container, Namespace:
@@ -561,8 +561,8 @@ class FuncWriter
 
           if (param.kind == TypeKind.Object)
           {
-            addImport("gobject.object");
-            postCall ~= param.dName ~ " = gobject.object.ObjectWrap._getDObject!(" ~ param.fullDType ~ ")(_"
+            addImport("gid.gobject2.object");
+            postCall ~= param.dName ~ " = gid.gobject2.object.ObjectWrap._getDObject!(" ~ param.fullDType ~ ")(_"
               ~ param.dName ~ ", " ~ param.fullOwnerFlag ~ ".Take);";
           }
           else
@@ -604,7 +604,7 @@ class FuncWriter
               {
                 preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";";
                 addCallParam("&_" ~ param.dName);
-                addImport("gid.gid");
+                addImport("gid.core.utils");
                 auto wrapOut = param.dName ~ " = new " ~ param.fullDType ~ "(boxedCopy(" ~ param.fullDType
                   ~ "._getGType, &_" ~ param.dName ~ "), Yes.Take);";
                 // Only when definitions set gid-valid-if-return; a false return does not generally invalidate outs
@@ -629,7 +629,7 @@ class FuncWriter
               preCall ~= "auto _" ~ param.dName ~ " = cast(" ~ param.cTypeRemPtr ~ "*)gMalloc(" ~ param.cTypeRemPtr
                 ~ ".sizeof);";
               addCallParam("_" ~ param.dName);
-              addImport("gid.gid");
+              addImport("gid.core.utils");
               postCall ~= param.dName ~ " = new " ~ param.fullDType ~ "(cast(void*)_" ~ param.dName ~ ", Yes.Take);";
             }
             else if (param.kind == Wrap)
@@ -653,8 +653,8 @@ class FuncWriter
 
             if (param.kind == Object)
             {
-              addImport("gobject.object");
-              postCall ~= param.dName ~ " = gobject.object.ObjectWrap._getDObject!(" ~ param.fullDType ~ ")(_"
+              addImport("gid.gobject2.object");
+              postCall ~= param.dName ~ " = gid.gobject2.object.ObjectWrap._getDObject!(" ~ param.fullDType ~ ")(_"
                 ~ param.dName ~ ", " ~ param.fullOwnerFlag ~ ".Take);";
             }
             else if (borrowsFromInstance(param)) // Borrowed structure owned by the instance
@@ -667,23 +667,23 @@ class FuncWriter
         }
         break;
       case Interface:
-        addImport("gobject.object");
+        addImport("gid.gobject2.object");
 
         if (param.direction == ParamDirection.InOut && param.cType.countStars == 2)
         {
           addDeclParam("ref " ~ param.fullDType ~ " " ~ param.dName);
           preCall ~= param.cTypeRemPtr.stripConst ~ " _" ~ param.dName ~ " = " ~ param.dName ~ " ? cast("
-            ~ param.cTypeRemPtr.stripConst ~ ")(cast(gobject.object.ObjectWrap)" ~ param.dName ~ ")._cPtr("
+            ~ param.cTypeRemPtr.stripConst ~ ")(cast(gid.gobject2.object.ObjectWrap)" ~ param.dName ~ ")._cPtr("
             ~ param.fullOwnerFlag ~ ".Dup) : null;";
           addCallParam("&_" ~ param.dName);
-          postCall ~= param.dName ~ " = gobject.object.ObjectWrap._getDObject!(" ~ param.fullDType ~ ")(_"
+          postCall ~= param.dName ~ " = gid.gobject2.object.ObjectWrap._getDObject!(" ~ param.fullDType ~ ")(_"
             ~ param.dName ~ ", " ~ param.fullOwnerFlag ~ ".Take);";
         }
         else if (param.direction == ParamDirection.In || param.direction == ParamDirection.InOut)
         {
-          addImport("gobject.object");
+          addImport("gid.gobject2.object");
           addDeclParam(param.fullDType ~ " " ~ param.dName);
-          addCallParam(param.dName ~ " ? cast(" ~ param.cTypeRemPtr.stripConst ~ "*)(cast(gobject.object.ObjectWrap)"
+          addCallParam(param.dName ~ " ? cast(" ~ param.cTypeRemPtr.stripConst ~ "*)(cast(gid.gobject2.object.ObjectWrap)"
             ~ param.dName ~ ")._cPtr(" ~ param.fullOwnerFlag ~ ".Dup) : null");
         }
         else if (param.direction == ParamDirection.Out)
@@ -691,7 +691,7 @@ class FuncWriter
           addDeclParam("out " ~ param.fullDType ~ " " ~ param.dName);
           preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";";
           addCallParam("&_" ~ param.dName);
-          postCall ~= param.dName ~ " = gobject.object.ObjectWrap._getDObject!(" ~ param.fullDType ~ ")(_"
+          postCall ~= param.dName ~ " = gid.gobject2.object.ObjectWrap._getDObject!(" ~ param.fullDType ~ ")(_"
             ~ param.dName ~ ", " ~ param.fullOwnerFlag ~ ".Take);";
         }
         break;
@@ -829,7 +829,7 @@ class FuncWriter
           ~ ")obj._cPtr: null;";
         break;
       case Interface:
-        addImport("gobject.object");
+        addImport("gid.gobject2.object");
 
         if (param.ownership == Ownership.None)
           preCall ~= ["auto _" ~ param.dName ~ "_arr = new " ~ elemType.cType ~ "[](" ~ param.dName ~ ".length"
@@ -840,7 +840,7 @@ class FuncWriter
 
         auto dup = param.ownership == Ownership.None ? "No"d : "Yes"d;
         preCall ~= "foreach (i, obj; " ~ param.dName ~ ") _" ~ param.dName ~ "[i] = obj ? cast("
-          ~ elemType.cType ~ ")(cast(gobject.object.ObjectWrap)obj)._cPtr(" ~ dup ~ ".Dup): null;";
+          ~ elemType.cType ~ ")(cast(gid.gobject2.object.ObjectWrap)obj)._cPtr(" ~ dup ~ ".Dup): null;";
         break;
       case Unknown, Callback, Container, Namespace:
         assert(0, "Unsupported parameter array type '" ~ elemType.fullDType.to!string ~ "' (" ~ elemType.kind.to!string
@@ -995,14 +995,14 @@ class FuncWriter
           postCall ~= "gFree(cast(void*)_" ~ param.dName ~ ");";
         break;
       case Object, Interface:
-        addImport("gobject.object");
+        addImport("gid.gobject2.object");
 
         if (!param.callerAllocates)
         {
           preCall ~= param.cTypeRemPtr ~ " _" ~ param.dName ~ ";";
           addCallParam("&_" ~ param.dName);
           postCall ~= [param.dName ~ ".length = " ~ lengthStr ~ ";", "foreach (i; 0 .. " ~ lengthStr ~ ")",
-            param.dName ~ "[i] = gobject.object.ObjectWrap._getDObject!(" ~ elemType.fullDType ~ ")(_" ~ param.dName
+            param.dName ~ "[i] = gid.gobject2.object.ObjectWrap._getDObject!(" ~ elemType.fullDType ~ ")(_" ~ param.dName
             ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);"];
 
           if (param.ownership != Ownership.None)
@@ -1013,7 +1013,7 @@ class FuncWriter
           preCall ~= [elemType.cType ~ "[] _" ~ param.dName ~ ";", "_" ~ param.dName ~ ".length = " ~ lengthStr ~ ";"];
           addCallParam("_" ~ param.dName ~ ".ptr");
           postCall ~= [param.dName ~ ".length = " ~ lengthStr ~ ";", "foreach (i; 0 .. " ~ lengthStr ~ ")",
-            param.dName ~ "[i] = gobject.object.ObjectWrap._getDObject!(" ~ elemType.fullDType ~ ")(cast(void*)_"
+            param.dName ~ "[i] = gid.gobject2.object.ObjectWrap._getDObject!(" ~ elemType.fullDType ~ ")(cast(void*)_"
             ~ param.dName ~ "[i], " ~ param.fullOwnerFlag ~ ".Take);"];
         }
         break;

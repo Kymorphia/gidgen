@@ -1,15 +1,15 @@
 /// GidgenFeat GType to D class map tests (no get_type() calls when the class maps are created)
 module feat_class_map;
 
-import gid.gid : Flag, No, Yes;
-import gidgenfeat.child_iface;
-import gidgenfeat.global : lateInit, newLateObject, lateTypeEarly, newHiddenChild;
-import gidgenfeat.late_object;
-import gidgenfeat.object : FeatObject = ObjectWrap;
-import gobject.c.functions;
-import gobject.c.types;
-import gobject.object : ObjectWrap;
-import gobject.types : GType;
+import gid.core : Flag, No, Yes;
+import gid.gidgenfeat1.child_iface;
+import gid.gidgenfeat1.global : lateInit, newLateObject, lateTypeEarly, newHiddenChild;
+import gid.gidgenfeat1.late_object;
+import gid.gidgenfeat1.object : FeatObject = ObjectWrap;
+import gid.gobject2.c.functions;
+import gid.gobject2.c.types;
+import gid.gobject2.object : ObjectWrap;
+import gid.gobject2.types : GType;
 
 /// D subclass without its own GType, must not be used for wrapping C instances of its parent type
 class FeatSubclass : FeatObject

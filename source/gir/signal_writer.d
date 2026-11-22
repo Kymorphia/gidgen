@@ -22,7 +22,7 @@ class SignalWriter
     assert(owningClass && owningClass != signal.repo.globalStruct,
       "Signal '" ~ signal.fullDName.to!string ~ "' does not have a valid class");
 
-    addImport("gobject.dclosure");
+    addImport("gid.gobject2.dclosure");
 
     preCall = new LineTracker;
     inpProcess = new LineTracker;
@@ -210,8 +210,8 @@ class SignalWriter
             ~ param.fullOwnerFlag ~ ".Free);"];
           break;
         case Object, Interface:
-          addImport("gobject.object");
-          inpProcess ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_dArray ~= gobject.object.ObjectWrap._getDObject!("
+          addImport("gid.gobject2.object");
+          inpProcess ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_dArray ~= gid.gobject2.object.ObjectWrap._getDObject!("
             ~ elemType.fullDType ~ ")(_cArray[i], " ~ param.fullOwnerFlag ~ ".Take);"];
           break;
         case Opaque, Boxed, Wrap, Reffed, Unknown, Callback, Container, Namespace:
@@ -312,9 +312,9 @@ class SignalWriter
     // Templates in a D interface are not virtual, so the interface definition has its own implementation which
     // connects to the object instance, allowing a signal to be connected via an interface typed reference
     if (moduleType == ModuleType.Iface)
-      addImport("gobject.object");
+      addImport("gid.gobject2.object");
 
-    writer ~= ["return " ~ (moduleType == ModuleType.Iface ? "(cast(gobject.object.ObjectWrap)this)."d : "")
+    writer ~= ["return " ~ (moduleType == ModuleType.Iface ? "(cast(gid.gobject2.object.ObjectWrap)this)."d : "")
       ~ "connectSignalClosure(\"" ~ signal.name ~ "\""
       ~ (signal.detailed ? `~ (detail.length ? "::" ~ detail : "")`d : "") ~ ", closure, after);", "}"];
   }

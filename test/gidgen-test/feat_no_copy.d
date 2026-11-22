@@ -1,9 +1,9 @@
 /// GidgenFeat non-copyable opaque record tests
 module feat_no_copy;
 
-import gidgenfeat.global : liveCount;
-import gidgenfeat.no_copy;
-import gidgenfeat.types : Counter;
+import gid.gidgenfeat1.global : liveCount;
+import gid.gidgenfeat1.no_copy;
+import gid.gidgenfeat1.types : Counter;
 
 /// Non-copyable opaque record (free function only)
 unittest

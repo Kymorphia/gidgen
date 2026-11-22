@@ -1,0 +1,77 @@
+<?xml version="1.0"?>
+<!-- Hand written GIR of the ShimLib test library (shimlib/shimlib.c), for versioned module and unversioned shim tests -->
+<!-- Both majors use the same C symbol names and GType names, as GTK 3 and GTK 4 do, to test that they can be linked together -->
+<repository version="1.2"
+            xmlns="http://www.gtk.org/introspection/core/1.0"
+            xmlns:c="http://www.gtk.org/introspection/c/1.0"
+            xmlns:glib="http://www.gtk.org/introspection/glib/1.0">
+  <include name="GObject" version="2.0"/>
+  <package name="gobject-2.0"/>
+  <c:include name="shimlib.h"/>
+  <namespace name="ShimLib"
+             version="1.0"
+             shared-library="libshimlib-1.so.0"
+             c:identifier-prefixes="ShimLib"
+             c:symbol-prefixes="shim_lib">
+    <class name="Widget"
+           c:symbol-prefix="widget"
+           c:type="ShimLibWidget"
+           parent="GObject.Object"
+           glib:type-name="ShimLibWidget"
+           glib:get-type="shim_lib_widget_get_type"
+           glib:type-struct="WidgetClass">
+      <constructor name="new" c:identifier="shim_lib_widget_new">
+        <return-value transfer-ownership="full">
+          <type name="Widget" c:type="ShimLibWidget*"/>
+        </return-value>
+      </constructor>
+      <method name="get_major" c:identifier="shim_lib_widget_get_major">
+        <return-value transfer-ownership="none">
+          <type name="gint" c:type="gint"/>
+        </return-value>
+        <parameters>
+          <instance-parameter name="widget" transfer-ownership="none">
+            <type name="Widget" c:type="ShimLibWidget*"/>
+          </instance-parameter>
+        </parameters>
+      </method>
+    </class>
+    <record name="WidgetClass"
+            c:type="ShimLibWidgetClass"
+            glib:is-gtype-struct-for="Widget">
+      <field name="parent_class">
+        <type name="GObject.ObjectClass" c:type="GObjectClass"/>
+      </field>
+    </record>
+    <class name="Gadget"
+           c:symbol-prefix="gadget"
+           c:type="ShimLibGadget"
+           parent="GObject.Object"
+           glib:type-name="ShimLibGadget"
+           glib:get-type="shim_lib_gadget_get_type"
+           glib:type-struct="GadgetClass">
+      <constructor name="new" c:identifier="shim_lib_gadget_new">
+        <return-value transfer-ownership="full">
+          <type name="Gadget" c:type="ShimLibGadget*"/>
+        </return-value>
+      </constructor>
+      <method name="get_major" c:identifier="shim_lib_gadget_get_major">
+        <return-value transfer-ownership="none">
+          <type name="gint" c:type="gint"/>
+        </return-value>
+        <parameters>
+          <instance-parameter name="gadget" transfer-ownership="none">
+            <type name="Gadget" c:type="ShimLibGadget*"/>
+          </instance-parameter>
+        </parameters>
+      </method>
+    </class>
+    <record name="GadgetClass"
+            c:type="ShimLibGadgetClass"
+            glib:is-gtype-struct-for="Gadget">
+      <field name="parent_class">
+        <type name="GObject.ObjectClass" c:type="GObjectClass"/>
+      </field>
+    </record>
+  </namespace>
+</repository>
