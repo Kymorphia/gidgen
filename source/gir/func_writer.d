@@ -1186,7 +1186,7 @@ class FuncWriter
     auto dSubclassCtor = isDSubclassCtor;
 
     if (dSubclassCtor)
-      writer ~= ["if (_usesDSubclassGType) // D subclass GType (see gobject.object.GObjectSubclass)", "{",
+      writer ~= ["if (_usesDSubclassGType) // D subclass GType (see gid.gobject2.object.GObjectSubclass)", "{",
         "this(_newDSubclassGObject(_dSubclassGType" ~ dSubclassArgsIgnored ~ "), Yes.Take);", "}", "else", "{"];
 
     if (preCall.length > 0)

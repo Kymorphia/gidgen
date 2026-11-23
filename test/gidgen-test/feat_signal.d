@@ -2,7 +2,7 @@
 module feat_signal;
 
 import core.memory : GC;
-import gidgenfeat.object : FeatObject = ObjectWrap;
+import gid.gidgenfeat1.object : FeatObject = ObjectWrap;
 import gid.glib2.bytes : Bytes;
 import gid.glib2.c.functions : g_main_context_iteration;
 import gid.glib2.variant : Variant;

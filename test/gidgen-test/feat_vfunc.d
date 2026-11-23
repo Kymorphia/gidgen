@@ -2,11 +2,11 @@
 module feat_vfunc;
 
 import gid.core.utils : GidCallbackExceptionInfo, setCallbackExceptionHandler;
-import gidgenfeat.c.functions;
-import gidgenfeat.c.types;
-import gidgenfeat.global : liveCount;
-import gidgenfeat.object : FeatObject = ObjectWrap;
-import gidgenfeat.types : Counter;
+import gid.gidgenfeat1.c.functions;
+import gid.gidgenfeat1.c.types;
+import gid.gidgenfeat1.global : liveCount;
+import gid.gidgenfeat1.object : FeatObject = ObjectWrap;
+import gid.gidgenfeat1.types : Counter;
 import gid.glib2.error : ErrorWrap;
 import gid.glib2.c.functions : g_error_free, g_quark_from_string;
 import gid.gobject2.c.functions;

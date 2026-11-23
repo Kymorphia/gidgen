@@ -2,9 +2,9 @@
 module feat_property;
 
 import core.memory : GC;
-import gidgenfeat.c.functions;
-import gidgenfeat.c.types;
-import gidgenfeat.object : FeatObject = ObjectWrap;
+import gid.gidgenfeat1.c.functions;
+import gid.gidgenfeat1.c.types;
+import gid.gidgenfeat1.object : FeatObject = ObjectWrap;
 import gid.glib2.c.functions : g_free, g_main_context_iteration;
 import gid.glib2.variant : Variant;
 import gid.gobject2.c.functions;

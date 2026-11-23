@@ -69,8 +69,8 @@ unittest
 /// Virtual methods: generated vfunc* methods call the C implementation of the instance's class
 unittest
 {
-  import gidgenfeat.c.functions : gidgen_feat_child_object_new, gidgen_feat_object_new_with_value;
-  import gidgenfeat.child_object : ChildObject;
+  import gid.gidgenfeat1.c.functions : gidgen_feat_child_object_new, gidgen_feat_object_new_with_value;
+  import gid.gidgenfeat1.child_object : ChildObject;
   import std.typecons : Yes;
 
   // D subclasses which expose the protected vfunc methods (they have no D subclass GType with installed overrides,

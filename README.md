@@ -154,7 +154,7 @@ module gid.gtk.widget;
 public import gid.gtk4.widget;
 ```
 
-The same is done for `c.types`, `c.functions`, mixins, interface proxies, and merged namespaces (`gid.gid.gobject2.object`
+The same is done for `c.types`, `c.functions`, mixins, interface proxies, and merged namespaces (`gid.gobject.object`
 imports `gid.gobject2.object`, `gid.glib.variant` imports `gid.glib2.variant`). The shim files are written next to the
 versioned modules in the same package (`packages/gtk4/gid/gtk/widget.d`), not as a separate dub subpackage, and are
 included in `sourcePaths` so they are compiled (they have ModuleInfo). `gid:gtk3` has no shims.

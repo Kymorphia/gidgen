@@ -2,10 +2,10 @@
 module feat_dinterface;
 
 import gid.core.utils : GidCallbackExceptionInfo, setCallbackExceptionHandler;
-import gidgenfeat.c.functions;
-import gidgenfeat.c.types;
-import gidgenfeat.iface;
-import gidgenfeat.iface_mixin; // Interface mixins are imported without selection, for their public imports
+import gid.gidgenfeat1.c.functions;
+import gid.gidgenfeat1.c.types;
+import gid.gidgenfeat1.iface;
+import gid.gidgenfeat1.iface_mixin; // Interface mixins are imported without selection, for their public imports
 import gid.glib2.c.functions : g_free;
 import gid.gobject2.c.functions;
 import gid.gobject2.c.types;

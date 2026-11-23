@@ -273,7 +273,7 @@ final class Structure : TypeNode
     for (ancestor = parentStruct; ancestor && ancestor.activeVfuncs.empty; ancestor = ancestor.parentStruct) {}
 
     writer ~= ["", "/**", "    Install the C virtual method trampolines of the vfunc methods which a D class overrides, in the class"
-      ~ " structure of", "    its GType (DiG, see gobject.object.GObjectSubclass). Overrides of ancestor class vfunc methods"
+      ~ " structure of", "    its GType (DiG, see gid.gobject2.object.GObjectSubclass). Overrides of ancestor class vfunc methods"
       ~ " are also", "    installed. Overriding a vfunc method which has no trampoline is a compile error.", "    Params:",
       "      T = D class derived from " ~ dType, "      klass = Class structure of the GType registered for T", "*/",
       "static void _installVfuncs(T)(void* klass) nothrow", "{", "static assert(is(T : " ~ fullDType ~ "), T.stringof ~ \" is not derived from " ~ fullDType
@@ -326,7 +326,7 @@ final class Structure : TypeNode
    * Write the interface virtual method installers into an interface mixin template: `_ifaceVfuncsOverridden_<iface>`
    * which is true if a D class overrides any of the interface vfunc methods, `_installIfaceVfuncs_<iface>` which
    * installs the trampolines of the overridden ones into an interface structure (called from interface_init, see
-   * gobject.object.GObjectSubclass), and the private `_installIfaceVfunc_<iface>` which contains the trampolines.
+   * gid.gobject2.object.GObjectSubclass), and the private `_installIfaceVfunc_<iface>` which contains the trampolines.
    * The vfunc methods of the mixin are marked with the GidIfaceVfunc UDA, a method resolved through the D class
    * without it is an override (or an implementation in a class the mixin is mixed into, which hides the mixin's).
    * The names have the interface as suffix, since declarations with the same name from different mixins are ambiguous.
@@ -351,7 +351,7 @@ final class Structure : TypeNode
     writer ~= ["", "/// True if the D class T overrides any vfunc method of " ~ fullDType ~ " (DiG)",
       "enum bool _ifaceVfuncsOverridden_" ~ suffix ~ "(T) = " ~ vfuncs.map!(fn => overridden(fn)).join(" || ") ~ ";",
       "", "/**", "    Install the C trampolines of the " ~ fullDType ~ " vfunc methods which a D class overrides into the"
-      ~ " interface", "    structure of its GType (DiG, see gobject.object.GObjectSubclass). Overriding a vfunc method which"
+      ~ " interface", "    structure of its GType (DiG, see gid.gobject2.object.GObjectSubclass). Overriding a vfunc method which"
       ~ " has no", "    trampoline is a compile error.", "    Params:", "      T = D class", "      iface = Interface"
       ~ " structure of the GType registered for T", "*/", "static void _installIfaceVfuncs_" ~ suffix
       ~ "(T)(void* iface) nothrow", "{"];
@@ -935,11 +935,11 @@ final class Structure : TypeNode
       writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take) nothrow", "{", "super(ptr, take);", "}"];
 
     // GObject classes without a primary constructor callable without arguments get a protected constructor for D
-    // subclasses, which creates an instance of the D subclass GType (see gobject.object.GObjectSubclass)
+    // subclasses, which creates an instance of the D subclass GType (see gid.gobject2.object.GObjectSubclass)
     if (kind == TypeKind.Object && isGObjectDerived && !(ctorFunc && ctorFunc.active == Active.Enabled
         && !ctorFunc.params.canFind!(p => p.isDParam && !p.isOptional)))
       writer ~= ["", "/**", "    Constructor for D subclasses, creates an instance of the GType of the D class (see",
-        "    [gobject.object.GObjectSubclass]).", "*/", "protected this() nothrow", "{",
+        "    [gid.gobject2.object.GObjectSubclass]).", "*/", "protected this() nothrow", "{",
         "this(_newDSubclassGObject(_dSubclassGType), Yes.Take);", "}"];
 
     with (TypeKind) if (kind.among(Opaque, Wrap)) // Borrowed structure constructor (see StructWrap/OpaqueWrap)

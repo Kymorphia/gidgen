@@ -2,7 +2,7 @@
 module feat_virtual;
 
 import core.thread : Thread;
-import gidgenfeat.object : FeatObject = ObjectWrap;
+import gid.gidgenfeat1.object : FeatObject = ObjectWrap;
 import gid.gobject2.c.functions;
 import gid.gobject2.c.types;
 import gid.core.utils : GidCallbackExceptionInfo, setCallbackExceptionHandler;

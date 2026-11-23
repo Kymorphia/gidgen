@@ -8,9 +8,9 @@ module export_lib;
 import core.atomic : atomicOp, atomicLoad;
 import core.memory : GC;
 import gid.core.utils : gidAttachThread;
-import gidgenfeat.iface;
-import gidgenfeat.iface_mixin; // Interface mixins are imported without selection
-import gidgenfeat.object : FeatObject = ObjectWrap;
+import gid.gidgenfeat1.iface;
+import gid.gidgenfeat1.iface_mixin; // Interface mixins are imported without selection
+import gid.gidgenfeat1.object : FeatObject = ObjectWrap;
 import gid.glib2.c.functions : g_main_context_iteration, g_quark_from_string;
 import gid.glib2.error : ErrorWrap;
 import gid.gobject2.initially_unowned : InitiallyUnowned;

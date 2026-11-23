@@ -264,7 +264,7 @@ final class Func : TypeNode
         ~ dName ~ "`\n    to chain up from an override.\n";
 
       if (noTrampolineReason.empty)
-        s ~= "    Overrides are installed in the interface structure of the D subclass GType (see `gobject.object.GObjectSubclass`).\n";
+        s ~= "    Overrides are installed in the interface structure of the D subclass GType (see `gid.gobject2.object.GObjectSubclass`).\n";
       else
         s ~= "    Overriding it from D is not supported (" ~ noTrampolineReason.to!dstring ~ ").\n";
     }
@@ -274,7 +274,7 @@ final class Func : TypeNode
         ~ "    D subclass type), use `super." ~ dName ~ "` to chain up from an override.\n";
 
       if (noTrampolineReason.empty)
-        s ~= "    Overrides are installed in the class structure of the D subclass GType (see `gobject.object.GObjectSubclass`).\n";
+        s ~= "    Overrides are installed in the class structure of the D subclass GType (see `gid.gobject2.object.GObjectSubclass`).\n";
       else
         s ~= "    Overriding it from D is not supported (" ~ noTrampolineReason.to!dstring ~ ").\n";
     }

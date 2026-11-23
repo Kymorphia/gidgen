@@ -2,15 +2,15 @@
 /// GTypes (interface_init, see GObjectSubclass)
 module feat_iface_vfunc;
 
-import gidgenfeat.c.functions;
-import gidgenfeat.c.types;
-import gidgenfeat.child_iface;
-import gidgenfeat.child_iface_mixin; // Interface mixins are imported without selection, for their public imports
-import gidgenfeat.global : liveCount;
-import gidgenfeat.iface;
-import gidgenfeat.iface_mixin;
-import gidgenfeat.object : FeatObject = ObjectWrap;
-import gidgenfeat.types : Counter;
+import gid.gidgenfeat1.c.functions;
+import gid.gidgenfeat1.c.types;
+import gid.gidgenfeat1.child_iface;
+import gid.gidgenfeat1.child_iface_mixin; // Interface mixins are imported without selection, for their public imports
+import gid.gidgenfeat1.global : liveCount;
+import gid.gidgenfeat1.iface;
+import gid.gidgenfeat1.iface_mixin;
+import gid.gidgenfeat1.object : FeatObject = ObjectWrap;
+import gid.gidgenfeat1.types : Counter;
 import gid.glib2.error : ErrorWrap;
 import gid.glib2.c.functions : g_quark_from_string;
 import gid.gobject2.c.functions;
