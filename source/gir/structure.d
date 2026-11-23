@@ -5,6 +5,7 @@ import std.typecons : Tuple;
 import code_writer;
 import defs;
 import gir.base;
+import gir.deleg_writer;
 import gir.field;
 import gir.func;
 import gir.func_writer;
@@ -14,6 +15,7 @@ import gir.repo;
 import gir.signal_writer;
 import gir.type_node;
 import import_manager;
+import line_tracker;
 import utils;
 
 /// Structure class which is used for class, interface, and records in Gir files
@@ -153,8 +155,11 @@ final class Structure : TypeNode
   void addFunc(Func func)
   {
     functions ~= func;
-    funcNameHash[func.name] = func;
-    dMethodHash[func.dName] = func;
+
+    if (func.funcType != FuncType.VirtualMethod) // Virtual methods often have the same GIR name as their invoker method
+      funcNameHash[func.name] = func;
+
+    dMethodHash[func.dName] = func; // Virtual methods have a "vfunc" prefixed D name (see Func.dName)
   }
 
   /**
@@ -241,6 +246,156 @@ final class Structure : TypeNode
           result ~= st;
 
     return result;
+  }
+
+  /// Get the active virtual methods of a class (vfunc methods are generated for them, see FuncWriter)
+  Func[] activeVfuncs()
+  {
+    return functions.filter!(f => f.funcType == FuncType.VirtualMethod && f.active == Active.Enabled).array;
+  }
+
+  /**
+   * Write the virtual method installers of a class with active virtual methods: the `_installVfuncs` template which
+   * installs the C trampolines of the vfunc methods a D class overrides into its class structure (including the
+   * overrides of ancestor class virtual methods), and the private `_installVfunc` which contains the trampolines (see
+   * DelegWriter). Trampolines are nested functions, so that they have unique D mangled symbols despite extern(C).
+   * Params:
+   *   writer = Code writer of the class module
+   */
+  private void writeVfuncInstallers(CodeWriter writer)
+  {
+    auto vfuncs = activeVfuncs;
+
+    if (vfuncs.empty)
+      return;
+
+    Structure ancestor; // Nearest ancestor class with an installer
+    for (ancestor = parentStruct; ancestor && ancestor.activeVfuncs.empty; ancestor = ancestor.parentStruct) {}
+
+    writer ~= ["", "/**", "    Install the C virtual method trampolines of the vfunc methods which a D class overrides, in the class"
+      ~ " structure of", "    its GType (DiG, see gobject.object.GObjectSubclass). Overrides of ancestor class vfunc methods"
+      ~ " are also", "    installed. Overriding a vfunc method which has no trampoline is a compile error.", "    Params:",
+      "      T = D class derived from " ~ dType, "      klass = Class structure of the GType registered for T", "*/",
+      "static void _installVfuncs(T)(void* klass) nothrow", "{", "static assert(is(T : " ~ fullDType ~ "), T.stringof ~ \" is not derived from " ~ fullDType
+      ~ "\");"];
+
+    if (ancestor)
+      writer ~= ["", ancestor.fullDType ~ "._installVfuncs!T(klass);"];
+
+    foreach (fn; vfuncs)
+    { // A vfunc method is overridden if its symbol resolved through T is not declared by this class (getOverloads
+      // with includeTemplates ignores visibility, so protected overrides in other modules can be inspected)
+      writer ~= ["", "static if (!is(__traits(parent, __traits(getOverloads, T, \"" ~ fn.dName ~ "\", true)[0]) == "
+        ~ fullDType ~ "))"];
+
+      if (fn.noTrampolineReason.empty)
+        writer ~= "_installVfunc(klass, \"" ~ fn.origName ~ "\");";
+      else
+        writer ~= "static assert(0, \"Overriding " ~ fn.fullDName ~ " is not supported: "
+          ~ fn.noTrampolineReason.to!dstring.replace("\\", "\\\\").replace("\"", "\\\"") ~ "\");";
+    }
+
+    writer ~= ["}", "", "private static void _installVfunc(void* klass, string vfunc) nothrow", "{",
+      "auto _klass = cast(" ~ vfuncs[0].vfuncClassStruct.cType ~ "*)klass;", "", "switch (vfunc)", "{"];
+
+    foreach (fn; vfuncs)
+    {
+      if (!fn.noTrampolineReason.empty)
+        continue;
+
+      auto delegWriter = new DelegWriter(fn);
+      auto tracker = new LineTracker;
+      delegWriter.generate(tracker);
+
+      writer ~= ["case \"" ~ fn.origName ~ "\":", "{"];
+      writer ~= tracker;
+      writer ~= ["", "_klass." ~ fn.vfuncField.dName ~ " = cast(typeof(_klass." ~ fn.vfuncField.dName ~ "))&"
+        ~ delegWriter.trampolineName ~ ";", "break;", "}"];
+    }
+
+    writer ~= ["default:", "break;", "}", "}"];
+  }
+
+  /// Name suffix of the interface vfunc installer templates of an interface mixin (unique per interface)
+  dstring ifaceVfuncsSuffix()
+  {
+    return fullDType.replace(".", "_");
+  }
+
+  /**
+   * Write the interface virtual method installers into an interface mixin template: `_ifaceVfuncsOverridden_<iface>`
+   * which is true if a D class overrides any of the interface vfunc methods, `_installIfaceVfuncs_<iface>` which
+   * installs the trampolines of the overridden ones into an interface structure (called from interface_init, see
+   * gobject.object.GObjectSubclass), and the private `_installIfaceVfunc_<iface>` which contains the trampolines.
+   * The vfunc methods of the mixin are marked with the GidIfaceVfunc UDA, a method resolved through the D class
+   * without it is an override (or an implementation in a class the mixin is mixed into, which hides the mixin's).
+   * The names have the interface as suffix, since declarations with the same name from different mixins are ambiguous.
+   * Params:
+   *   writer = Code writer of the interface mixin module
+   */
+  private void writeIfaceVfuncInstallers(CodeWriter writer)
+  {
+    auto vfuncs = activeVfuncs;
+
+    if (vfuncs.empty)
+      return;
+
+    auto suffix = ifaceVfuncsSuffix;
+
+    dstring overridden(Func fn)
+    {
+      return "!imported!\"std.traits\".hasUDA!(__traits(getOverloads, T, \"" ~ fn.dName
+        ~ "\", true)[0], gid.gobject2.object.GidIfaceVfunc)";
+    }
+
+    writer ~= ["", "/// True if the D class T overrides any vfunc method of " ~ fullDType ~ " (DiG)",
+      "enum bool _ifaceVfuncsOverridden_" ~ suffix ~ "(T) = " ~ vfuncs.map!(fn => overridden(fn)).join(" || ") ~ ";",
+      "", "/**", "    Install the C trampolines of the " ~ fullDType ~ " vfunc methods which a D class overrides into the"
+      ~ " interface", "    structure of its GType (DiG, see gobject.object.GObjectSubclass). Overriding a vfunc method which"
+      ~ " has no", "    trampoline is a compile error.", "    Params:", "      T = D class", "      iface = Interface"
+      ~ " structure of the GType registered for T", "*/", "static void _installIfaceVfuncs_" ~ suffix
+      ~ "(T)(void* iface) nothrow", "{"];
+
+    foreach (fn; vfuncs)
+    {
+      writer ~= ["static if (" ~ overridden(fn) ~ ")"];
+
+      if (fn.noTrampolineReason.empty)
+        writer ~= "_installIfaceVfunc_" ~ suffix ~ "(iface, \"" ~ fn.origName ~ "\");";
+      else
+        writer ~= "static assert(0, \"Overriding " ~ fn.fullDName ~ " is not supported: "
+          ~ fn.noTrampolineReason.to!dstring.replace("\\", "\\\\").replace("\"", "\\\"") ~ "\");";
+    }
+
+    writer ~= ["}", "", "private static void _installIfaceVfunc_" ~ suffix ~ "(void* iface, string vfunc) nothrow", "{",
+      "auto _klass = cast(" ~ vfuncs[0].vfuncClassStruct.cType ~ "*)iface;", "", "switch (vfunc)", "{"];
+
+    foreach (fn; vfuncs)
+    {
+      if (!fn.noTrampolineReason.empty)
+        continue;
+
+      auto delegWriter = new DelegWriter(fn);
+      auto tracker = new LineTracker;
+      delegWriter.generate(tracker);
+
+      writer ~= ["case \"" ~ fn.origName ~ "\":", "{"];
+      writer ~= tracker;
+      writer ~= ["", "_klass." ~ fn.vfuncField.dName ~ " = cast(typeof(_klass." ~ fn.vfuncField.dName ~ "))&"
+        ~ delegWriter.trampolineName ~ ";", "break;", "}"];
+    }
+
+    writer ~= ["default:", "break;", "}", "}"];
+  }
+
+  /// Returns true if the structure is GObject.Object or a class derived from it
+  bool isGObjectDerived()
+  {
+    for (auto st = this; st; st = st.parentStruct)
+      if (st.cType == "GObject")
+        return true;
+
+    return false;
   }
 
   // Calculate the structure type kind
@@ -357,7 +512,8 @@ final class Structure : TypeNode
       if (fn.funcType == FuncType.Function && fn.returnVal.dType == "Quark" && fn.name.endsWith("error_quark"))
         errorQuarks ~= fn; // Add exception error quark functions to array
 
-      repo.defs.cSymbolHash[fn.cName] = fn; // Add to global C symbol hash
+      if (fn.funcType != FuncType.VirtualMethod) // Virtual methods don't have a C symbol
+        repo.defs.cSymbolHash[fn.cName] = fn; // Add to global C symbol hash
     }
 
     if (ctorFunc)
@@ -457,7 +613,7 @@ final class Structure : TypeNode
       if (fn.active != Active.Enabled)
         continue;
 
-      with(FuncType) if (!fn.funcType.among(Callback, Function, Constructor, Signal, Method))
+      with(FuncType) if (!fn.funcType.among(Callback, Function, Constructor, Signal, Method, VirtualMethod))
       {
         fn.active = Active.Unsupported;
         warnWithLoc(__FILE__, __LINE__, fn.xmlLocation, "Disabling function '" ~ fn.fullDName.to!string ~ "' of type '" ~ fn.funcType.to!string
@@ -684,6 +840,11 @@ final class Structure : TypeNode
           (new SignalWriter(sig)).write(writer, moduleType);
         }
       }
+
+      if (moduleType == ModuleType.Normal)
+        writeVfuncInstallers(writer);
+      else if (moduleType == ModuleType.IfaceTemplate)
+        writeIfaceVfuncInstallers(writer);
     }
 
     if (kind != TypeKind.Namespace)
@@ -772,6 +933,14 @@ final class Structure : TypeNode
 
     with (TypeKind) if (kind.among(Opaque, Reffed, Wrap, Boxed, Object))
       writer ~= ["", "/** */", "this(void* ptr, Flag!\"Take\" take) nothrow", "{", "super(ptr, take);", "}"];
+
+    // GObject classes without a primary constructor callable without arguments get a protected constructor for D
+    // subclasses, which creates an instance of the D subclass GType (see gobject.object.GObjectSubclass)
+    if (kind == TypeKind.Object && isGObjectDerived && !(ctorFunc && ctorFunc.active == Active.Enabled
+        && !ctorFunc.params.canFind!(p => p.isDParam && !p.isOptional)))
+      writer ~= ["", "/**", "    Constructor for D subclasses, creates an instance of the GType of the D class (see",
+        "    [gobject.object.GObjectSubclass]).", "*/", "protected this() nothrow", "{",
+        "this(_newDSubclassGObject(_dSubclassGType), Yes.Take);", "}"];
 
     with (TypeKind) if (kind.among(Opaque, Wrap)) // Borrowed structure constructor (see StructWrap/OpaqueWrap)
       writer ~= ["", "/** */", "this(void* ptr, Object owner) nothrow", "{", "super(ptr, owner);", "}"];

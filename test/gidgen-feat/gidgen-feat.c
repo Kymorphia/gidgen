@@ -132,6 +132,46 @@ gidgen_feat_iface_get_id (GidgenFeatIface *self)
 }
 
 /**
+ * gidgen_feat_iface_lookup:
+ * @self: Interface instance
+ * @key: Key to look up
+ * @value: (out): Return location for the value
+ * @error: Return location for an error
+ *
+ * Optional interface virtual method with an output parameter which can fail. Sets a "not implemented" error if the
+ * interface structure has no implementation.
+ *
+ * Returns: %TRUE if the key was found
+ */
+gboolean
+gidgen_feat_iface_lookup (GidgenFeatIface *self, gint key, gint *value, GError **error)
+{
+  GidgenFeatIfaceInterface *iface = GIDGEN_FEAT_IFACE_GET_IFACE (self);
+
+  *value = 0;
+
+  if (!iface->lookup)
+    {
+      g_set_error_literal (error, g_quark_from_static_string ("gidgen-feat-iface"), 1, "not implemented");
+      return FALSE;
+    }
+
+  return iface->lookup (self, key, value, error);
+}
+
+/**
+ * gidgen_feat_iface_has_lookup:
+ * @self: Interface instance
+ *
+ * Returns: %TRUE if the interface structure of the instance has a lookup implementation
+ */
+gboolean
+gidgen_feat_iface_has_lookup (GidgenFeatIface *self)
+{
+  return GIDGEN_FEAT_IFACE_GET_IFACE (self)->lookup != NULL;
+}
+
+/**
  * gidgen_feat_iface_emit_id_changed:
  * @self: Interface instance
  * @id: ID to emit with the id-changed signal
@@ -179,16 +219,61 @@ gidgen_feat_object_iface_get_id (GidgenFeatIface *iface)
   return gidgen_feat_object_get_value (GIDGEN_FEAT_OBJECT (iface)) * 100;
 }
 
+static gboolean
+gidgen_feat_object_iface_lookup (GidgenFeatIface *iface, gint key, gint *value, GError **error)
+{
+  if (key < 0)
+    {
+      g_set_error_literal (error, g_quark_from_static_string ("gidgen-feat-iface"), 2, "negative key");
+      return FALSE;
+    }
+
+  *value = key + gidgen_feat_object_get_value (GIDGEN_FEAT_OBJECT (iface));
+  return key != 0;
+}
+
 static void
 gidgen_feat_object_iface_init (GidgenFeatIfaceInterface *iface)
 {
   iface->get_id = gidgen_feat_object_iface_get_id;
+  iface->lookup = gidgen_feat_object_iface_lookup;
 }
 
 static gint
 gidgen_feat_object_real_compute (GidgenFeatObject *self, gint x)
 {
   return gidgen_feat_object_get_value (self) * x;
+}
+
+static void
+gidgen_feat_object_real_absorb (GidgenFeatObject *self, GidgenFeatObject *other)
+{
+  gidgen_feat_object_set_value (self, gidgen_feat_object_get_value (self) + gidgen_feat_object_get_value (other));
+}
+
+static gboolean
+gidgen_feat_object_real_divide (GidgenFeatObject *self, gint divisor, gint *quotient, gint *remainder)
+{
+  gint value = gidgen_feat_object_get_value (self);
+
+  if (divisor == 0)
+    return FALSE;
+
+  *quotient = value / divisor;
+  *remainder = value % divisor;
+  return TRUE;
+}
+
+static gboolean
+gidgen_feat_object_real_check (GidgenFeatObject *self, gint value, GError **error)
+{
+  if (value < 0)
+    {
+      g_set_error_literal (error, g_quark_from_static_string ("gidgen-feat-error"), 1, "negative value");
+      return FALSE;
+    }
+
+  return TRUE;
 }
 
 static void
@@ -243,6 +328,10 @@ gidgen_feat_object_class_init (GidgenFeatObjectClass *klass)
 
   object_class->finalize = gidgen_feat_object_finalize;
   klass->compute = gidgen_feat_object_real_compute;
+  klass->absorb = gidgen_feat_object_real_absorb;
+  klass->divide = gidgen_feat_object_real_divide;
+  klass->hook = NULL; /* Optional virtual method without a default implementation */
+  klass->check = gidgen_feat_object_real_check;
   object_class->get_property = gidgen_feat_object_get_property;
   object_class->set_property = gidgen_feat_object_set_property;
 
@@ -847,6 +936,68 @@ gidgen_feat_object_compute (GidgenFeatObject *self, gint x)
   return GIDGEN_FEAT_OBJECT_GET_CLASS (self)->compute (self, x);
 }
 
+/**
+ * gidgen_feat_object_absorb:
+ * @self: Object
+ * @other: Object to absorb the value of
+ *
+ * Calls the absorb virtual method (default implementation adds the value of @other to the value of @self,
+ * #GidgenFeatChildObject adds twice the value).
+ */
+void
+gidgen_feat_object_absorb (GidgenFeatObject *self, GidgenFeatObject *other)
+{
+  GIDGEN_FEAT_OBJECT_GET_CLASS (self)->absorb (self, other);
+}
+
+/**
+ * gidgen_feat_object_divide:
+ * @self: Object
+ * @divisor: Divisor
+ * @quotient: (out): Quotient of the value and @divisor
+ * @remainder: (out): Remainder of the value and @divisor
+ *
+ * Calls the divide virtual method (default implementation divides the value by @divisor).
+ *
+ * Returns: %FALSE if @divisor is 0
+ */
+gboolean
+gidgen_feat_object_divide (GidgenFeatObject *self, gint divisor, gint *quotient, gint *remainder)
+{
+  return GIDGEN_FEAT_OBJECT_GET_CLASS (self)->divide (self, divisor, quotient, remainder);
+}
+
+/**
+ * gidgen_feat_object_hook:
+ * @self: Object
+ *
+ * Calls the optional hook virtual method, which has no default implementation.
+ *
+ * Returns: The hook result or -1 if the class does not implement it
+ */
+gint
+gidgen_feat_object_hook (GidgenFeatObject *self)
+{
+  GidgenFeatObjectClass *klass = GIDGEN_FEAT_OBJECT_GET_CLASS (self);
+  return klass->hook ? klass->hook (self) : -1;
+}
+
+/**
+ * gidgen_feat_object_check:
+ * @self: Object
+ * @value: Value to check
+ * @error: Return location for a #GError
+ *
+ * Calls the check virtual method (default implementation fails for a negative @value).
+ *
+ * Returns: %TRUE if @value is valid, %FALSE with @error set otherwise
+ */
+gboolean
+gidgen_feat_object_check (GidgenFeatObject *self, gint value, GError **error)
+{
+  return GIDGEN_FEAT_OBJECT_GET_CLASS (self)->check (self, value, error);
+}
+
 /* ---- Interface with a prerequisite interface ---- */
 
 G_DEFINE_INTERFACE_WITH_CODE (GidgenFeatChildIface, gidgen_feat_child_iface, G_TYPE_OBJECT,
@@ -974,8 +1125,24 @@ gidgen_feat_child_object_child_iface_init (GidgenFeatChildIfaceInterface *iface)
 }
 
 static void
+gidgen_feat_child_object_absorb (GidgenFeatObject *self, GidgenFeatObject *other)
+{
+  gidgen_feat_object_set_value (self, gidgen_feat_object_get_value (self) + 2 * gidgen_feat_object_get_value (other));
+}
+
+static gint
+gidgen_feat_child_object_hook (GidgenFeatObject *self)
+{
+  return 7;
+}
+
+static void
 gidgen_feat_child_object_class_init (GidgenFeatChildObjectClass *klass)
 {
+  GidgenFeatObjectClass *object_class = GIDGEN_FEAT_OBJECT_CLASS (klass);
+
+  object_class->absorb = gidgen_feat_child_object_absorb;
+  object_class->hook = gidgen_feat_child_object_hook;
 }
 
 static void

@@ -101,7 +101,7 @@ final class Param : TypeNode
     auto func = getParentByType!Func;
     return st && st.borrowed && kind == TypeKind.Wrap && containerType == ContainerType.None
       && direction == ParamDirection.In && ownership == Ownership.None
-      && func && func.funcType.among(FuncType.Callback, FuncType.Signal);
+      && func && func.funcType.among(FuncType.Callback, FuncType.Signal, FuncType.VirtualMethod);
   }
 
   /**
@@ -114,7 +114,7 @@ final class Param : TypeNode
     auto func = getParentByType!Func;
     return st && st.borrowed && elemTypes[0].kind == TypeKind.Wrap && containerType == ContainerType.Array
       && direction == ParamDirection.In && ownership == Ownership.None
-      && func && func.funcType.among(FuncType.Callback, FuncType.Signal);
+      && func && func.funcType.among(FuncType.Callback, FuncType.Signal, FuncType.VirtualMethod);
   }
 
   /**
@@ -128,7 +128,7 @@ final class Param : TypeNode
     auto func = getParentByType!Func;
     return kind == TypeKind.Boxed && containerType == ContainerType.None && direction == ParamDirection.In
       && ownership == Ownership.None && cType.countStars == 1 && !cType.startsWith("const")
-      && func && func.funcType == FuncType.Callback;
+      && func && func.funcType.among(FuncType.Callback, FuncType.VirtualMethod);
   }
 
   /// Documentation note appended to in place boxed parameters (see isInPlaceBoxedArg)
@@ -389,6 +389,12 @@ final class Param : TypeNode
       info("Enabling caller allocates for Out parameter '" ~ fullDName.to!string ~ "' with a pointer to a struct type");
       callerAllocates = true;
     }
+
+    // Virtual methods can lack the array annotations of their invoker or signal (GDBusProxy.g_properties_changed)
+    if (direction == ParamDirection.In && containerType == ContainerType.None && kind == TypeKind.String
+        && cType.countStars > 1 && cast(Func)parent && (cast(Func)parent).funcType == FuncType.VirtualMethod)
+      throw new Exception("String input parameter has unexpected C type '" ~ cType.to!string
+        ~ "' (missing array annotation?)");
 
     with (TypeKind) if (direction == ParamDirection.In && containerType == ContainerType.None
         && kind.among(Opaque, Wrap, Boxed, Reffed, Object, Interface) && cType.countStars == 2)

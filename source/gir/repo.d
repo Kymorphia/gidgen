@@ -128,6 +128,7 @@ final class Repo : Base
         case "constructor": // Constructor method (class and record)
         case "function": // Function (class, enumeration, namespace, interface, record)
         case "method": // Method function (class, interface, record)
+        case "virtual-method": // Virtual method (class, interface)
           if (auto st = node.baseParentFromXmlNode!Structure)
             st.addFunc(new Func(st, node));
           else if (auto en = node.baseParentFromXmlNode!Enumeration)
@@ -245,12 +246,6 @@ final class Repo : Base
           if (auto par = node.baseParentFromXmlNodeWarn!Param)
             par.varargs = true;
           break;
-        case "virtual-method": // Virtual method (class, interface)
-          // Virtual methods are implementation details for class vtables. D bindings use the
-          // regular method interface, and virtual dispatch is handled by the C library.
-          // Supporting them would require generating override mechanisms, which is complex
-          // and rarely needed for binding consumers.
-          goto noRecurse;
         default:
           static bool[dstring] unknownElements;
 

@@ -14,6 +14,8 @@ matrix-gen/matrix-gen
 matrix-gen/.dub
 coverage
 test-defs/gidgenmatrix1.d
+export-test/dub.selections.json
+export-test/export-test-*
 ext-child/out
 ext-child/out-bad
 ext-child/out-noshims

@@ -8,11 +8,15 @@
 #                written gidgen-matrix/gidgen-matrix-support.c/.h) and a D manifest (gidgen-test/matrix_manifest.d)
 #                which drives the generic D unittest gidgen-test/matrix_test.d, as well as the gidgen definitions
 #                file test-defs/gidgenmatrix1.d
+#   GidgenExport - D shared library in export-test/ exporting GObjectExport subclasses of GidgenFeat types, used by
+#                the C program export-test/export_test.c without a D main() (D runtime initialization, C threads,
+#                C created instances and their lifetime), built linked against the library and using dlopen
 #
 # GLib critical warnings are made fatal (G_DEBUG=fatal-criticals) so that they fail the tests.
 #
 # Targets:
-#   run-test          Build and run the unittests and the external dependency repository test (ext-test)
+#   run-test          Build and run the unittests, the GObjectExport C program test, and the external dependency repository test (ext-test)
+#   run-test-export   Build and run the GObjectExport C program test only
 #   unit-test         Run the gidgen source unittests
 #   ext-test          Test generating a child repository which depends on another repository (ext-child/)
 #   run-test-valgrind Run the unittests under valgrind memcheck (memory errors and definite leaks)
@@ -51,6 +55,7 @@ GLIB_SUPP = $(shell pkg-config --variable=prefix glib-2.0)/share/glib-2.0/valgri
 .PHONY: run-test
 run-test: unit-test build-test ext-test
 	cd gidgen-test && LD_LIBRARY_PATH="$$(pwd)" G_DEBUG=fatal-criticals ./$(notdir $(TEST_BIN))
+	$(MAKE) run-test-export
 	cd gidgen-test && $(DUB) build -q --compiler=$(DC) --config=loader-override
 	cd gidgen-test && LD_LIBRARY_PATH="$$(pwd)" G_DEBUG=fatal-criticals \
 	  GID_RTLD_LOCAL=gid.gidgenfeat1 GID_RTLD_GLOBAL=gid.shimlib1,gid.shimlib2 ./gidgen-loader-override
@@ -58,6 +63,18 @@ run-test: unit-test build-test ext-test
 .PHONY: unit-test
 unit-test:
 	cd .. && $(DUB) test -q --compiler=$(DC)
+
+EXPORT_CFLAGS = $(TEST_CFLAGS) -Igidgen-feat
+EXPORT_LDFLAGS = -Lgidgen-test -lgidgen-feat -lpthread $(TEST_LDFLAGS)
+
+.PHONY: run-test-export
+run-test-export: packages/README.md $(FEAT_LIB)
+	cd export-test && $(DUB) build -q --compiler=$(DC)
+	gcc $(EXPORT_CFLAGS) -o export-test/export-test-linked export-test/export_test.c -Lexport-test -lgidgen-export \
+	  $(EXPORT_LDFLAGS)
+	gcc $(EXPORT_CFLAGS) -DUSE_DLOPEN -o export-test/export-test-dlopen export-test/export_test.c -ldl $(EXPORT_LDFLAGS)
+	cd export-test && for t in linked dlopen; do LD_LIBRARY_PATH="$$(pwd):$$(pwd)/../gidgen-test" \
+	  G_DEBUG=fatal-criticals timeout 120 ./export-test-$$t || exit 1; done
 
 .PHONY: build-test
 build-test: packages/README.md $(LIBS) $(MATRIX_MANIFEST)
@@ -206,5 +223,5 @@ $(COV_BIN): $(GIDGEN_SOURCES)
 
 .PHONY: clean
 clean:
-	-rm -f gidgen-test/libgidgen-*.so* $(SHIM_LIBS) $(TEST_BIN) gidgen-test/gidgen-loader-override $(GIRS) $(MATRIX_GEN) $(MATRIX_GEN_C) $(MATRIX_MANIFEST) $(MATRIX_DEFS)
-	-rm -rf packages defs coverage matrix-gen/.dub ext-child/out ext-child/out-bad ext-child/out-noshims ext-child/out-stale ext-child/*.err
+	-rm -f gidgen-test/libgidgen-*.so* $(SHIM_LIBS) $(TEST_BIN) gidgen-test/gidgen-loader-override export-test/libgidgen-export.so export-test/export-test-* $(GIRS) $(MATRIX_GEN) $(MATRIX_GEN_C) $(MATRIX_MANIFEST) $(MATRIX_DEFS)
+	-rm -rf packages defs coverage matrix-gen/.dub export-test/.dub ext-child/out ext-child/out-bad ext-child/out-noshims ext-child/out-stale ext-child/*.err

@@ -29,6 +29,91 @@ class DelegWriter
     process(staticDelegatePtr);
   }
 
+  /**
+   * Construct a C trampoline writer for a class virtual method. The trampoline has the C signature of the virtual
+   * method, calls the D vfunc method (see FuncWriter) of the D object bound to the C instance, and is installed in the
+   * class structure by the class _installVfuncs template (see Structure.writeVfuncInstallers).
+   * Params:
+   *   vfunc = The virtual method (FuncType.VirtualMethod with a resolved vfuncClassStruct and vfuncField)
+   */
+  this(Func vfunc)
+  {
+    callback = vfunc;
+    vfuncMode = true;
+    lookup = new LineTracker;
+    preCall = new LineTracker;
+    postCall = new LineTracker;
+
+    processVfunc();
+  }
+
+  // Process a virtual method trampoline
+  private void processVfunc()
+  {
+    codeTrap("vfunc.write", callback.fullDName);
+
+    auto inst = callback.params[0];
+    auto klass = cast(Structure)callback.parent;
+    auto field = "_klass." ~ callback.vfuncField.dName;
+    auto hasReturn = callback.returnVal && callback.returnVal.origDType != "none";
+    auto cArgs = callback.params.map!(p => p.dName).array ~ (callback.throws ? ["_err"d] : []);
+
+    decl ~= "static extern(C) ";
+    processReturn();
+    decl ~= trampolineName ~ "(";
+    addDeclParam(inst.cType ~ " " ~ inst.dName);
+    call ~= "_obj." ~ callback.dName ~ "(";
+
+    foreach (param; callback.params)
+      processParam(param);
+
+    if (callback.throws)
+      addDeclParam("GError** _err");
+
+    decl ~= ") nothrow";
+    call ~= ");";
+
+    addImport("gid.gobject2.object");
+
+    // The D object is looked up without creating a wrapper. If none is bound (C created instance of a D subclass type
+    // before its D object exists) the C implementation inherited by the type is called with the unconverted arguments.
+    // Interface trampolines are in the interface mixin template and call the vfunc method of the class it is mixed
+    // into (typeof(this)), the C implementation is in the interface structure of the nearest C class.
+    auto isIface = klass.kind == TypeKind.Interface;
+    auto classOf = "gid.gobject2.object.ObjectWrap._vfuncClassOf(cast(void*)" ~ inst.dName ~ ")";
+
+    lookup ~= "auto _obj = cast(" ~ (isIface ? "typeof(this)"d : klass.fullDType)
+      ~ ")gid.gobject2.object.ObjectWrap._vfuncDObject(cast(void*)" ~ inst.dName ~ ");";
+    lookup ~= ["if (!_obj)", "{", "auto _klass = cast(" ~ callback.vfuncClassStruct.cType ~ "*)" ~ (isIface
+      ? "g_type_interface_peek(cast(GTypeClass*)" ~ classOf ~ ", " ~ klass.fullDType ~ "._getGType);" : classOf ~ ";"),
+      "if (" ~ (isIface ? "_klass && "d : ""d) ~ field ~ ")",
+      "return (cast(typeof(&" ~ trampolineName ~ "))" ~ field ~ ")(" ~ cArgs.join(", ") ~ ");",
+      hasReturn ? "return typeof(return).init;"d : "return;"d, "}", ""];
+
+    if (isIface)
+    {
+      addImport("gid.gobject2.c.functions");
+      addImport("gid.gobject2.c.types");
+    }
+
+    // C callers may pass NULL for optional output parameters, point them to a local variable (an owned output value is
+    // not freed in that case)
+    foreach (param; callback.params)
+      if (!param.isInstanceParam && param.direction != ParamDirection.In && (param.nullable || param.optional)
+          && !param.callerAllocates)
+        lookup ~= ["typeof(*" ~ param.dName ~ ") _" ~ param.dName ~ "Null;", "if (!" ~ param.dName ~ ")", param.dName
+          ~ " = &_" ~ param.dName ~ "Null;", ""];
+
+    if (callback.throws)
+      addImport("gid.glib2.error");
+  }
+
+  /// Name of a virtual method trampoline function
+  dstring trampolineName()
+  {
+    return "_" ~ callback.dName ~ "Tramp";
+  }
+
   // Process the delegate parameter
   private void process(bool staticDelegatePtr)
   {
@@ -265,7 +350,7 @@ class DelegWriter
   {
     auto retVal = callback.returnVal;
     decl ~= retVal.cType ~ " ";
-    preCall ~= retVal.dType ~ " _dretval;";
+    preCall ~= retVal.fullDType ~ " _dretval;";
     call ~= "_dretval = ";
     postCall ~= "auto _retval = g" ~ containerConvName(retVal.containerType) ~ "FromD" ~ fromDTemplateParams(retVal)
       ~ "(_dretval);";
@@ -371,8 +456,12 @@ class DelegWriter
         }
         else
         {
-          // An InOut pointer to a structure pointer is modified in place (pointer and its ownership remain with C)
-          addCallParam("*cast(" ~ param.fullDType ~ "*)" ~ (param.cType.countStars == 2 ? "*"d : "") ~ param.dName);
+          // Virtual method optional structure pointer (the vfunc method takes a pointer, see FuncWriter)
+          if (vfuncMode && param.direction == ParamDirection.In && (param.nullable || param.optional)
+              && param.cType.countStars == 1)
+            addCallParam("cast(" ~ param.fullDType ~ "*)" ~ param.dName);
+          else // An InOut pointer to a structure pointer is modified in place (pointer and its ownership remain with C)
+            addCallParam("*cast(" ~ param.fullDType ~ "*)" ~ (param.cType.countStars == 2 ? "*"d : "") ~ param.dName);
 
           // Free a structure passed with transfer full after it was copied to the D delegate parameter
           if (param.direction == ParamDirection.In && param.ownership == Ownership.Full && param.kind == Struct
@@ -534,6 +623,9 @@ class DelegWriter
           if (elemType.dType == "bool") // Convert gboolean to bool
             preCall ~= ["foreach (i; 0 .. " ~ lengthStr ~ ")", "_" ~ param.dName ~ "[i] = cast(bool)"
               ~ param.dName ~ "[i];"];
+          else if (param.cType.stripConst.startsWith("void")) // Array passed as a void pointer (such as data buffers)
+            preCall ~= "_" ~ param.dName ~ "[0 .. " ~ lengthStr ~ "] = (cast(const(" ~ elemType.fullDType ~ ")*)"
+              ~ param.dName ~ ")[0 .. " ~ lengthStr ~ "];";
           else
             preCall ~= "_" ~ param.dName ~ "[0 .. " ~ lengthStr ~ "] = " ~ param.dName
               ~ "[0 .. " ~ lengthStr ~ "];";
@@ -625,7 +717,10 @@ class DelegWriter
    */
   void generate(LineTracker tracker)
   {
-    tracker ~= [decl, "{"];
+    tracker ~= [decl, "{", "gidAttachThread();"]; // C can call from a thread which is not attached to the D runtime
+
+    if (vfuncMode)
+      tracker ~= lookup;
 
     if (preCall.length > 0)
     {
@@ -633,8 +728,11 @@ class DelegWriter
       tracker ~= "";
     }
 
-    tracker ~= ["try", "{", call, "}", "catch (Exception e)", "{", // Handle exceptions from D callback
-      `gidInvokeCallbackExceptionHandler(e, "` ~ callback.fullDName ~ `");`, "}"];
+    if (vfuncMode && callback.throws) // Exceptions of a throwing virtual method are returned to C as a GError
+      tracker ~= ["try", "{", call, "}", "catch (Exception e)", "{", "gidExceptionToGError(e, _err);", "}"];
+    else
+      tracker ~= ["try", "{", call, "}", "catch (Exception e)", "{", // Handle exceptions from D callback
+        `gidInvokeCallbackExceptionHandler(e, "` ~ callback.fullDName ~ `");`, "}"];
 
     if (postCall.length > 0)
     {
@@ -645,10 +743,14 @@ class DelegWriter
     if (callback.returnVal && callback.returnVal.origDType != "none")
       tracker ~= "return _retval;";
 
-    tracker ~= ["}", "auto _" ~ delegParam.dName ~ "CB = " ~ delegParam.dName ~ " ? &_" ~ delegParam.dName
-      ~ "Callback : null;"];
+    tracker ~= "}";
+
+    if (!vfuncMode)
+      tracker ~= "auto _" ~ delegParam.dName ~ "CB = " ~ delegParam.dName ~ " ? &_" ~ delegParam.dName ~ "Callback : null;";
   }
 
+  bool vfuncMode; /// Set for a virtual method trampoline (see this(Func))
+  LineTracker lookup; /// Virtual method trampoline D object lookup code (before preCall, vfuncMode only)
   Param delegParam; /// The parameter of the callback delegate
   Func callback; /// The resolved callback delegate type of parameter
   dstring decl; /// Function declaration

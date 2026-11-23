@@ -44,6 +44,10 @@ final class Func : TypeNode
    */
   override dstring dName()
   {
+    if (funcType == FuncType.VirtualMethod) // Virtual methods use a "vfunc" prefix to not clash with their invoker
+      return repo.defs.symbolName("vfunc" ~ (vfuncQualified ? (cast(Structure)parent).dType : ""d)
+        ~ _name.camelCase(true));
+
     return repo.defs.symbolName(_name.camelCase);
   }
 
@@ -89,7 +93,7 @@ final class Func : TypeNode
    */
   bool isStatic()
   {
-    return funcType != FuncType.Method && !isCtor && parent !is repo.globalStruct;
+    return !funcType.among(FuncType.Method, FuncType.VirtualMethod) && !isCtor && parent !is repo.globalStruct;
   }
 
   /// Returns true if the callback has closure data (closure parameter or closure field)
@@ -253,6 +257,28 @@ final class Func : TypeNode
     if (throws)
       s ~= "    Throws: [" ~ errorDomain ~ "]\n";
 
+    if (funcType == FuncType.VirtualMethod && (cast(Structure)parent).kind == TypeKind.Interface)
+    {
+      s ~= "\n    Interface virtual method: calls the C implementation of the interface of the object's class (or of the\n"
+        ~ "    nearest C ancestor class of a D subclass type, a no-op if it does not implement the interface), use `super."
+        ~ dName ~ "`\n    to chain up from an override.\n";
+
+      if (noTrampolineReason.empty)
+        s ~= "    Overrides are installed in the interface structure of the D subclass GType (see `gobject.object.GObjectSubclass`).\n";
+      else
+        s ~= "    Overriding it from D is not supported (" ~ noTrampolineReason.to!dstring ~ ").\n";
+    }
+    else if (funcType == FuncType.VirtualMethod)
+    {
+      s ~= "\n    Virtual method: calls the C implementation of the object's class (or of the nearest C ancestor class of a\n"
+        ~ "    D subclass type), use `super." ~ dName ~ "` to chain up from an override.\n";
+
+      if (noTrampolineReason.empty)
+        s ~= "    Overrides are installed in the class structure of the D subclass GType (see `gobject.object.GObjectSubclass`).\n";
+      else
+        s ~= "    Overriding it from D is not supported (" ~ noTrampolineReason.to!dstring ~ ").\n";
+    }
+
     if (!docVersion.empty || !docDeprecated.empty)
     {
       s ~= "\n";
@@ -308,8 +334,7 @@ final class Func : TypeNode
 
     super.fixup;
 
-    if (!introspectable || !movedTo.empty || funcType == FuncType.VirtualMethod || funcType == FuncType.FuncMacro
-        || !shadowedBy.empty)
+    if (!introspectable || !movedTo.empty || funcType == FuncType.FuncMacro || !shadowedBy.empty)
       active = Active.Ignored;
 
     if (returnVal)
@@ -389,10 +414,38 @@ final class Func : TypeNode
         return;
 
       active = Active.Unsupported;
+
+      if (funcType == FuncType.VirtualMethod)
+      { // Virtual methods are skipped without a warning, their invoker method is the primary API
+        vfuncSkipReason = "unsupported marshalling";
+        infoWithLoc(file, line, xmlLocation, "Skipping virtual method '" ~ fullDName.to!string ~ "': " ~ msg);
+        return;
+      }
+
       warnWithLoc(file, line, xmlLocation, "Disabling " ~ (funcType == FuncType.Signal ? "signal '" : "function '" )
         ~ fullDName.to!string ~ "': " ~ msg);
       TypeNode.dumpSelectorOnWarning(errorNode ? errorNode : this);
     }
+
+    // Disable a callback, or mark a virtual method as not overridable from D (no C trampoline, see DelegWriter), for
+    // C to D marshalling which is not supported
+    void disableCallback(string file, size_t line, string msg, TypeNode errorNode = null)
+    {
+      if (funcType != FuncType.VirtualMethod)
+      {
+        disableFunc(file, line, msg, errorNode);
+        return;
+      }
+
+      if (noTrampolineReason.empty)
+      {
+        noTrampolineReason = msg;
+        infoWithLoc(file, line, xmlLocation, "No trampoline for virtual method '" ~ fullDName.to!string ~ "': " ~ msg);
+      }
+    }
+
+    if (funcType == FuncType.VirtualMethod && !verifyVirtualMethod)
+      return;
 
     if (!closureField.empty)
     {
@@ -498,30 +551,37 @@ final class Func : TypeNode
         return;
       }
     }
-    else if (funcType == FuncType.Callback)
+    else if (funcType.among(FuncType.Callback, FuncType.VirtualMethod))
     {
       if (returnVal)
       {
-        if (returnVal.containerType != ContainerType.None)
+        with (TypeKind) if (returnVal.containerType == ContainerType.None
+            && returnVal.kind.among(Callback, Unknown, Container, Namespace))
+          disableCallback(__FILE__, __LINE__, "callback return type '" ~ returnVal.kind.to!string
+            ~ "' is not supported", returnVal);
+        else if (returnVal.containerType != ContainerType.None)
         {
           if (returnVal.ownership != Ownership.Full)
           {
-            disableFunc(__FILE__, __LINE__, "callback return container type '" ~ returnVal.containerType.to!string
+            disableCallback(__FILE__, __LINE__, "callback return container type '" ~ returnVal.containerType.to!string
               ~ "' ownership '" ~ returnVal.ownership.to!string ~ "' is not supported");
-            return;
+            if (active != Active.Enabled)
+              return;
           }
         }
         else if (returnVal.kind == TypeKind.String && returnVal.ownership == Ownership.None)
         {
-          disableFunc(__FILE__, __LINE__, "callback string return value with transfer none is not supported", returnVal);
-          return;
+          disableCallback(__FILE__, __LINE__, "callback string return value with transfer none is not supported", returnVal);
+          if (active != Active.Enabled)
+            return;
         }
         else if (returnVal.cType.countStars > 0 && (returnVal.kind == TypeKind.StructAlias
             || (returnVal.kind.among(TypeKind.Struct, TypeKind.Wrap) && returnVal.ownership != Ownership.Full)))
         { // No D owner can keep a returned structure (Wrap structures are D GC memory) alive for C, only full transfer. Struct and Wrap values can be copied
-          disableFunc(__FILE__, __LINE__, "callback structure pointer return value with ownership '"
+          disableCallback(__FILE__, __LINE__, "callback structure pointer return value with ownership '"
             ~ returnVal.ownership.to!string ~ "' is not supported", returnVal);
-          return;
+          if (active != Active.Enabled)
+            return;
         }
       }
     }
@@ -532,14 +592,16 @@ final class Func : TypeNode
       {
         if (!returnVal.lengthParam) // Return array has invalid length argument?
         {
-          disableFunc(__FILE__, __LINE__, "invalid return array length parameter index", returnVal);
-          return;
+          disableCallback(__FILE__, __LINE__, "invalid return array length parameter index", returnVal);
+          if (active != Active.Enabled)
+            return;
         }
 
         if (returnVal.lengthParam.direction != ParamDirection.Out)
         {
-          disableFunc(__FILE__, __LINE__, "return array length parameter direction must be Out", returnVal.lengthParam);
-          return;
+          disableCallback(__FILE__, __LINE__, "return array length parameter direction must be Out", returnVal.lengthParam);
+          if (active != Active.Enabled)
+            return;
         }
       }
 
@@ -550,14 +612,14 @@ final class Func : TypeNode
         && returnVal.ownership == Ownership.Full && returnVal.arrayPtrDepth == 1
         && returnVal.elemTypes.length == 1 && returnVal.elemTypes[0].kind.among(Opaque, Boxed, Reffed))
       {
-        disableFunc(__FILE__, __LINE__, "return array of inline '" ~ returnVal.elemTypes[0].kind.to!string
+        disableCallback(__FILE__, __LINE__, "return array of inline '" ~ returnVal.elemTypes[0].kind.to!string
           ~ "' structures with full ownership is not supported", returnVal);
         return;
       }
 
       with (TypeKind) if (returnVal.containerType == ContainerType.Array && returnVal.ownership != Ownership.None
         && returnVal.arrayPtrDepth == 1 && returnVal.elemTypes[0].kind == Opaque)
-        disableFunc(__FILE__, __LINE__, "return array of inline Opaque structures with ownership transfer is not supported", returnVal);
+        disableCallback(__FILE__, __LINE__, "return array of inline Opaque structures with ownership transfer is not supported", returnVal);
     }
 
     foreach (pi, pa; params)
@@ -589,8 +651,16 @@ final class Func : TypeNode
       if (!pa.resolved)
         disableFunc(__FILE__, __LINE__, "Unresolved parameter '" ~ pa.name.to!string ~ "' of type '" ~ pa.dType.to!string ~ "'", pa);
 
-      with (TypeKind) if (funcType == FuncType.Callback)
+      with (TypeKind) if (funcType.among(FuncType.Callback, FuncType.VirtualMethod))
       {
+        // Kinds which the delegate C callback marshalling does not support (virtual method parameters only, other
+        // functions disable them in Param.verify)
+        if (funcType == FuncType.VirtualMethod && !pa.isInstanceParam && ((pa.containerType == ContainerType.None
+            && pa.kind.among(Callback, Unknown, Container, Namespace)) || (pa.containerType != ContainerType.None
+            && pa.elemTypes.canFind!(x => x.kind.among(Callback, Unknown, Container, Namespace)))))
+          disableCallback(__FILE__, __LINE__, "parameter '" ~ pa.name.to!string ~ "' of kind '" ~ pa.kind.to!string
+            ~ "' is not supported", pa);
+
         // InOut instance pointer: full transfer returns a new reference/copy to C, or transfer-none Wrap**
         // borrowed from another parameter (gid-borrow) which may only be cleared (not replaced)
         if (pa.direction == ParamDirection.InOut && pa.kind.among(Opaque, Wrap, Boxed, Reffed, Object, Interface))
@@ -598,11 +668,11 @@ final class Func : TypeNode
           if (pa.kind == Wrap && pa.ownership == Ownership.None && pa.cType.countStars == 2 && pa.borrowAttr.length > 0)
           {
             if (!paramBorrowOwner(pa))
-              disableFunc(__FILE__, __LINE__, "InOut param '" ~ pa.name.to!string ~ "' gid-borrow owner '"
+              disableCallback(__FILE__, __LINE__, "InOut param '" ~ pa.name.to!string ~ "' gid-borrow owner '"
                 ~ pa.borrowAttr.to!string ~ "' not found (requires an In Opaque/Wrap/Boxed/Reffed/Object parameter)", pa);
           }
           else if (pa.cType.countStars != 2 || pa.ownership != Ownership.Full)
-            disableFunc(__FILE__, __LINE__, "InOut param '" ~ pa.name.to!string ~ "' of type '" ~ pa.dType.to!string
+            disableCallback(__FILE__, __LINE__, "InOut param '" ~ pa.name.to!string ~ "' of type '" ~ pa.dType.to!string
               ~ "' in callback with C type '" ~ pa.cType.to!string ~ "' and ownership '" ~ pa.ownership.to!string
               ~ "' is not supported (requires a pointer to an instance pointer with full ownership, or a Wrap"
               ~ " parameter with transfer none and a gid-borrow owner)", pa);
@@ -615,29 +685,29 @@ final class Func : TypeNode
             || (pa.direction == ParamDirection.InOut && pa.ownership != Ownership.None)
             || (pa.direction == ParamDirection.In && pa.ownership != Ownership.None && pa.elemTypes.length == 1
             && pa.elemTypes[0].kind.among(Opaque, Boxed, Wrap, Reffed) && pa.arrayPtrDepth == 1)))
-          disableFunc(__FILE__, __LINE__, pa.direction.to!string ~ " array parameter '" ~ pa.name.to!string
+          disableCallback(__FILE__, __LINE__, pa.direction.to!string ~ " array parameter '" ~ pa.name.to!string
             ~ "' in callback with ownership '" ~ pa.ownership.to!string ~ "' is not supported", pa);
 
         // Callback output containers are created by the delegate wrapper, so the caller must take full ownership
         if (pa.containerType != ContainerType.None && pa.containerType != ContainerType.Array
             && pa.direction != ParamDirection.In && (pa.direction == ParamDirection.InOut || pa.ownership != Ownership.Full))
-          disableFunc(__FILE__, __LINE__, pa.direction.to!string ~ " container parameter '" ~ pa.name.to!string
+          disableCallback(__FILE__, __LINE__, pa.direction.to!string ~ " container parameter '" ~ pa.name.to!string
             ~ "' in callback with ownership '" ~ pa.ownership.to!string ~ "' is not supported", pa);
 
         // No D owner can keep an output structure (Wrap structures are D GC memory) alive for C, only full transfer. Struct and Wrap values can be copied
         if (pa.direction == ParamDirection.Out && pa.cType.countStars == 2
             && (pa.kind == StructAlias || (pa.kind.among(Struct, Wrap) && pa.ownership != Ownership.Full)))
-          disableFunc(__FILE__, __LINE__, "Out structure pointer parameter '" ~ pa.name.to!string
+          disableCallback(__FILE__, __LINE__, "Out structure pointer parameter '" ~ pa.name.to!string
             ~ "' in callback with ownership '" ~ pa.ownership.to!string ~ "' is not supported", pa);
 
         if (pa.containerType == ContainerType.Array && pa.direction != ParamDirection.In && pa.callerAllocates)
-          disableFunc(__FILE__, __LINE__, "caller allocated output array parameter '" ~ pa.name.to!string
+          disableCallback(__FILE__, __LINE__, "caller allocated output array parameter '" ~ pa.name.to!string
             ~ "' in callback is not supported", pa);
       }
 
       // Delegate wrappers would need to create arrays of a C requested size
-      with (FuncType) if (pa.isArraySize && funcType.among(Callback, Signal))
-        disableFunc(__FILE__, __LINE__, "array size parameter '" ~ pa.name.to!string ~ "' in "
+      with (FuncType) if (pa.isArraySize && funcType.among(Callback, Signal, VirtualMethod))
+        disableCallback(__FILE__, __LINE__, "array size parameter '" ~ pa.name.to!string ~ "' in "
           ~ funcType.to!string.toLower ~ " is not supported", pa);
 
       // Signal array parameters are passed as a gpointer, so an element C type can't distinguish inline structures from pointers
@@ -660,7 +730,7 @@ final class Func : TypeNode
         disableFunc(__FILE__, __LINE__, "Parameter '" ~ pa.name.to!string ~ "' of type '" ~ pa.dType.to!string ~ "' is disabled", pa);
     }
 
-    with (FuncType) if (funcType.among(Constructor, Function, Method))
+    with (FuncType) if (funcType.among(Constructor, Function, Method, VirtualMethod))
     {
       bool optionalNotOk;
       foreach (pa; params.retro) // Loop in reverse over params to verify optional parameters
@@ -700,6 +770,52 @@ final class Func : TypeNode
           optionalNotOk = true;
       }
     }
+  }
+
+  /**
+   * Verify a virtual method and resolve the class structure field containing its C implementation pointer (see
+   * vfuncClassStruct and vfuncField). Virtual methods which can't be bound yet are skipped (Active.Ignored) with an
+   * info message instead of a warning, since the invoker method remains the primary API. The skip reason is stored
+   * in vfuncSkipReason for the virtual method summary.
+   * Returns: true if the virtual method is supported, false if it was skipped
+   */
+  private bool verifyVirtualMethod()
+  {
+    bool skip(string reason, string detail = null)
+    {
+      active = Active.Ignored;
+      vfuncSkipReason = reason;
+      infoWithLoc(__FILE__, __LINE__, xmlLocation, "Skipping virtual method '" ~ fullDName.to!string ~ "': " ~ reason
+        ~ (detail.length > 0 ? " " ~ detail : ""));
+      return false;
+    }
+
+    auto st = cast(Structure)parent;
+    auto isIface = st && st.kind == TypeKind.Interface;
+
+    if (!st || (!isIface && (st.kind != TypeKind.Object || !st.isGObjectDerived)))
+      return skip("not a GObject class or interface");
+
+    if (isIface && st.glibGetType.empty)
+      return skip("interface without a GType");
+
+    if (!hasInstanceParam)
+      return skip("no instance parameter");
+
+    auto classStruct = st.glibTypeStruct.empty ? null : cast(Structure)repo.findTypeObject(st.glibTypeStruct);
+
+    if (!classStruct)
+      return skip(isIface ? "interface structure not found" : "class structure not found", "'"
+        ~ st.glibTypeStruct.to!string ~ "'");
+
+    auto found = classStruct.fields.find!(x => x.name == origName);
+
+    if (found.empty)
+      return skip(isIface ? "no interface structure field" : "no class structure field", "'" ~ classStruct.cType.to!string ~ "." ~ origName.to!string ~ "'");
+
+    vfuncClassStruct = classStruct;
+    vfuncField = found.front;
+    return true;
   }
 
   /**
@@ -790,7 +906,7 @@ final class Func : TypeNode
     if (!st) // If klass not specified, use this function's klass parent
       st = cast(Structure)parent ? (cast(Structure)parent).parentStruct : null;
 
-    if (isStatic || funcType != FuncType.Method || !st || st.structType != StructType.Class)
+    if (isStatic || !funcType.among(FuncType.Method, FuncType.VirtualMethod) || !st || st.structType != StructType.Class)
       return null;
 
     auto methodName = dName;
@@ -881,6 +997,11 @@ final class Func : TypeNode
   Param closureFieldParam; /// Resolved parameter for closureField (set in verify)
   dstring closureFieldName; /// Resolved structure field name for closureField (set in verify)
   bool isCtor; /// Set for the primary constructor of an instance (not a Gir field)
+  Structure vfuncClassStruct; /// Class structure containing the C implementation pointer of a virtual method (set in verify)
+  bool vfuncQualified; /// Interface vfunc method name is qualified with the interface name (name collision, see Defs.qualifyIfaceVfuncNames)
+  Field vfuncField; /// Class structure field of the C implementation pointer of a virtual method (set in verify)
+  string vfuncSkipReason; /// Reason a virtual method was skipped (set in verify, null if not skipped by verify)
+  string noTrampolineReason; /// Reason a virtual method has no C trampoline and can't be overridden (set in verify)
   Func shadowedByFunc; /// Resolved function object for shadowedBy
   Func shadowsFunc; /// Resolved function object for shadows
 

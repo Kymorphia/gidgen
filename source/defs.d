@@ -1,6 +1,7 @@
 module defs;
 
 import std.conv : ConvException;
+import std.regex;
 import std.utf : toUTF32;
 import std.path : relativePath;
 
@@ -700,6 +701,99 @@ class Defs : Base
 
     foreach (repo; repos)
       repo.verify;
+
+    qualifyIfaceVfuncNames;
+    logVirtualMethodSummary;
+  }
+
+  /**
+   * Qualify the D names of interface vfunc methods with the interface name (vfuncGetName -> vfuncActionGetName) when
+   * they collide with a class vfunc method or a vfunc method of another interface in a class implementing the
+   * interface (directly or by an ancestor), or with a vfunc method of a prerequisite interface. Interface vfunc
+   * methods are declared in the interface mixin templates, where identical names would hide or clash with the other
+   * method. The qualified name is used for every class, since an interface mixin template is shared.
+   */
+  private void qualifyIfaceVfuncNames()
+  {
+    void qualifyCollisions(Func[] vfuncs)
+    {
+      Func[][dstring] byName;
+
+      foreach (fn; vfuncs)
+        byName[fn.dName] ~= fn;
+
+      foreach (fns; byName.byValue)
+        if (fns.length > 1)
+          foreach (fn; fns)
+            if ((cast(Structure)fn.parent).kind == TypeKind.Interface && !fn.vfuncQualified)
+            {
+              fn.vfuncQualified = true;
+              infoWithLoc(__FILE__, __LINE__, fn.xmlLocation, "Qualifying interface virtual method name '"
+                ~ fn.fullDName.to!string ~ "' which collides with another virtual method");
+            }
+    }
+
+    foreach (repo; repos)
+    {
+      foreach (st; repo.structs)
+      {
+        if (st.active != Active.Enabled)
+          continue;
+
+        if (st.kind == TypeKind.Interface)
+        {
+          qualifyCollisions((st ~ st.allPrerequisiteIfaces).map!(x => x.activeVfuncs).join);
+          continue;
+        }
+
+        if (st.kind != TypeKind.Object || !st.isGObjectDerived)
+          continue;
+
+        Func[] vfuncs;
+        Structure[] ifaces;
+
+        for (auto a = st; a; a = a.parentStruct)
+        {
+          vfuncs ~= a.activeVfuncs.filter!(fn => !vfuncs.canFind!(x => x.dName == fn.dName)).array; // Class vfunc overrides have the same name
+          ifaces ~= a.allImplementStructs.filter!(x => !ifaces.canFind(x)).array;
+        }
+
+        qualifyCollisions(vfuncs ~ ifaces.map!(x => x.activeVfuncs).join);
+      }
+    }
+  }
+
+  /// Log a summary of generated and skipped virtual methods (info log level)
+  private void logVirtualMethodSummary()
+  {
+    size_t generated, trampolines;
+    size_t[string] skipped, noTrampoline;
+
+    foreach (repo; repos)
+      foreach (st; repo.structs)
+        foreach (fn; st.functions)
+          if (fn.funcType == FuncType.VirtualMethod)
+          {
+            if (st.active == Active.Enabled && fn.active == Active.Enabled)
+            {
+              generated++;
+
+              if (fn.noTrampolineReason.empty)
+                trampolines++;
+              else // Group reasons by their message without parameter names and types
+                noTrampoline[fn.noTrampolineReason.replaceAll(std.regex.regex(`'[^']*'`), "''")]++;
+            }
+            else
+              skipped[st.active != Active.Enabled ? "class not active" : (fn.vfuncSkipReason.length > 0
+                ? fn.vfuncSkipReason : fn.active.to!string.toLower)]++;
+          }
+
+    info("Virtual methods: " ~ generated.to!string ~ " generated, "
+      ~ skipped.byValue.fold!((a, b) => a + b)(size_t(0)).to!string ~ " skipped"
+      ~ (skipped.length > 0 ? " (" ~ skipped.keys.sort.map!(k => k ~ ": " ~ skipped[k].to!string).join(", ") ~ ")" : "")
+      ~ ", " ~ trampolines.to!string ~ " with trampolines, " ~ noTrampoline.byValue.fold!((a, b) => a + b)(size_t(0))
+      .to!string ~ " without" ~ (noTrampoline.length > 0 ? " (" ~ noTrampoline.keys.sort.map!(k => k ~ ": "
+      ~ noTrampoline[k].to!string).join(", ") ~ ")" : ""));
   }
 
   /**

@@ -1,0 +1,19 @@
+{
+  "name": "gidgen-export",
+  "description": "D shared library exporting GObject types for the C program test of GObjectExport",
+  "copyright": "Copyright © 2026, Kymorphia, PBC",
+  "authors": [
+    "Element Green <element@kymorphia.com>"
+  ],
+  "license": "MIT",
+  "targetType": "dynamicLibrary",
+  "targetName": "gidgen-export",
+  "sourcePaths": [
+    "source"
+  ],
+  "dependencies": {
+    "gidg:gidgenfeat1": {
+      "path": ".."
+    }
+  }
+}

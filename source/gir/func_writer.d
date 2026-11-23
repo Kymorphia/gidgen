@@ -29,6 +29,9 @@ class FuncWriter
   {
     codeTrap("func.write", func.fullDName);
 
+    if (func.funcType == FuncType.VirtualMethod && moduleType == ModuleType.Iface) // Not in interface modules (see write)
+      return;
+
     if (!func.isStatic) // Check for conflicting method in ancestor if not a static method
     {
       conflictClass = func.findMethodConflict(null, conflictConforms);
@@ -39,6 +42,32 @@ class FuncWriter
 
     if (func.isStatic)
       decl ~= "static "; // Function is "static" if it is not a method, constructor, or global function
+
+    if (func.funcType == FuncType.VirtualMethod)
+    { // Virtual methods call the C implementation pointer of the class returned by ObjectWrap._vfuncClass (the nearest
+      // class which is not a D subclass type). A NULL implementation is a no-op returning a default value, matching the
+      // C chain-up idiom "if (parent_class->func) parent_class->func (...)".
+      // Interface virtual methods use the interface structure of that class, which is NULL if the class does not
+      // implement the interface (a D class newly implementing it).
+      auto iface = cast(Structure)func.parent;
+
+      if (iface && iface.kind == TypeKind.Interface)
+      {
+        addImport("gid.gobject2.c.functions");
+        addImport("gid.gobject2.c.types");
+        addImport("gid.gobject2.object");
+        preCall ~= "auto _klass = cast(" ~ func.vfuncClassStruct.cType ~ "*)g_type_interface_peek(cast(GTypeClass*)"
+          ~ "_vfuncClass, " ~ iface.fullDType ~ "._getGType);";
+        preCall ~= ["if (!_klass || !_klass." ~ func.vfuncField.dName ~ ")", hasReturnValue
+          ? "return typeof(return).init;"d : "return;"d, ""];
+      }
+      else
+      {
+        preCall ~= "auto _klass = cast(" ~ func.vfuncClassStruct.cType ~ "*)_vfuncClass;";
+        preCall ~= ["if (!_klass." ~ func.vfuncField.dName ~ ")", hasReturnValue ? "return typeof(return).init;"d
+          : "return;"d, ""];
+      }
+    }
 
     if (func.throws)
     { // postCall for exceptions is order sensitive and must be handled before output and return processing
@@ -88,7 +117,7 @@ class FuncWriter
     else
       decl ~= func.dName ~ "(";
 
-    call ~= func.cName ~ "(";
+    call ~= (func.funcType == FuncType.VirtualMethod ? "_klass." ~ func.vfuncField.dName : func.cName) ~ "(";
 
     foreach (param; func.params)
       processParam(param);
@@ -125,7 +154,8 @@ class FuncWriter
   private bool borrowsFromInstance(TypeNode node)
   {
     auto st = cast(Structure)node.typeObject;
-    return st && st.borrowed && node.ownership == Ownership.None && func.funcType == FuncType.Method;
+    return st && st.borrowed && node.ownership == Ownership.None
+      && func.funcType.among(FuncType.Method, FuncType.VirtualMethod);
   }
 
   /// Process return value
@@ -639,7 +669,7 @@ class FuncWriter
               postCall ~= param.dName ~ " = " ~ "new " ~ param.fullDType ~ "(cast(void*)&_" ~ param.dName
                 ~ ", No.Take);";
 
-              if (st && st.borrowed && func.funcType == FuncType.Method) // Pointer fields may reference the instance
+              if (st && st.borrowed && func.funcType.among(FuncType.Method, FuncType.VirtualMethod)) // Pointer fields may reference the instance
                 postCall ~= param.dName ~ "._owner = this;";
             }
             else
@@ -1115,7 +1145,13 @@ class FuncWriter
     dstring overrideStr;
     auto parentNode = cast(TypeNode)func.parent;
 
-    if (parentNode && parentNode.kind == TypeKind.Interface && !isStatic) // All interface methods are override
+    auto isVfunc = func.funcType == FuncType.VirtualMethod;
+
+    // Interface vfunc methods are only in the interface mixin template (protected methods can't be interface members)
+    if (isVfunc && moduleType == ModuleType.Iface)
+      return;
+
+    if (parentNode && parentNode.kind == TypeKind.Interface && !isStatic && !isVfunc) // All interface methods are override
       overrideStr = "override ";
     else if (!isStatic && conflictClass)
     {
@@ -1135,9 +1171,23 @@ class FuncWriter
     }
 
     // Add "override" for methods of an interface mixin template or if an ancestor/iface has a method with the same name
-    writer ~= overrideStr ~ decl ~ (func.throws ? ""d : " nothrow"d); // Add nothrow if the function itself does not throw
+    // Add nothrow if the function itself does not throw (virtual methods are not nothrow, so that D overrides can throw)
+    // Interface vfunc methods are marked with GidIfaceVfunc, which overrides don't have (see Structure.writeIfaceVfuncInstallers)
+    if (isVfunc && moduleType == ModuleType.IfaceTemplate)
+      writer ~= "@(gid.gobject2.object.GidIfaceVfunc)";
+
+    writer ~= overrideStr ~ (func.funcType == FuncType.VirtualMethod ? "protected "d : ""d) ~ decl
+      ~ (func.throws || func.funcType == FuncType.VirtualMethod ? ""d : " nothrow"d);
 
     writer ~= "{";
+
+    // Primary constructors of GObject classes create an instance of the D subclass GType when constructing a D
+    // subclass which uses the GObjectSubclass mixin (see ObjectWrap._newDSubclassGObject)
+    auto dSubclassCtor = isDSubclassCtor;
+
+    if (dSubclassCtor)
+      writer ~= ["if (_usesDSubclassGType) // D subclass GType (see gobject.object.GObjectSubclass)", "{",
+        "this(_newDSubclassGObject(_dSubclassGType" ~ dSubclassArgsIgnored ~ "), Yes.Take);", "}", "else", "{"];
 
     if (preCall.length > 0)
       writer ~= preCall;
@@ -1147,11 +1197,41 @@ class FuncWriter
     if (postCall.length > 0)
       writer ~= postCall;
 
-    if (func.returnVal && func.returnVal.origDType != "none" && func.returnVal.active == Active.Enabled && !func.isCtor
-        && func.returnVal.lengthArrayParams.length == 0) // Don't return a value for array length return values
+    if (dSubclassCtor)
+      writer ~= "}";
+
+    if (hasReturnValue)
       writer ~= "return _retval;";
 
     writer ~= "}";
+  }
+
+  /// Returns true if the function is the primary constructor of a GObject class
+  private bool isDSubclassCtor()
+  {
+    auto st = cast(Structure)func.parent;
+    return func.isCtor && st && st.kind == TypeKind.Object && st.isGObjectDerived;
+  }
+
+  /// Argument of _newDSubclassGObject which is true at runtime if constructor arguments are passed (ignored)
+  private dstring dSubclassArgsIgnored()
+  {
+    auto dParams = func.params.filter!(p => p.isDParam).array;
+
+    if (dParams.empty)
+      return "";
+
+    if (dParams.canFind!(p => !p.isOptional))
+      return ", true";
+
+    return ", " ~ dParams.map!(p => p.dName ~ " !is null").join(" || ");
+  }
+
+  /// Returns true if the D function returns a value (not for constructors or array length return values)
+  private bool hasReturnValue()
+  {
+    return func.returnVal && func.returnVal.origDType != "none" && func.returnVal.active == Active.Enabled
+      && !func.isCtor && func.returnVal.lengthArrayParams.length == 0;
   }
 
   Func func; /// The function object being written

@@ -65,3 +65,65 @@ unittest
   assert(obj.compute(7) == 42);
   destroy(obj);
 }
+
+/// Virtual methods: generated vfunc* methods call the C implementation of the instance's class
+unittest
+{
+  import gidgenfeat.c.functions : gidgen_feat_child_object_new, gidgen_feat_object_new_with_value;
+  import gidgenfeat.child_object : ChildObject;
+  import std.typecons : Yes;
+
+  // D subclasses which expose the protected vfunc methods (they have no D subclass GType with installed overrides,
+  // so only D calls dispatch to the overrides, see feat_vfunc for installed overrides)
+  static class VfuncObject : FeatObject
+  {
+    this(int value)
+    {
+      super(gidgen_feat_object_new_with_value(value), Yes.Take);
+    }
+
+    override protected int vfuncCompute(int x)
+    {
+      return super.vfuncCompute(x) + 1; // Chain up to the C implementation
+    }
+
+    int callCompute(int x) => vfuncCompute(x);
+    void callAbsorb(FeatObject other) => vfuncAbsorb(other);
+    bool callDivide(int divisor, out int quotient, out int remainder) => vfuncDivide(divisor, quotient, remainder);
+    int callHook() => vfuncHook;
+  }
+
+  static class VfuncChild : ChildObject
+  {
+    this(int value)
+    {
+      super(gidgen_feat_child_object_new(value), Yes.Take);
+    }
+
+    void callAbsorb(FeatObject other) => vfuncAbsorb(other);
+    int callHook() => vfuncHook;
+  }
+
+  auto obj = new VfuncObject(6);
+  assert(obj.callCompute(7) == 43, "D override chained up to the C compute implementation");
+  assert(obj.compute(7) == 42, "invoker calls the C implementation");
+
+  auto other = FeatObject.newWithValue(4);
+  obj.callAbsorb(other); // Void virtual method with an object parameter
+  assert(obj.getValue == 10);
+
+  int quotient, remainder;
+  assert(obj.callDivide(3, quotient, remainder) && quotient == 3 && remainder == 1, "out parameters and return value");
+  assert(!obj.callDivide(0, quotient, remainder));
+
+  assert(obj.callHook == 0, "NULL C implementation returns a default value");
+
+  auto child = new VfuncChild(1);
+  child.callAbsorb(other); // Uses the C class implementation of the instance's actual type (GidgenFeatChildObject)
+  assert(child.getValue == 9);
+  assert(child.callHook == 7);
+
+  destroy(obj);
+  destroy(other);
+  destroy(child);
+}

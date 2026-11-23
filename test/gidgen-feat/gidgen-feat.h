@@ -75,9 +75,12 @@ struct _GidgenFeatIfaceInterface
   GTypeInterface parent_iface;
 
   gint (*get_id) (GidgenFeatIface *self);
+  gboolean (*lookup) (GidgenFeatIface *self, gint key, gint *value, GError **error);
 };
 
 gint gidgen_feat_iface_get_id (GidgenFeatIface *self);
+gboolean gidgen_feat_iface_lookup (GidgenFeatIface *self, gint key, gint *value, GError **error);
+gboolean gidgen_feat_iface_has_lookup (GidgenFeatIface *self);
 void gidgen_feat_iface_emit_id_changed (GidgenFeatIface *self, gint id);
 
 /* Object */
@@ -90,8 +93,12 @@ struct _GidgenFeatObjectClass
   GObjectClass parent_class;
 
   gint (*compute) (GidgenFeatObject *self, gint x);
+  void (*absorb) (GidgenFeatObject *self, GidgenFeatObject *other);
+  gboolean (*divide) (GidgenFeatObject *self, gint divisor, gint *quotient, gint *remainder);
+  gint (*hook) (GidgenFeatObject *self);
+  gboolean (*check) (GidgenFeatObject *self, gint value, GError **error);
 
-  gpointer padding[8];
+  gpointer padding[4];
 };
 
 GidgenFeatObject *gidgen_feat_object_new (void);
@@ -105,6 +112,10 @@ void gidgen_feat_object_emit_changed (GidgenFeatObject *self, gint value);
 GidgenFeatObject *gidgen_feat_object_return_none (void);
 void gidgen_feat_object_reset_singleton (void);
 gint gidgen_feat_object_compute (GidgenFeatObject *self, gint x);
+void gidgen_feat_object_absorb (GidgenFeatObject *self, GidgenFeatObject *other);
+gboolean gidgen_feat_object_divide (GidgenFeatObject *self, gint divisor, gint *quotient, gint *remainder);
+gint gidgen_feat_object_hook (GidgenFeatObject *self);
+gboolean gidgen_feat_object_check (GidgenFeatObject *self, gint value, GError **error);
 
 /* Property and method name conflicts */
 
