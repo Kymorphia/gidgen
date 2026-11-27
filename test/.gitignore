@@ -24,3 +24,6 @@ ext-child/*.err
 !ext-child/defs
 gidgen-test/gidgen-loader-override
 gidgen-test/build.log
+export-test/gidgen-export-gir
+export-test/GidgenExport-1.0.gir
+export-test/typelib

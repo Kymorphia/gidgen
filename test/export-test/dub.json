@@ -1,7 +1,7 @@
 {
   "name": "gidgen-export",
   "description": "D shared library exporting GObject types for the C program test of GObjectExport",
-  "copyright": "Copyright © 2026, Kymorphia, PBC",
+  "copyright": "Copyright \u00a9 2026, Kymorphia, PBC",
   "authors": [
     "Element Green <element@kymorphia.com>"
   ],
@@ -15,5 +15,18 @@
     "gidg:gidgenfeat1": {
       "path": ".."
     }
-  }
+  },
+  "configurations": [
+    {
+      "name": "library"
+    },
+    {
+      "name": "gir",
+      "targetType": "executable",
+      "targetName": "gidgen-export-gir",
+      "versions": [
+        "GidGir"
+      ]
+    }
+  ]
 }

@@ -17,6 +17,8 @@
 # Targets:
 #   run-test          Build and run the unittests, the GObjectExport C program test, and the external dependency repository test (ext-test)
 #   run-test-export   Build and run the GObjectExport C program test only
+#   run-test-gir      Write the GIR of the GObjectExport test library, compare it with the expected file, compile it to
+#                     a typelib and use the library from Python (needs g-ir-compiler and PyGObject)
 #   unit-test         Run the gidgen source unittests
 #   ext-test          Test generating a child repository which depends on another repository (ext-child/)
 #   run-test-valgrind Run the unittests under valgrind memcheck (memory errors and definite leaks)
@@ -56,6 +58,7 @@ GLIB_SUPP = $(shell pkg-config --variable=prefix glib-2.0)/share/glib-2.0/valgri
 run-test: unit-test build-test ext-test
 	cd gidgen-test && LD_LIBRARY_PATH="$$(pwd)" G_DEBUG=fatal-criticals ./$(notdir $(TEST_BIN))
 	$(MAKE) run-test-export
+	$(MAKE) run-test-gir
 	cd gidgen-test && $(DUB) build -q --compiler=$(DC) --config=loader-override
 	cd gidgen-test && LD_LIBRARY_PATH="$$(pwd)" G_DEBUG=fatal-criticals \
 	  GID_RTLD_LOCAL=gid.gidgenfeat1 GID_RTLD_GLOBAL=gid.shimlib1,gid.shimlib2 ./gidgen-loader-override
@@ -66,6 +69,27 @@ unit-test:
 
 EXPORT_CFLAGS = $(TEST_CFLAGS) -Igidgen-feat
 EXPORT_LDFLAGS = -Lgidgen-test -lgidgen-feat -lpthread $(TEST_LDFLAGS)
+
+GIR_TEST_ENV = GI_TYPELIB_PATH="$$(pwd)/typelib" LD_LIBRARY_PATH="$$(pwd):$$(pwd)/../gidgen-test" G_DEBUG=fatal-criticals
+
+# The GIR of GidgenFeat is copied without nested records, which g-ir-compiler 1.84 can't parse
+.PHONY: run-test-gir
+run-test-gir: packages/README.md $(FEAT_LIB) gir/GidgenFeat-1.0.gir
+	cd export-test && $(DUB) build -q --compiler=$(DC) && $(DUB) build -q --compiler=$(DC) --config=gir
+	cd export-test && LD_LIBRARY_PATH="$$(pwd)/../gidgen-test" G_DEBUG=fatal-criticals ./gidgen-export-gir \
+	  --gir GidgenExport-1.0.gir
+	diff -u export-test/GidgenExport-1.0.gir.expected export-test/GidgenExport-1.0.gir
+	mkdir -p export-test/typelib
+	python3 export-test/strip_nested.py gir/GidgenFeat-1.0.gir export-test/typelib/GidgenFeat-1.0.gir
+	cd export-test && g-ir-compiler --includedir=typelib typelib/GidgenFeat-1.0.gir -o typelib/GidgenFeat-1.0.typelib
+	cd export-test && g-ir-compiler --includedir=typelib GidgenExport-1.0.gir -o typelib/GidgenExport-1.0.typelib
+	cd export-test && GI_TYPELIB_PATH=typelib g-ir-inspect --print-shlibs --print-typelibs --version=1.0 GidgenExport \
+	  > typelib/inspect.txt && grep -qx 'shlib: libgidgen-export.so' typelib/inspect.txt \
+	  && grep -qx 'typelib: GidgenFeat-1.0' typelib/inspect.txt
+	cd export-test && g-ir-generate --includedir=typelib typelib/GidgenExport-1.0.typelib > typelib/roundtrip.gir \
+	  && grep -q 'c:identifier="gidgen_export_virt_stats"' typelib/roundtrip.gir \
+	  && grep -q '<virtual-method name="scale" .*invoker="scale"' typelib/roundtrip.gir
+	cd export-test && $(GIR_TEST_ENV) timeout 120 python3 gi_test.py
 
 .PHONY: run-test-export
 run-test-export: packages/README.md $(FEAT_LIB)
@@ -227,5 +251,5 @@ $(COV_BIN): $(GIDGEN_SOURCES)
 
 .PHONY: clean
 clean:
-	-rm -f gidgen-test/libgidgen-*.so* $(SHIM_LIBS) $(TEST_BIN) gidgen-test/gidgen-loader-override export-test/libgidgen-export.so export-test/export-test-* $(GIRS) $(MATRIX_GEN) $(MATRIX_GEN_C) $(MATRIX_MANIFEST) $(MATRIX_DEFS)
-	-rm -rf packages defs coverage matrix-gen/.dub export-test/.dub ext-child/out ext-child/out-bad ext-child/out-noshims ext-child/out-stale ext-child/*.err
+	-rm -f gidgen-test/libgidgen-*.so* $(SHIM_LIBS) $(TEST_BIN) gidgen-test/gidgen-loader-override export-test/libgidgen-export.so export-test/export-test-* export-test/gidgen-export-gir export-test/GidgenExport-1.0.gir $(GIRS) $(MATRIX_GEN) $(MATRIX_GEN_C) $(MATRIX_MANIFEST) $(MATRIX_DEFS)
+	-rm -rf packages defs coverage matrix-gen/.dub export-test/.dub export-test/typelib ext-child/out ext-child/out-bad ext-child/out-noshims ext-child/out-stale ext-child/*.err
