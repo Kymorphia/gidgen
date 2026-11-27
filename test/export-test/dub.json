@@ -11,6 +11,12 @@
   "sourcePaths": [
     "source"
   ],
+  "dflags-ldc": [
+    "-link-defaultlib-shared"
+  ],
+  "dflags-dmd": [
+    "-defaultlib=libphobos2.so"
+  ],
   "dependencies": {
     "gidg:gidgenfeat1": {
       "path": ".."

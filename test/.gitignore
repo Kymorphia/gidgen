@@ -25,5 +25,8 @@ ext-child/*.err
 gidgen-test/gidgen-loader-override
 gidgen-test/build.log
 export-test/gidgen-export-gir
-export-test/GidgenExport-1.0.gir
+export-test/Gidgen*-1.0.gir
+export-mixer/libgidgen-mixer.so
+export-mixer/gidgen-mixer-gir
+export-mixer/dub.selections.json
 export-test/typelib

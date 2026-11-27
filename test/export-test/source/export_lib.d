@@ -14,11 +14,15 @@ import gid.gidgenfeat1.object : FeatObject = ObjectWrap;
 import gid.glib2.c.functions : g_main_context_iteration, g_quark_from_string;
 import gid.glib2.error : ErrorWrap;
 import gid.gobject2.initially_unowned : InitiallyUnowned;
-import gid.gobject2.object : GirInfo, GObjectExport, GObjectExportAll, GObjectGirMain, GInterfaceExport, ObjectWrap, gConstructor, gMethod, gNullable, gThrows, gProperty, gNotifyAlways, gSignal, gVirtual;
+import gid.gobject2.object : GirInfo, GObjectExport, GObjectExportAll, GObjectGirMain, GObjectNamespace,
+  GInterfaceExport, ObjectWrap, gConstructor, gMethod, gNullable, gThrows, gProperty, gNotifyAlways, gSignal, gVirtual;
 import gid.gobject2.types : ParamFlags, SignalFlags;
 
-// The gir configuration builds a program which writes GidgenExport-1.0.gir
-version (GidGir) mixin GObjectGirMain!(GirInfo("GidgenExport", "1.0", "libgidgen-export.so"), export_lib);
+// Namespace with its GIR version, needed by the GIR of export_mixer.d which uses these types
+mixin GObjectNamespace!("GidgenExport", "1.0");
+
+// The gir configuration builds a program which writes GidgenExport-1.0.gir (the version comes from GObjectNamespace)
+version (GidGir) mixin GObjectGirMain!(GirInfo("GidgenExport", null, "libgidgen-export.so"), export_lib);
 
 private shared int liveDObjects; // D objects of the exported types which were not finalized
 

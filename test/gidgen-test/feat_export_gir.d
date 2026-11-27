@@ -10,7 +10,7 @@ import gid.gobject2.types : BindingFlags, ParamFlags, SignalFlags;
 import std.algorithm : canFind;
 import std.string : indexOf;
 
-mixin GObjectNamespace!("GidgenGir", "gidgen_gir");
+mixin GObjectNamespace!("GidgenGir", "gidgen_gir"); // No GIR version: GirInfo gives it
 
 /// Exported interface
 interface GirShape
@@ -212,7 +212,8 @@ unittest
     `<glib:signal name="cleaned" when="cleanup">`);
 }
 
-/// Auto-exported members and the other namespace (problems are reported with an exception)
+/// Auto-exported members, and a type of another namespace without a GIR version (problems are reported with an
+/// exception)
 unittest
 {
   import feat_export_auto : AutoNs;
@@ -226,7 +227,7 @@ unittest
   assert(!xml.canFind("plain_value") && !xml.canFind(`name="size"`));
 
   auto msg = collectExceptionMsg(girXml!(GirInfo("GidgenGirBad", "1.0", "x.so"), feat_export_gir));
-  assert(msg.canFind("GirBad.other: type GirOther is in namespace GidgenGirOther, not GidgenGirBad"), msg);
+  assert(msg.canFind("GirBad.other: type GirOther is in namespace GidgenGirOther, which has no GIR version"), msg);
 }
 
 /// g-ir-compiler accepts the GIR

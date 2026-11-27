@@ -1,0 +1,46 @@
+{
+  "name": "gidgen-mixer",
+  "description": "D shared library using the exported types of the gidgen-export library from another namespace, for the GIR export test",
+  "copyright": "Copyright \u00a9 2026, Kymorphia, PBC",
+  "authors": [
+    "Element Green <element@kymorphia.com>"
+  ],
+  "license": "MIT",
+  "targetType": "dynamicLibrary",
+  "targetName": "gidgen-mixer",
+  "sourcePaths": [
+    "source"
+  ],
+  "importPaths": [
+    "source",
+    "../export-test/source"
+  ],
+  "lflags": [
+    "-L$PACKAGE_DIR/../export-test",
+    "-lgidgen-export"
+  ],
+  "dflags-ldc": [
+    "-link-defaultlib-shared"
+  ],
+  "dflags-dmd": [
+    "-defaultlib=libphobos2.so"
+  ],
+  "dependencies": {
+    "gidg:gidgenfeat1": {
+      "path": ".."
+    }
+  },
+  "configurations": [
+    {
+      "name": "library"
+    },
+    {
+      "name": "gir",
+      "targetType": "executable",
+      "targetName": "gidgen-mixer-gir",
+      "versions": [
+        "GidGir"
+      ]
+    }
+  ]
+}

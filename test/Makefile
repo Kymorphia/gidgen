@@ -17,8 +17,8 @@
 # Targets:
 #   run-test          Build and run the unittests, the GObjectExport C program test, and the external dependency repository test (ext-test)
 #   run-test-export   Build and run the GObjectExport C program test only
-#   run-test-gir      Write the GIR of the GObjectExport test library, compare it with the expected file, compile it to
-#                     a typelib and use the library from Python (needs g-ir-compiler and PyGObject)
+#   run-test-gir      Write the GIRs of the GObjectExport test libraries, compile them to typelibs and use the libraries
+#                     from Python (needs g-ir-compiler and PyGObject)
 #   unit-test         Run the gidgen source unittests
 #   ext-test          Test generating a child repository which depends on another repository (ext-child/)
 #   run-test-valgrind Run the unittests under valgrind memcheck (memory errors and definite leaks)
@@ -70,19 +70,27 @@ unit-test:
 EXPORT_CFLAGS = $(TEST_CFLAGS) -Igidgen-feat
 EXPORT_LDFLAGS = -Lgidgen-test -lgidgen-feat -lpthread $(TEST_LDFLAGS)
 
-GIR_TEST_ENV = GI_TYPELIB_PATH="$$(pwd)/typelib" LD_LIBRARY_PATH="$$(pwd):$$(pwd)/../gidgen-test" G_DEBUG=fatal-criticals
+GIR_TEST_ENV = GI_TYPELIB_PATH="$$(pwd)/typelib" LD_LIBRARY_PATH="$$(pwd):$$(pwd)/../export-mixer:$$(pwd)/../gidgen-test" \
+  G_DEBUG=fatal-criticals
 
+# export-mixer (GidgenMixer) uses the types of export-test (GidgenExport) from another namespace.
 # The GIR of GidgenFeat is copied without nested records, which g-ir-compiler 1.84 can't parse
 .PHONY: run-test-gir
 run-test-gir: packages/README.md $(FEAT_LIB) gir/GidgenFeat-1.0.gir
 	cd export-test && $(DUB) build -q --compiler=$(DC) && $(DUB) build -q --compiler=$(DC) --config=gir
-	cd export-test && LD_LIBRARY_PATH="$$(pwd)/../gidgen-test" G_DEBUG=fatal-criticals ./gidgen-export-gir \
-	  --gir GidgenExport-1.0.gir
-	diff -u export-test/GidgenExport-1.0.gir.expected export-test/GidgenExport-1.0.gir
+	cd export-mixer && $(DUB) build -q --compiler=$(DC) && $(DUB) build -q --compiler=$(DC) --config=gir
+	cd export-test && LD_LIBRARY_PATH="$$(pwd)/../gidgen-test" G_DEBUG=fatal-criticals ./gidgen-export-gir
+	cd export-mixer && LD_LIBRARY_PATH="$$(pwd)/../export-test:$$(pwd)/../gidgen-test" G_DEBUG=fatal-criticals \
+	  ./gidgen-mixer-gir --gir ../export-test/GidgenMixer-1.0.gir
 	mkdir -p export-test/typelib
 	python3 export-test/strip_nested.py gir/GidgenFeat-1.0.gir export-test/typelib/GidgenFeat-1.0.gir
 	cd export-test && g-ir-compiler --includedir=typelib typelib/GidgenFeat-1.0.gir -o typelib/GidgenFeat-1.0.typelib
 	cd export-test && g-ir-compiler --includedir=typelib GidgenExport-1.0.gir -o typelib/GidgenExport-1.0.typelib
+	cd export-test && g-ir-compiler --includedir=typelib --includedir=. GidgenMixer-1.0.gir \
+	  -o typelib/GidgenMixer-1.0.typelib
+	cd export-test && GI_TYPELIB_PATH=typelib g-ir-inspect --print-shlibs --print-typelibs --version=1.0 GidgenMixer \
+	  > typelib/inspect-mixer.txt && grep -qx 'shlib: libgidgen-mixer.so' typelib/inspect-mixer.txt \
+	  && grep -qx 'typelib: GidgenExport-1.0' typelib/inspect-mixer.txt
 	cd export-test && GI_TYPELIB_PATH=typelib g-ir-inspect --print-shlibs --print-typelibs --version=1.0 GidgenExport \
 	  > typelib/inspect.txt && grep -qx 'shlib: libgidgen-export.so' typelib/inspect.txt \
 	  && grep -qx 'typelib: GidgenFeat-1.0' typelib/inspect.txt
@@ -251,5 +259,5 @@ $(COV_BIN): $(GIDGEN_SOURCES)
 
 .PHONY: clean
 clean:
-	-rm -f gidgen-test/libgidgen-*.so* $(SHIM_LIBS) $(TEST_BIN) gidgen-test/gidgen-loader-override export-test/libgidgen-export.so export-test/export-test-* export-test/gidgen-export-gir export-test/GidgenExport-1.0.gir $(GIRS) $(MATRIX_GEN) $(MATRIX_GEN_C) $(MATRIX_MANIFEST) $(MATRIX_DEFS)
-	-rm -rf packages defs coverage matrix-gen/.dub export-test/.dub export-test/typelib ext-child/out ext-child/out-bad ext-child/out-noshims ext-child/out-stale ext-child/*.err
+	-rm -f gidgen-test/libgidgen-*.so* $(SHIM_LIBS) $(TEST_BIN) gidgen-test/gidgen-loader-override export-test/libgidgen-export.so export-test/export-test-* export-test/gidgen-export-gir export-test/Gidgen*-1.0.gir export-mixer/libgidgen-mixer.so export-mixer/gidgen-mixer-gir $(GIRS) $(MATRIX_GEN) $(MATRIX_GEN_C) $(MATRIX_MANIFEST) $(MATRIX_DEFS)
+	-rm -rf packages defs coverage matrix-gen/.dub export-test/.dub export-test/typelib export-mixer/.dub ext-child/out ext-child/out-bad ext-child/out-noshims ext-child/out-stale ext-child/*.err

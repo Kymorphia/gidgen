@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Use the D library through its generated GIR (typelib) from Python (PyGObject): constructors, methods, functions,
 properties, signals, virtual methods overridden in Python, interfaces, GError and finalization of the D objects.
+GidgenMixer (libgidgen-mixer.so) is a second D library whose types use the GidgenExport types.
 Run with GI_TYPELIB_PATH and LD_LIBRARY_PATH set (see the run-test-gir target of the Makefile)."""
 import ctypes
 import gc
@@ -10,7 +11,8 @@ import xml.etree.ElementTree as ET
 import gi
 gi.require_version('GidgenExport', '1.0')
 gi.require_version('GidgenFeat', '1.0')
-from gi.repository import GLib, GObject, GidgenExport, GidgenFeat
+gi.require_version('GidgenMixer', '1.0')
+from gi.repository import GLib, GObject, GidgenExport, GidgenFeat, GidgenMixer
 
 lib = ctypes.CDLL('libgidgen-export.so')
 
@@ -117,8 +119,32 @@ a = GidgenExport.Auto()
 a.props.level = 4
 assert a.add(1) == 5 and GidgenExport.Auto.twice(4) == 8
 
+# Second D library (namespace GidgenMixer) using GidgenExport types: methods, a property, a signal, a subclass
+ch = GidgenMixer.Channel()
+k = ch.get_gain_knob()
+assert type(k) is GidgenExport.Virt and k.props.title == 'gain' and ch.props.knob == k
+seen = []
+ch.connect('knob-changed', lambda o, knob: seen.append(knob.props.title))
+k2 = GidgenExport.Virt.new_with_title('mine')
+ch.set_gain_knob(k2)
+assert seen == ['mine'] and ch.props.knob == k2 and ch.get_gain_knob() == k2
+assert ch.sides_of(k2) == 4 and ch.sides_of(PyShape()) == 3
+fancy = GidgenMixer.FancyVirt()
+assert isinstance(fancy, GidgenExport.Virt) and fancy.scale(5) == 15
+
+
+class PyFancy(GidgenMixer.FancyVirt):
+    def do_scale(self, x):
+        return x * 7
+
+
+pf = PyFancy()
+assert pf.scale(2) == 14
+ch.props.knob = pf
+assert ch.get_gain_knob() == pf
+
 # All D objects are finalized once Python drops them
-del obj, child, v, p, s, f, a, same
+del obj, child, v, p, s, f, a, same, ch, k, k2, fancy, pf
 gc.collect()
 for i in range(10):
     if lib.gidgen_export_live_dobjects() == start:
