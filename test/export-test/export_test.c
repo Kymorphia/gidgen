@@ -36,6 +36,9 @@ static char *(*virt_describe) (void *self, const char *prefix);
 static int (*virt_divide) (void *self, int a, int b, GError **error);
 static void (*virt_stats) (void *self, const char *s, int *length, char **upper, char ***chars, GObject **same);
 static int (*virt_abi_version) (void);
+static GetTypeFunc auto_get_type; /* GObjectExportAll, no attributes */
+static int (*auto_add) (void *self, int x);
+static int (*auto_twice) (int x);
 
 /* Interface struct of the D-defined interface GidgenExportShape */
 typedef struct
@@ -168,10 +171,14 @@ load_library (void)
   virt_stats = (void (*) (void *, const char *, int *, char **, char ***, GObject **)) dlsym (lib,
                                                                                              "gidgen_export_virt_stats");
   virt_abi_version = (int (*) (void)) dlsym (lib, "gidgen_export_virt_abi_version");
+  auto_get_type = (GetTypeFunc) dlsym (lib, "gidgen_export_auto_get_type");
+  auto_add = (int (*) (void *, int)) dlsym (lib, "gidgen_export_auto_add");
+  auto_twice = (int (*) (int)) dlsym (lib, "gidgen_export_auto_twice");
   CHECK (obj_get_type && child_get_type && floating_get_type && collect && live_dobjects && emit_bumped
          && virt_get_type && virt_child_get_type && shape_get_type && obj_new && floating_new && virt_new
          && virt_scale && virt_join && shape_sides && shape_label && virt_new_with_title && virt_describe && virt_divide
-         && virt_stats && virt_abi_version);
+         && virt_stats && virt_abi_version && auto_get_type && auto_add && auto_twice);
+  CHECK (dlsym (lib, "gidgen_export_auto_level") == NULL); /* @property accessors are properties only */
   /* Invokers are exported by the type which declares the @gVirtual method only */
   CHECK (dlsym (lib, "gidgen_export_virt_child_scale") == NULL);
   CHECK (dlsym (lib, "gidgen_export_scale") == NULL); /* Former hand written helper */
@@ -199,6 +206,9 @@ char *gidgen_export_virt_describe (void *self, const char *prefix);
 int gidgen_export_virt_divide (void *self, int a, int b, GError **error);
 void gidgen_export_virt_stats (void *self, const char *s, int *length, char **upper, char ***chars, GObject **same);
 int gidgen_export_virt_abi_version (void);
+GType gidgen_export_auto_get_type (void);
+int gidgen_export_auto_add (void *self, int x);
+int gidgen_export_auto_twice (int x);
 
 static void
 load_library (void)
@@ -224,6 +234,9 @@ load_library (void)
   virt_divide = gidgen_export_virt_divide;
   virt_stats = gidgen_export_virt_stats;
   virt_abi_version = gidgen_export_virt_abi_version;
+  auto_get_type = gidgen_export_auto_get_type;
+  auto_add = gidgen_export_auto_add;
+  auto_twice = gidgen_export_auto_twice;
 }
 #endif
 
@@ -559,6 +572,21 @@ main (void)
     for (i = 0; i < 5 && vweak == 0; i++)
       collect ();
     CHECK (vweak == 1);
+  }
+
+  /* Auto-exported type (GObjectExportAll): methods, functions and properties without attributes */
+  {
+    GObject *aobj;
+    GParamSpec *pspec;
+    int level = 0;
+
+    aobj = g_object_new (auto_get_type (), NULL);
+    pspec = g_object_class_find_property (G_OBJECT_GET_CLASS (aobj), "level");
+    CHECK (pspec && (pspec->flags & G_PARAM_READWRITE) == G_PARAM_READWRITE);
+    g_object_set (aobj, "level", 5, NULL);
+    g_object_get (aobj, "level", &level, NULL);
+    CHECK (level == 5 && auto_add (aobj, 2) == 7 && auto_twice (4) == 8);
+    g_object_unref (aobj);
   }
 
   /* Interface defined in D: implemented by a D class and by a C type, called from C and from D */

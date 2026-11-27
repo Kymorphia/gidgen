@@ -78,7 +78,11 @@ run-test-export: packages/README.md $(FEAT_LIB)
 
 .PHONY: build-test
 build-test: packages/README.md $(LIBS) $(MATRIX_MANIFEST)
-	cd gidgen-test && $(DUB) build -q --compiler=$(DC) --build=unittest
+	cd gidgen-test && { $(DUB) build -q --compiler=$(DC) --build=unittest > build.log 2>&1; status=$$?; \
+	  cat build.log; exit $$status; }
+	# GidSkip.Warn prints skipped members when the tests are compiled (checked when dub compiled them)
+	! test -s gidgen-test/build.log || grep -q '^Warning: AutoClass.callback: not exported, unsupported property type' \
+	  gidgen-test/build.log
 
 # External dependency repository test: ext-child/ is a tiny child repository (a stub GIR including GObject) which
 # depends on the packages, defs and GIRs of the gidgen test repository (above) through the dependencies config of

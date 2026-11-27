@@ -14,7 +14,7 @@ import gid.gidgenfeat1.object : FeatObject = ObjectWrap;
 import gid.glib2.c.functions : g_main_context_iteration, g_quark_from_string;
 import gid.glib2.error : ErrorWrap;
 import gid.gobject2.initially_unowned : InitiallyUnowned;
-import gid.gobject2.object : GObjectExport, GInterfaceExport, ObjectWrap, gConstructor, gMethod, gNullable, gThrows, gProperty, gNotifyAlways, gSignal, gVirtual;
+import gid.gobject2.object : GObjectExport, GObjectExportAll, GInterfaceExport, ObjectWrap, gConstructor, gMethod, gNullable, gThrows, gProperty, gNotifyAlways, gSignal, gVirtual;
 import gid.gobject2.types : ParamFlags, SignalFlags;
 
 private shared int liveDObjects; // D objects of the exported types which were not finalized
@@ -213,6 +213,34 @@ class ExportFloating : InitiallyUnowned
   ~this()
   {
     liveDObjects.atomicOp!"-="(1);
+  }
+}
+
+/// GidgenExportAuto, exported without attributes: methods, static functions and @property accessors
+class ExportAuto : ObjectWrap
+{
+  mixin GObjectExportAll!("GidgenExport", "Auto");
+
+  private int _level = 1;
+
+  int add(int x) // gidgen_export_auto_add
+  {
+    return _level + x;
+  }
+
+  static int twice(int x) // gidgen_export_auto_twice
+  {
+    return 2 * x;
+  }
+
+  @property int level() // Property "level"
+  {
+    return _level;
+  }
+
+  @property void level(int v)
+  {
+    _level = v;
   }
 }
 
