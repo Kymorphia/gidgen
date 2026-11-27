@@ -794,6 +794,9 @@ final class Repo : Base
         "/// GIR namespace version of the binding",
         "enum string _gidGirVersion = \"" ~ nsVersion ~ "\";",
         "",
+        "/// C headers of the binding library (included by the C headers of D libraries using its types)",
+        "enum string[] _gidGirCIncludes = [" ~ cIncludes.map!(x => "\"" ~ x ~ "\""d).join(", "d) ~ "];",
+        "",
       ];
 
     foreach (a; aliases)
