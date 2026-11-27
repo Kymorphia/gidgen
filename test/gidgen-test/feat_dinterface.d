@@ -1,4 +1,4 @@
-/// GObject interfaces defined in D with GObjectInterface
+/// GObject interfaces defined in D with GInterfaceDef
 module feat_dinterface;
 
 import gid.core.utils : GidCallbackExceptionInfo, setCallbackExceptionHandler;
@@ -9,7 +9,7 @@ import gid.gidgenfeat1.iface_mixin; // Interface mixins are imported without sel
 import gid.glib2.c.functions : g_free;
 import gid.gobject2.c.functions;
 import gid.gobject2.c.types;
-import gid.gobject2.object : GObjectInterface, GObjectSubclass, ObjectWrap, gSignal, gVirtual;
+import gid.gobject2.object : GInterfaceDef, GObjectSubclass, ObjectWrap, gSignal, gVirtual;
 import gid.gobject2.types : GTypeEnum;
 import std.algorithm : canFind;
 import std.string : fromStringz, toStringz;
@@ -25,7 +25,7 @@ enum DShapeKind
 /// Interface with methods of the supported kinds
 interface DShape
 {
-  mixin GObjectInterface!"GidgenTestDShape";
+  mixin GInterfaceDef!"GidgenTestDShape";
 
   @gVirtual double vfuncArea();
   @gVirtual bool vfuncContains(double x, double y);
@@ -37,7 +37,7 @@ interface DShape
 /// Interface extending another one (its prerequisite)
 interface DNamed : DShape
 {
-  mixin GObjectInterface; // Default GType name
+  mixin GInterfaceDef; // Default GType name
 
   @gVirtual int vfuncTag(string text);
 }
@@ -45,7 +45,7 @@ interface DNamed : DShape
 /// Interface without methods
 interface DMarker
 {
-  mixin GObjectInterface!"GidgenTestDMarker";
+  mixin GInterfaceDef!"GidgenTestDMarker";
 }
 
 /// D class implementing D interfaces
@@ -288,19 +288,19 @@ unittest
 unittest
 {
   assert(__traits(compiles, {
-    interface Good { mixin GObjectInterface!"GidgenTestGoodDIface"; @gVirtual int vfuncOk(string s); }
+    interface Good { mixin GInterfaceDef!"GidgenTestGoodDIface"; @gVirtual int vfuncOk(string s); }
   }));
   assert(!__traits(compiles, {
-    static class NotIface : ObjectWrap { mixin GObjectInterface!"GidgenTestBadDIface1"; }
+    static class NotIface : ObjectWrap { mixin GInterfaceDef!"GidgenTestBadDIface1"; }
   }), "Not an interface");
   assert(!__traits(compiles, {
-    interface BadName { mixin GObjectInterface!"GidgenTestBadDIface2"; @gVirtual int doIt(); }
+    interface BadName { mixin GInterfaceDef!"GidgenTestBadDIface2"; @gVirtual int doIt(); }
   }), "Name must start with vfunc");
   assert(!__traits(compiles, {
-    interface BadSignal { mixin GObjectInterface!"GidgenTestBadDIface3"; @gSignal void changed(); }
+    interface BadSignal { mixin GInterfaceDef!"GidgenTestBadDIface3"; @gSignal void changed(); }
   }), "No signals");
   assert(!__traits(compiles, {
-    interface BadBase : Iface { mixin GObjectInterface!"GidgenTestBadDIface4"; }
+    interface BadBase : Iface { mixin GInterfaceDef!"GidgenTestBadDIface4"; }
     BadBase._getGType();
   }), "Only D-defined interfaces as bases");
 }

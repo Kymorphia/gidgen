@@ -14,7 +14,7 @@ import gid.gidgenfeat1.object : FeatObject = ObjectWrap;
 import gid.glib2.c.functions : g_main_context_iteration, g_quark_from_string;
 import gid.glib2.error : ErrorWrap;
 import gid.gobject2.initially_unowned : InitiallyUnowned;
-import gid.gobject2.object : GObjectExport, GObjectInterfaceExport, ObjectWrap, gProperty, gNotifyAlways, gSignal, gVirtual;
+import gid.gobject2.object : GObjectExport, GInterfaceExport, ObjectWrap, gProperty, gNotifyAlways, gSignal, gVirtual;
 import gid.gobject2.types : ParamFlags, SignalFlags;
 
 private shared int liveDObjects; // D objects of the exported types which were not finalized
@@ -102,7 +102,7 @@ class ExportChild : ExportObj
 /// gidgen_export_shape_sides() and gidgen_export_shape_label()
 interface ExportShape
 {
-  mixin GObjectInterfaceExport!("GidgenExport", "Shape");
+  mixin GInterfaceExport!("GidgenExport", "Shape");
 
   @gVirtual int vfuncSides();
   @gVirtual void vfuncLabel(string text);

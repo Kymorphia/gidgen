@@ -1,4 +1,4 @@
-/// C entry points of GObjectExport classes and GObjectInterfaceExport interfaces: _new, invokers of @gVirtual methods
+/// C entry points of GObjectExport classes and GInterfaceExport interfaces: _new, invokers of @gVirtual methods
 /// (which call the implementation in the class or interface struct of the instance) and get_type of interfaces.
 module feat_export_entry;
 
@@ -7,7 +7,7 @@ import gid.glib2.c.types : GLogLevelFlags;
 import gid.gobject2.c.functions;
 import gid.gobject2.c.types;
 import gid.gobject2.types : GTypeEnum;
-import gid.gobject2.object : GObjectExport, GObjectInterfaceExport, GObjectNamespace, GObjectSubclass, ObjectWrap,
+import gid.gobject2.object : GObjectExport, GInterfaceExport, GObjectNamespace, GObjectSubclass, ObjectWrap,
   gVirtual;
 import std.string : fromStringz;
 import std.typecons : No;
@@ -17,7 +17,7 @@ mixin GObjectNamespace!("GidgenEntry", "gidgen_entry");
 /// Exported D interface
 interface EntryShape
 {
-  mixin GObjectInterfaceExport!(null, "Shape");
+  mixin GInterfaceExport!(null, "Shape");
 
   @gVirtual int vfuncSides();
   @gVirtual void vfuncSetLabel(string text);

@@ -22,7 +22,7 @@ static GetTypeFunc obj_get_type, child_get_type, floating_get_type, virt_get_typ
 static void (*collect) (void);
 static int (*live_dobjects) (void);
 static void (*emit_bumped) (void *obj, int amount);
-/* Exported C entry points of the D types (GObjectExport and GObjectInterfaceExport) */
+/* Exported C entry points of the D types (GObjectExport and GInterfaceExport) */
 static GetTypeFunc shape_get_type;
 static GObject *(*obj_new) (void);
 static GObject *(*floating_new) (void);
