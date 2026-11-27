@@ -786,6 +786,16 @@ final class Repo : Base
     writer ~= includeRepos.map!(x => "public import " ~ x.packageNamespace ~ ".c.types;").array;
     writer ~= "";
 
+    if (!runtime) // GIR identity of the namespace, the types have @gidGir attributes with their GIR names
+      writer ~= [
+        "/// GIR namespace of the binding (used to export D-defined GObject types to GIR)",
+        "enum string _gidGirNamespace = \"" ~ namespace ~ "\";",
+        "",
+        "/// GIR namespace version of the binding",
+        "enum string _gidGirVersion = \"" ~ nsVersion ~ "\";",
+        "",
+      ];
+
     foreach (a; aliases)
     {
       writer ~= a.genDocs;
@@ -795,6 +805,7 @@ final class Repo : Base
     foreach (e; enums)
     {
       writer ~= e.genDocs;
+      writer ~= girNameAttr(e.origDType);
 
       writer ~= ["enum " ~ e.cType ~ (e.bitfield ? " : uint"d : ""), "{"];
 
@@ -833,6 +844,10 @@ final class Repo : Base
       else // Opaque structure or pointer to opaque structure
       {
         writer ~= st.genDocs;
+
+        if (!st.inModule) // GIR type name of C structures without a D module (the D type is an alias of the C type)
+          writer ~= girNameAttr(st.origDType, st.glibTypeStruct);
+
         writer ~= ["struct " ~ st.cType ~ ";"d, ""];
       }
     }

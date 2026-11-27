@@ -762,6 +762,10 @@ final class Structure : TypeNode
 
     Structure[] objIfaces;
 
+    if (moduleType != ModuleType.Struct && moduleType != ModuleType.IfaceTemplate && kind != TypeKind.Namespace
+        && !cType.empty) // GIR type name (D classes declared in definition files have no C type and no GIR type)
+      writer ~= girNameAttr(origDType, glibTypeStruct);
+
     if (defCode.classDecl.empty)
     {
       if (kind == TypeKind.Interface) // Interface derives from its prerequisite interfaces (or GidWrap if none)
@@ -1598,6 +1602,9 @@ final class Structure : TypeNode
         typeName = st.name ? (st.name.camelCase(true) ~ "Type") : null; // Handles anonymous or named embedded struct/unions
 
       // C alignment not described by the GIR fields (gid-align), D propagates it to containing structures and arrays
+      if (st is this && (structMod || !inModule)) // GIR type name of struct modules and C structures without a D module
+        writer ~= girNameAttr(origDType, glibTypeStruct);
+
       auto alignPrefix = (st is this && !alignAttr.empty) ? ("align(" ~ alignAttr ~ ") "d) : ""d;
       writer ~= [alignPrefix ~ (st.structType == StructType.Union ? "union"d : "struct"d) ~ (typeName ? (" " ~ typeName) : ""), "{"];
 

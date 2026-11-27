@@ -140,6 +140,26 @@ dstring snakeCase(dstring name)
 }
 
 /**
+ * Generate the `@gidGir` attribute which gidgen adds to the D declaration of a binding type, giving its GIR type name
+ * (and the GIR name of its class or interface structure) for exporting D-defined GObject types to GIR.
+ * Params:
+ *   name = GIR type name without the namespace (the name of the GIR element)
+ *   typeStruct = GIR name of the class or interface structure (glib:type-struct), or empty
+ * Returns: The attribute code line
+ */
+dstring girNameAttr(dstring name, dstring typeStruct = null)
+{
+  return "@gidGir(\"" ~ name ~ "\"" ~ (typeStruct.empty ? ""d : ", \"" ~ typeStruct ~ "\"") ~ ")";
+}
+
+unittest
+{
+  assert(girNameAttr("Widget", "WidgetClass") == `@gidGir("Widget", "WidgetClass")`);
+  assert(girNameAttr("Orientation") == `@gidGir("Orientation")`);
+  assert(girNameAttr("blob_t", "") == `@gidGir("blob_t")`);
+}
+
+/**
  * Tokenize a type string into words and '*' pointers
  * Params:
  *   type = The type string
