@@ -1038,13 +1038,40 @@ final class Repo : Base
 
   private void writeSharedLibs(CodeWriter writer)
   {
-    // Split libraries into individual ones (comma separated), strip the lib prefix, change .so. to _
-    auto libsArray = sharedLibrary.splitter(',').map!(s => s.stripLeft("lib").replace(".so.", "_"));
+    auto libsArray = sharedLibrary.splitter(',').map!(s => sharedLibBaseName(s));
 
     writer ~= [
       "private immutable LIBS = [\"" ~ libsArray.join("\", \"") ~ "\"];",
       ""
     ];
+  }
+
+  /**
+   * Get the giD loader name of a shared library of a GIR: without the "lib" prefix, with "_" in place of ".so." for
+   * a versioned library and without ".so" for an unversioned one (libgtk-4.so.1 gives gtk-4_1, libmylib.so gives
+   * mylib, see gid.core.loader).
+   * Params:
+   *   lib = The shared library file name
+   * Returns: The loader library name
+   */
+  static dstring sharedLibBaseName(dstring lib)
+  {
+    if (lib.startsWith("lib"))
+      lib = lib[3 .. $];
+
+    if (lib.canFind(".so."))
+      return lib.replace(".so.", "_");
+
+    return lib.endsWith(".so") ? lib[0 .. $ - 3] : lib;
+  }
+
+  unittest
+  {
+    assert(sharedLibBaseName("libgtk-4.so.1") == "gtk-4_1");
+    assert(sharedLibBaseName("libX11.so.6") == "X11_6");
+    assert(sharedLibBaseName("libbluetooth.so.3") == "bluetooth_3"); // Only the "lib" prefix is removed
+    assert(sharedLibBaseName("libgidgen-export.so") == "gidgen-export");
+    assert(sharedLibBaseName("") == "");
   }
 
   /**

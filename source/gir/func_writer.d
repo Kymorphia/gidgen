@@ -918,9 +918,12 @@ class FuncWriter
     else if (param.fixedSize != ArrayNotFixed) // Array is a fixed size?
       lengthStr = param.fixedSize.to!dstring;
     else if (param.zeroTerminated) // Array is zero terminated?
-    {
+    { // g-ir-scanner gives the elements of output arrays an extra pointer (gchar** for a gchar*** array), other GIR
+      // writers don't (DiG writes char*), so pointer elements are also detected by their type kind
+      auto ptrElem = elemType.kind.among(TypeKind.String, TypeKind.Object, TypeKind.Interface)
+        || elemType.cTypeRemPtr.endsWith("*");
       postCall ~= ["uint _len" ~ param.dName ~ ";", "if (_" ~ param.dName ~ ")", "{", "for (; _" ~ param.dName
-        ~ "[_len" ~ param.dName ~ "] " ~ (elemType.cTypeRemPtr.endsWith("*") ? "!is null"d : "!= 0") ~ "; _len"
+        ~ "[_len" ~ param.dName ~ "] " ~ (ptrElem ? "!is null"d : "!= 0") ~ "; _len"
         ~ param.dName ~ "++)", "{", "}", "}", ""];
       lengthStr = "_len" ~ param.dName;
     }

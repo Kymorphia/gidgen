@@ -82,8 +82,8 @@ class DelegWriter
     auto isIface = klass.kind == TypeKind.Interface;
     auto classOf = "gid.gobject2.object.ObjectWrap._vfuncClassOf(cast(void*)" ~ inst.dName ~ ")";
 
-    lookup ~= "auto _obj = cast(" ~ (isIface ? "typeof(this)"d : klass.fullDType)
-      ~ ")gid.gobject2.object.ObjectWrap._vfuncDObject(cast(void*)" ~ inst.dName ~ ");";
+    lookup ~= "auto _obj = gid.gobject2.object.ObjectWrap._vfuncDObject!(" ~ (isIface ? "typeof(this)"d
+      : klass.fullDType) ~ ")(cast(void*)" ~ inst.dName ~ ");";
     lookup ~= ["if (!_obj)", "{", "auto _klass = cast(" ~ callback.vfuncClassStruct.cType ~ "*)" ~ (isIface
       ? "g_type_interface_peek(cast(GTypeClass*)" ~ classOf ~ ", " ~ klass.fullDType ~ "._getGType);" : classOf ~ ";"),
       "if (" ~ (isIface ? "_klass && "d : ""d) ~ field ~ ")",

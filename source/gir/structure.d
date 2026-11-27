@@ -750,7 +750,12 @@ final class Structure : TypeNode
       importManager.add("gid.gobject2.gid_builder");
 
     if (!(defCode.inhibitFlags & DefInhibitFlags.Imports) && kind == TypeKind.Interface)
+    {
+      if (isIfaceTemplate) // The mixin refers to its interface (fully qualified), which a selective import of it hides
+        writer ~= "public import " ~ fullModuleName ~ ";";
+
       writer ~= "public import " ~ fullModuleName ~ "_iface_proxy;";
+    }
 
     auto importLine = writer.length; // Save position where imports should go, which are inserted later, to gather all dependencies
 
