@@ -14,7 +14,7 @@ import gid.gidgenfeat1.object : FeatObject = ObjectWrap;
 import gid.glib2.c.functions : g_main_context_iteration, g_quark_from_string;
 import gid.glib2.error : ErrorWrap;
 import gid.gobject2.initially_unowned : InitiallyUnowned;
-import gid.gobject2.object : GObjectExport, GInterfaceExport, ObjectWrap, gProperty, gNotifyAlways, gSignal, gVirtual;
+import gid.gobject2.object : GObjectExport, GInterfaceExport, ObjectWrap, gConstructor, gMethod, gNullable, gThrows, gProperty, gNotifyAlways, gSignal, gVirtual;
 import gid.gobject2.types : ParamFlags, SignalFlags;
 
 private shared int liveDObjects; // D objects of the exported types which were not finalized
@@ -135,6 +135,56 @@ class ExportVirt : ObjectWrap, ExportShape
   @gVirtual protected void vfuncJoin(string a, string b)
   {
     title = a ~ b;
+  }
+
+  this()
+  {
+    super();
+  }
+
+  /// gidgen_export_virt_new_with_title()
+  @gConstructor("with_title") this(string t)
+  {
+    super();
+    title = t;
+  }
+
+  /// Returns a new string, prefix can be NULL
+  @gMethod string describe(@gNullable string prefix)
+  {
+    return (prefix is null ? "" : prefix ~ " ") ~ title;
+  }
+
+  /// GError with the domain of an ErrorWrap, or the D exception domain for other exceptions
+  @gMethod @gThrows int divide(int a, int b)
+  {
+    if (b == 0)
+      throw new ErrorWrap(g_quark_from_string("gidgen-export"), 3, "division by zero");
+
+    if (b < 0)
+      throw new Exception("negative divisor");
+
+    return a / b;
+  }
+
+  /// Out parameters: transfer full for the string, array and object
+  @gMethod void stats(string s, out int length, out string upper, out string[] chars, out ExportVirt same)
+  {
+    import std.uni : toUpper;
+
+    length = cast(int)s.length;
+    upper = s.toUpper;
+
+    foreach (c; s)
+      chars ~= [c];
+
+    same = this;
+  }
+
+  /// Static method: plain C function
+  @gMethod("abi_version") static int abiVersion()
+  {
+    return 3;
   }
 }
 

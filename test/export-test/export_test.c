@@ -31,6 +31,11 @@ static int (*virt_scale) (void *self, int x); /* Invokers of @gVirtual methods *
 static void (*virt_join) (void *self, const char *a, const char *b);
 static int (*shape_sides) (void *self);
 static void (*shape_label) (void *self, const char *text);
+static GObject *(*virt_new_with_title) (const char *title); /* @gConstructor, @gMethod */
+static char *(*virt_describe) (void *self, const char *prefix);
+static int (*virt_divide) (void *self, int a, int b, GError **error);
+static void (*virt_stats) (void *self, const char *s, int *length, char **upper, char ***chars, GObject **same);
+static int (*virt_abi_version) (void);
 
 /* Interface struct of the D-defined interface GidgenExportShape */
 typedef struct
@@ -157,9 +162,16 @@ load_library (void)
   virt_join = (void (*) (void *, const char *, const char *)) dlsym (lib, "gidgen_export_virt_join");
   shape_sides = (int (*) (void *)) dlsym (lib, "gidgen_export_shape_sides");
   shape_label = (void (*) (void *, const char *)) dlsym (lib, "gidgen_export_shape_label");
+  virt_new_with_title = (GObject *(*) (const char *)) dlsym (lib, "gidgen_export_virt_new_with_title");
+  virt_describe = (char *(*) (void *, const char *)) dlsym (lib, "gidgen_export_virt_describe");
+  virt_divide = (int (*) (void *, int, int, GError **)) dlsym (lib, "gidgen_export_virt_divide");
+  virt_stats = (void (*) (void *, const char *, int *, char **, char ***, GObject **)) dlsym (lib,
+                                                                                             "gidgen_export_virt_stats");
+  virt_abi_version = (int (*) (void)) dlsym (lib, "gidgen_export_virt_abi_version");
   CHECK (obj_get_type && child_get_type && floating_get_type && collect && live_dobjects && emit_bumped
          && virt_get_type && virt_child_get_type && shape_get_type && obj_new && floating_new && virt_new
-         && virt_scale && virt_join && shape_sides && shape_label);
+         && virt_scale && virt_join && shape_sides && shape_label && virt_new_with_title && virt_describe && virt_divide
+         && virt_stats && virt_abi_version);
   /* Invokers are exported by the type which declares the @gVirtual method only */
   CHECK (dlsym (lib, "gidgen_export_virt_child_scale") == NULL);
   CHECK (dlsym (lib, "gidgen_export_scale") == NULL); /* Former hand written helper */
@@ -182,6 +194,11 @@ int gidgen_export_virt_scale (void *self, int x);
 void gidgen_export_virt_join (void *self, const char *a, const char *b);
 int gidgen_export_shape_sides (void *self);
 void gidgen_export_shape_label (void *self, const char *text);
+GObject *gidgen_export_virt_new_with_title (const char *title);
+char *gidgen_export_virt_describe (void *self, const char *prefix);
+int gidgen_export_virt_divide (void *self, int a, int b, GError **error);
+void gidgen_export_virt_stats (void *self, const char *s, int *length, char **upper, char ***chars, GObject **same);
+int gidgen_export_virt_abi_version (void);
 
 static void
 load_library (void)
@@ -202,6 +219,11 @@ load_library (void)
   virt_join = gidgen_export_virt_join;
   shape_sides = gidgen_export_shape_sides;
   shape_label = gidgen_export_shape_label;
+  virt_new_with_title = gidgen_export_virt_new_with_title;
+  virt_describe = gidgen_export_virt_describe;
+  virt_divide = gidgen_export_virt_divide;
+  virt_stats = gidgen_export_virt_stats;
+  virt_abi_version = gidgen_export_virt_abi_version;
 }
 #endif
 
@@ -493,6 +515,50 @@ main (void)
     vobj = g_object_new (c_child_type, NULL);
     CHECK (virt_scale (vobj, 5) == 111); /* C chains up to the D override, which chains up to the D default */
     g_object_unref (vobj);
+  }
+
+  /* Exported methods (@gMethod), constructors (@gConstructor) and functions: strings, NULL, GError, out values */
+  {
+    GObject *vobj, *same = NULL;
+    GError *error = NULL;
+    char *str, *upper = NULL, **chars = NULL;
+    int length = 0, vweak = 0;
+
+    vobj = virt_new_with_title ("T");
+    CHECK (G_OBJECT_TYPE (vobj) == virt_get_type () && vobj->ref_count == 2);
+    str = virt_describe (vobj, "Mr");
+    CHECK (strcmp (str, "Mr T") == 0);
+    g_free (str); /* Transfer full */
+    str = virt_describe (vobj, NULL); /* @gNullable */
+    CHECK (strcmp (str, "T") == 0);
+    g_free (str);
+
+    CHECK (virt_divide (vobj, 7, 2, &error) == 3 && error == NULL);
+    CHECK (virt_divide (vobj, 7, 0, &error) == 0);
+    CHECK (error && error->domain == g_quark_from_string ("gidgen-export") && error->code == 3
+           && strcmp (error->message, "division by zero") == 0);
+    g_clear_error (&error);
+    CHECK (virt_divide (vobj, 7, -1, &error) == 0);
+    CHECK (error && error->domain == g_quark_from_string ("gid-d-exception-quark") && error->code == 0
+           && strcmp (error->message, "negative divisor") == 0);
+    g_clear_error (&error);
+    CHECK (virt_divide (vobj, 7, 0, NULL) == 0); /* Error ignored */
+
+    virt_stats (vobj, "abc", &length, &upper, &chars, &same);
+    CHECK (length == 3 && strcmp (upper, "ABC") == 0 && g_strv_length (chars) == 3 && strcmp (chars[2], "c") == 0);
+    CHECK (same == vobj && vobj->ref_count == 3);
+    g_free (upper);
+    g_strfreev (chars);
+    g_object_unref (same);
+    virt_stats (vobj, "", NULL, NULL, NULL, NULL); /* Out values are optional */
+
+    CHECK (virt_abi_version () == 3);
+
+    g_object_weak_ref (vobj, weak_notify, &vweak);
+    g_object_unref (vobj);
+    for (i = 0; i < 5 && vweak == 0; i++)
+      collect ();
+    CHECK (vweak == 1);
   }
 
   /* Interface defined in D: implemented by a D class and by a C type, called from C and from D */
