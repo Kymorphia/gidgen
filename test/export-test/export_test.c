@@ -22,8 +22,15 @@ static GetTypeFunc obj_get_type, child_get_type, floating_get_type, virt_get_typ
 static void (*collect) (void);
 static int (*live_dobjects) (void);
 static void (*emit_bumped) (void *obj, int amount);
-static int (*export_scale) (void *obj, int x);
-static int (*export_shape_sides) (void *obj);
+/* Exported C entry points of the D types (GObjectExport and GObjectInterfaceExport) */
+static GetTypeFunc shape_get_type;
+static GObject *(*obj_new) (void);
+static GObject *(*floating_new) (void);
+static GObject *(*virt_new) (void);
+static int (*virt_scale) (void *self, int x); /* Invokers of @gVirtual methods */
+static void (*virt_join) (void *self, const char *a, const char *b);
+static int (*shape_sides) (void *self);
+static void (*shape_label) (void *self, const char *text);
 
 /* Interface struct of the D-defined interface GidgenExportShape */
 typedef struct
@@ -142,10 +149,20 @@ load_library (void)
   collect = (void (*) (void)) dlsym (lib, "gidgen_export_collect");
   live_dobjects = (int (*) (void)) dlsym (lib, "gidgen_export_live_dobjects");
   emit_bumped = (void (*) (void *, int)) dlsym (lib, "gidgen_export_emit_bumped");
-  export_scale = (int (*) (void *, int)) dlsym (lib, "gidgen_export_scale");
-  export_shape_sides = (int (*) (void *)) dlsym (lib, "gidgen_export_shape_sides");
+  shape_get_type = (GetTypeFunc) dlsym (lib, "gidgen_export_shape_get_type");
+  obj_new = (GObject *(*) (void)) dlsym (lib, "gidgen_export_obj_new");
+  floating_new = (GObject *(*) (void)) dlsym (lib, "gidgen_export_floating_new");
+  virt_new = (GObject *(*) (void)) dlsym (lib, "gidgen_export_virt_new");
+  virt_scale = (int (*) (void *, int)) dlsym (lib, "gidgen_export_virt_scale");
+  virt_join = (void (*) (void *, const char *, const char *)) dlsym (lib, "gidgen_export_virt_join");
+  shape_sides = (int (*) (void *)) dlsym (lib, "gidgen_export_shape_sides");
+  shape_label = (void (*) (void *, const char *)) dlsym (lib, "gidgen_export_shape_label");
   CHECK (obj_get_type && child_get_type && floating_get_type && collect && live_dobjects && emit_bumped
-         && export_scale && export_shape_sides && virt_get_type && virt_child_get_type);
+         && virt_get_type && virt_child_get_type && shape_get_type && obj_new && floating_new && virt_new
+         && virt_scale && virt_join && shape_sides && shape_label);
+  /* Invokers are exported by the type which declares the @gVirtual method only */
+  CHECK (dlsym (lib, "gidgen_export_virt_child_scale") == NULL);
+  CHECK (dlsym (lib, "gidgen_export_scale") == NULL); /* Former hand written helper */
   /* The library is not closed: GTypes are registered statically */
 }
 #else
@@ -157,8 +174,14 @@ GType gidgen_export_virt_child_get_type (void);
 void gidgen_export_collect (void);
 int gidgen_export_live_dobjects (void);
 void gidgen_export_emit_bumped (void *obj, int amount);
-int gidgen_export_scale (void *obj, int x);
-int gidgen_export_shape_sides (void *obj);
+GType gidgen_export_shape_get_type (void);
+GObject *gidgen_export_obj_new (void);
+GObject *gidgen_export_floating_new (void);
+GObject *gidgen_export_virt_new (void);
+int gidgen_export_virt_scale (void *self, int x);
+void gidgen_export_virt_join (void *self, const char *a, const char *b);
+int gidgen_export_shape_sides (void *self);
+void gidgen_export_shape_label (void *self, const char *text);
 
 static void
 load_library (void)
@@ -171,8 +194,14 @@ load_library (void)
   collect = gidgen_export_collect;
   live_dobjects = gidgen_export_live_dobjects;
   emit_bumped = gidgen_export_emit_bumped;
-  export_scale = gidgen_export_scale;
-  export_shape_sides = gidgen_export_shape_sides;
+  shape_get_type = gidgen_export_shape_get_type;
+  obj_new = gidgen_export_obj_new;
+  floating_new = gidgen_export_floating_new;
+  virt_new = gidgen_export_virt_new;
+  virt_scale = gidgen_export_virt_scale;
+  virt_join = gidgen_export_virt_join;
+  shape_sides = gidgen_export_shape_sides;
+  shape_label = gidgen_export_shape_label;
 }
 #endif
 
@@ -387,6 +416,34 @@ main (void)
   CHECK (weak_count == 3);
   CHECK (live_dobjects () == start);
 
+  /* Exported constructors (<prefix>_<type>_new): new instances with their D objects, transfer full (floating for a
+   * GInitiallyUnowned subclass) */
+  {
+    GObject *nobj;
+    int construct_val = 0, new_weak = 0;
+
+    nobj = obj_new ();
+    CHECK (G_OBJECT_TYPE (nobj) == obj_type && nobj->ref_count == 2 && !g_object_is_floating (nobj));
+    CHECK (live_dobjects () == start + 1);
+    g_object_get (nobj, "construct-val", &construct_val, NULL);
+    CHECK (construct_val == 10); /* Construct property default */
+    g_object_weak_ref (nobj, weak_notify, &new_weak);
+    g_object_unref (nobj);
+    for (i = 0; i < 5 && new_weak == 0; i++)
+      collect ();
+    CHECK (new_weak == 1);
+
+    nobj = floating_new ();
+    CHECK (G_OBJECT_TYPE (nobj) == floating_type && g_object_is_floating (nobj));
+    g_object_ref_sink (nobj);
+    g_object_weak_ref (nobj, weak_notify, &new_weak);
+    g_object_unref (nobj);
+    for (i = 0; i < 5 && new_weak == 1; i++)
+      collect ();
+    CHECK (new_weak == 2);
+    CHECK (live_dobjects () == start);
+  }
+
   /* New virtual methods: slots follow the parent class struct, D defaults and overrides, C overrides */
   {
     GTypeQuery query;
@@ -405,12 +462,22 @@ main (void)
     g_object_get (vobj, "title", &title, NULL);
     CHECK (strcmp (title, "ab") == 0);
     g_free (title);
-    CHECK (export_scale (vobj, 5) == 10);
+    CHECK (virt_scale (vobj, 5) == 10);
+    virt_join (vobj, "c", "d"); /* String arguments through the invoker */
+    g_object_get (vobj, "title", &title, NULL);
+    CHECK (strcmp (title, "cd") == 0);
+    g_free (title);
+    g_object_unref (vobj);
+
+    vobj = virt_new (); /* Exported constructor */
+    CHECK (G_TYPE_CHECK_INSTANCE_TYPE (vobj, virt_get_type ()) && G_OBJECT_TYPE (vobj) == virt_get_type ());
+    CHECK (vobj->ref_count == 2 && !g_object_is_floating (vobj)); /* C reference and the D object toggle reference */
+    CHECK (virt_scale (vobj, 7) == 14);
     g_object_unref (vobj);
 
     vobj = g_object_new (virt_child_get_type (), NULL);
     CHECK (((ExportObjClass *) G_OBJECT_GET_CLASS (vobj))->scale (vobj, 5) == 11); /* D override chains up */
-    CHECK (export_scale (vobj, 5) == 11);
+    CHECK (virt_scale (vobj, 5) == 11);
     g_object_unref (vobj);
 
     c_obj_type = g_type_register_static_simple (virt_get_type (), "CExportObj", sizeof (ExportObjClass), c_class_init,
@@ -420,11 +487,11 @@ main (void)
 
     vobj = g_object_new (c_obj_type, NULL);
     CHECK (((ExportObjClass *) G_OBJECT_GET_CLASS (vobj))->scale (vobj, 5) == 110); /* C override chains up to D */
-    CHECK (export_scale (vobj, 5) == 110); /* D invoker uses the C override */
+    CHECK (virt_scale (vobj, 5) == 110); /* D invoker uses the C override */
     g_object_unref (vobj);
 
     vobj = g_object_new (c_child_type, NULL);
-    CHECK (export_scale (vobj, 5) == 111); /* C chains up to the D override, which chains up to the D default */
+    CHECK (virt_scale (vobj, 5) == 111); /* C chains up to the D override, which chains up to the D default */
     g_object_unref (vobj);
   }
 
@@ -437,9 +504,9 @@ main (void)
     char *title = NULL;
     GInterfaceInfo info = { c_shape_init, NULL, NULL };
 
-    virt_get_type ();
-    shape_type = g_type_from_name ("GidgenExportShape"); /* Registered with the implementing class */
+    shape_type = shape_get_type (); /* Exported get_type of the D interface */
     CHECK (shape_type && G_TYPE_IS_INTERFACE (shape_type));
+    CHECK (g_type_from_name ("GidgenExportShape") == shape_type && shape_get_type () == shape_type);
     CHECK (g_type_is_a (virt_get_type (), shape_type) && g_type_is_a (virt_child_get_type (), shape_type));
 
     sobj = g_object_new (virt_child_get_type (), NULL);
@@ -449,7 +516,11 @@ main (void)
     g_object_get (sobj, "title", &title, NULL);
     CHECK (strcmp (title, "label x") == 0);
     g_free (title);
-    CHECK (export_shape_sides (sobj) == 4);
+    CHECK (shape_sides (sobj) == 4); /* Invoker through the interface struct */
+    shape_label (sobj, "y");
+    g_object_get (sobj, "title", &title, NULL);
+    CHECK (strcmp (title, "label y") == 0);
+    g_free (title);
     g_object_unref (sobj);
 
     g_type_query (G_TYPE_OBJECT, &query);
@@ -457,7 +528,7 @@ main (void)
                                                   query.instance_size, NULL, 0);
     g_type_add_interface_static (c_shape_type, shape_type, &info);
     sobj = g_object_new (c_shape_type, NULL);
-    CHECK (export_shape_sides (sobj) == 3); /* D calls the C implementation */
+    CHECK (shape_sides (sobj) == 3); /* The invoker calls the C implementation */
     g_object_unref (sobj);
   }
 

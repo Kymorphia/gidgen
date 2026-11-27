@@ -14,8 +14,7 @@ import gid.gidgenfeat1.object : FeatObject = ObjectWrap;
 import gid.glib2.c.functions : g_main_context_iteration, g_quark_from_string;
 import gid.glib2.error : ErrorWrap;
 import gid.gobject2.initially_unowned : InitiallyUnowned;
-import gid.gobject2.object : GObjectExport, GObjectInterface, ObjectWrap, gProperty, gNotifyAlways, gSignal, gVirtual;
-import std.typecons : No;
+import gid.gobject2.object : GObjectExport, GObjectInterfaceExport, ObjectWrap, gProperty, gNotifyAlways, gSignal, gVirtual;
 import gid.gobject2.types : ParamFlags, SignalFlags;
 
 private shared int liveDObjects; // D objects of the exported types which were not finalized
@@ -99,10 +98,11 @@ class ExportChild : ExportObj
   @gSignal void childEvent(int x) {}
 }
 
-/// GidgenExportShape, a GObject interface defined in D
+/// GidgenExportShape, a GObject interface defined in D, exported as gidgen_export_shape_get_type() with the invokers
+/// gidgen_export_shape_sides() and gidgen_export_shape_label()
 interface ExportShape
 {
-  mixin GObjectInterface!"GidgenExportShape";
+  mixin GObjectInterfaceExport!("GidgenExport", "Shape");
 
   @gVirtual int vfuncSides();
   @gVirtual void vfuncLabel(string text);
@@ -197,36 +197,4 @@ export extern(C) void gidgen_export_emit_bumped(void* obj, int amount) nothrow
   }
   catch (Exception e)
     assert(0, e.msg);
-}
-
-/// Call the scale virtual method from D (through the class struct, so that overrides by C types are used)
-export extern(C) int gidgen_export_scale(void* obj, int x) nothrow
-{
-  gidAttachThread();
-
-  try
-  {
-    if (auto o = cast(ExportVirt)ObjectWrap._vfuncDObject(obj))
-      return o.scale(x);
-  }
-  catch (Exception e)
-    assert(0, e.msg);
-
-  return -1;
-}
-
-/// Call the sides method of the ExportShape interface from D (through the interface struct)
-export extern(C) int gidgen_export_shape_sides(void* obj) nothrow
-{
-  gidAttachThread();
-
-  try
-  {
-    if (auto shape = ObjectWrap._getDObject!ExportShape(obj, No.Take))
-      return shape.sides();
-  }
-  catch (Exception e)
-    assert(0, e.msg);
-
-  return -1;
 }
