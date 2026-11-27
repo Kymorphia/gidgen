@@ -12,44 +12,49 @@
 #include <unistd.h>
 
 #include "gidgen-feat.h"
+#include "gidgen_export.h" /* C header generated with the GIR (gidgen-export-gir) */
+#include "gidgen_mixer.h" /* Header of another D library using the GidgenExport types (includes gidgen_export.h) */
 
 #define CHECK(cond) do { if (!(cond)) { fprintf (stderr, "%s:%d: check failed: %s\n", __FILE__, __LINE__, #cond); \
   exit (1); } } while (0)
 
-typedef GType (*GetTypeFunc) (void);
+/* Casts to the C types of the generated header (its checked cast macros call the get_type functions directly, which
+ * the dlopen build doesn't link) */
+#define VIRT(obj) ((GidgenExportVirt *) (obj))
+#define SHAPE(obj) ((GidgenExportShape *) (obj))
+#define AUTO(obj) ((GidgenExportAuto *) (obj))
 
-static GetTypeFunc obj_get_type, child_get_type, floating_get_type, virt_get_type, virt_child_get_type;
+/* Hand written helpers of the test library (not in the GIR) */
 static void (*collect) (void);
 static int (*live_dobjects) (void);
 static void (*emit_bumped) (void *obj, int amount);
-/* Exported C entry points of the D types (GObjectExport and GInterfaceExport) */
-static GetTypeFunc shape_get_type;
-static GObject *(*obj_new) (void);
-static GObject *(*floating_new) (void);
-static GObject *(*virt_new) (void);
-static int (*virt_scale) (void *self, int x); /* Invokers of @gVirtual methods */
-static void (*virt_join) (void *self, const char *a, const char *b);
-static int (*shape_sides) (void *self);
-static void (*shape_label) (void *self, const char *text);
-static GObject *(*virt_new_with_title) (const char *title); /* @gConstructor, @gMethod */
-static char *(*virt_describe) (void *self, const char *prefix);
-static int (*virt_divide) (void *self, int a, int b, GError **error);
-static void (*virt_stats) (void *self, const char *s, int *length, char **upper, char ***chars, GObject **same);
-static int (*virt_abi_version) (void);
-static GetTypeFunc auto_get_type; /* GObjectExportAll, no attributes */
-static int (*auto_add) (void *self, int x);
-static int (*auto_twice) (int x);
+/* Exported C entry points of the D types (GObjectExport and GInterfaceExport), typed by the generated header */
+#define EXPORT_FN(name, sym) static __typeof__ (sym) *name
+EXPORT_FN (obj_get_type, gidgen_export_obj_get_type);
+EXPORT_FN (child_get_type, gidgen_export_child_get_type);
+EXPORT_FN (floating_get_type, gidgen_export_floating_type);
+EXPORT_FN (virt_get_type, gidgen_export_virt_get_type);
+EXPORT_FN (virt_child_get_type, gidgen_export_virt_child_get_type);
+EXPORT_FN (shape_get_type, gidgen_export_shape_get_type);
+EXPORT_FN (obj_new, gidgen_export_obj_new);
+EXPORT_FN (floating_new, gidgen_export_floating_new);
+EXPORT_FN (virt_new, gidgen_export_virt_new);
+EXPORT_FN (virt_scale, gidgen_export_virt_scale); /* Invokers of @gVirtual methods */
+EXPORT_FN (virt_join, gidgen_export_virt_join);
+EXPORT_FN (shape_sides, gidgen_export_shape_sides);
+EXPORT_FN (shape_label, gidgen_export_shape_label);
+EXPORT_FN (virt_new_with_title, gidgen_export_virt_new_with_title); /* @gConstructor, @gMethod */
+EXPORT_FN (virt_describe, gidgen_export_virt_describe);
+EXPORT_FN (virt_divide, gidgen_export_virt_divide);
+EXPORT_FN (virt_stats, gidgen_export_virt_stats);
+EXPORT_FN (virt_abi_version, gidgen_export_virt_abi_version);
+EXPORT_FN (auto_get_type, gidgen_export_auto_get_type); /* GObjectExportAll, no attributes */
+EXPORT_FN (auto_add, gidgen_export_auto_add);
+EXPORT_FN (auto_twice, gidgen_export_auto_twice);
 
-/* Interface struct of the D-defined interface GidgenExportShape */
-typedef struct
-{
-  GTypeInterface g_iface;
-  int (*sides) (GObject *self);
-  void (*label) (GObject *self, const char *text);
-} ExportShapeInterface;
-
-static int
-c_sides (GObject *self)
+/* C implementation of the D-defined interface GidgenExportShape (interface struct of the generated header) */
+static gint
+c_sides (GidgenExportShape *self)
 {
   return 3;
 }
@@ -57,22 +62,15 @@ c_sides (GObject *self)
 static void
 c_shape_init (gpointer iface, gpointer data)
 {
-  ((ExportShapeInterface *) iface)->sides = c_sides;
+  ((GidgenExportShapeInterface *) iface)->sides = c_sides;
 }
 
-/* Class struct of ExportObj: the new virtual methods (@gVirtual) follow the class struct of the parent type */
-typedef struct
+/* C subclass of GidgenExportVirt overriding scale, chaining up to the parent implementation. The class struct of the
+ * generated header has the new virtual methods (@gVirtual) after the class struct of the parent type. */
+static gint
+c_scale (GidgenExportVirt *self, gint x)
 {
-  GObjectClass parent_class;
-  int (*scale) (GObject *self, int x);
-  void (*join) (GObject *self, const char *a, const char *b);
-} ExportObjClass;
-
-/* C subclass overriding scale, chaining up to the parent implementation */
-static int
-c_scale (GObject *self, int x)
-{
-  ExportObjClass *parent = g_type_class_peek_parent (G_OBJECT_GET_CLASS (self));
+  GidgenExportVirtClass *parent = g_type_class_peek_parent (GIDGEN_EXPORT_VIRT_GET_CLASS (self));
 
   return parent->scale (self, x) + 100;
 }
@@ -108,7 +106,7 @@ c_obj_class_init (gpointer klass, gpointer data)
 static void
 c_class_init (gpointer klass, gpointer data)
 {
-  ((ExportObjClass *) klass)->scale = c_scale;
+  ((GidgenExportVirtClass *) klass)->scale = c_scale;
 }
 
 static void
@@ -149,31 +147,30 @@ load_library (void)
   CHECK (lib != NULL);
   CHECK (g_type_from_name ("GidgenExportObj") == 0); /* GTypes are registered lazily by get_type */
 
-  obj_get_type = (GetTypeFunc) dlsym (lib, "gidgen_export_obj_get_type");
-  child_get_type = (GetTypeFunc) dlsym (lib, "gidgen_export_child_get_type");
-  floating_get_type = (GetTypeFunc) dlsym (lib, "gidgen_export_floating_type");
-  virt_get_type = (GetTypeFunc) dlsym (lib, "gidgen_export_virt_get_type");
-  virt_child_get_type = (GetTypeFunc) dlsym (lib, "gidgen_export_virt_child_get_type");
+  obj_get_type = (__typeof__ (obj_get_type)) dlsym (lib, "gidgen_export_obj_get_type");
+  child_get_type = (__typeof__ (child_get_type)) dlsym (lib, "gidgen_export_child_get_type");
+  floating_get_type = (__typeof__ (floating_get_type)) dlsym (lib, "gidgen_export_floating_type");
+  virt_get_type = (__typeof__ (virt_get_type)) dlsym (lib, "gidgen_export_virt_get_type");
+  virt_child_get_type = (__typeof__ (virt_child_get_type)) dlsym (lib, "gidgen_export_virt_child_get_type");
   collect = (void (*) (void)) dlsym (lib, "gidgen_export_collect");
   live_dobjects = (int (*) (void)) dlsym (lib, "gidgen_export_live_dobjects");
   emit_bumped = (void (*) (void *, int)) dlsym (lib, "gidgen_export_emit_bumped");
-  shape_get_type = (GetTypeFunc) dlsym (lib, "gidgen_export_shape_get_type");
-  obj_new = (GObject *(*) (void)) dlsym (lib, "gidgen_export_obj_new");
-  floating_new = (GObject *(*) (void)) dlsym (lib, "gidgen_export_floating_new");
-  virt_new = (GObject *(*) (void)) dlsym (lib, "gidgen_export_virt_new");
-  virt_scale = (int (*) (void *, int)) dlsym (lib, "gidgen_export_virt_scale");
-  virt_join = (void (*) (void *, const char *, const char *)) dlsym (lib, "gidgen_export_virt_join");
-  shape_sides = (int (*) (void *)) dlsym (lib, "gidgen_export_shape_sides");
-  shape_label = (void (*) (void *, const char *)) dlsym (lib, "gidgen_export_shape_label");
-  virt_new_with_title = (GObject *(*) (const char *)) dlsym (lib, "gidgen_export_virt_new_with_title");
-  virt_describe = (char *(*) (void *, const char *)) dlsym (lib, "gidgen_export_virt_describe");
-  virt_divide = (int (*) (void *, int, int, GError **)) dlsym (lib, "gidgen_export_virt_divide");
-  virt_stats = (void (*) (void *, const char *, int *, char **, char ***, GObject **)) dlsym (lib,
-                                                                                             "gidgen_export_virt_stats");
-  virt_abi_version = (int (*) (void)) dlsym (lib, "gidgen_export_virt_abi_version");
-  auto_get_type = (GetTypeFunc) dlsym (lib, "gidgen_export_auto_get_type");
-  auto_add = (int (*) (void *, int)) dlsym (lib, "gidgen_export_auto_add");
-  auto_twice = (int (*) (int)) dlsym (lib, "gidgen_export_auto_twice");
+  shape_get_type = (__typeof__ (shape_get_type)) dlsym (lib, "gidgen_export_shape_get_type");
+  obj_new = (__typeof__ (obj_new)) dlsym (lib, "gidgen_export_obj_new");
+  floating_new = (__typeof__ (floating_new)) dlsym (lib, "gidgen_export_floating_new");
+  virt_new = (__typeof__ (virt_new)) dlsym (lib, "gidgen_export_virt_new");
+  virt_scale = (__typeof__ (virt_scale)) dlsym (lib, "gidgen_export_virt_scale");
+  virt_join = (__typeof__ (virt_join)) dlsym (lib, "gidgen_export_virt_join");
+  shape_sides = (__typeof__ (shape_sides)) dlsym (lib, "gidgen_export_shape_sides");
+  shape_label = (__typeof__ (shape_label)) dlsym (lib, "gidgen_export_shape_label");
+  virt_new_with_title = (__typeof__ (virt_new_with_title)) dlsym (lib, "gidgen_export_virt_new_with_title");
+  virt_describe = (__typeof__ (virt_describe)) dlsym (lib, "gidgen_export_virt_describe");
+  virt_divide = (__typeof__ (virt_divide)) dlsym (lib, "gidgen_export_virt_divide");
+  virt_stats = (__typeof__ (virt_stats)) dlsym (lib, "gidgen_export_virt_stats");
+  virt_abi_version = (__typeof__ (virt_abi_version)) dlsym (lib, "gidgen_export_virt_abi_version");
+  auto_get_type = (__typeof__ (auto_get_type)) dlsym (lib, "gidgen_export_auto_get_type");
+  auto_add = (__typeof__ (auto_add)) dlsym (lib, "gidgen_export_auto_add");
+  auto_twice = (__typeof__ (auto_twice)) dlsym (lib, "gidgen_export_auto_twice");
   CHECK (obj_get_type && child_get_type && floating_get_type && collect && live_dobjects && emit_bumped
          && virt_get_type && virt_child_get_type && shape_get_type && obj_new && floating_new && virt_new
          && virt_scale && virt_join && shape_sides && shape_label && virt_new_with_title && virt_describe && virt_divide
@@ -185,30 +182,9 @@ load_library (void)
   /* The library is not closed: GTypes are registered statically */
 }
 #else
-GType gidgen_export_obj_get_type (void);
-GType gidgen_export_child_get_type (void);
-GType gidgen_export_floating_type (void);
-GType gidgen_export_virt_get_type (void);
-GType gidgen_export_virt_child_get_type (void);
-void gidgen_export_collect (void);
+void gidgen_export_collect (void); /* Hand written helpers, the exported types are declared by gidgen_export.h */
 int gidgen_export_live_dobjects (void);
 void gidgen_export_emit_bumped (void *obj, int amount);
-GType gidgen_export_shape_get_type (void);
-GObject *gidgen_export_obj_new (void);
-GObject *gidgen_export_floating_new (void);
-GObject *gidgen_export_virt_new (void);
-int gidgen_export_virt_scale (void *self, int x);
-void gidgen_export_virt_join (void *self, const char *a, const char *b);
-int gidgen_export_shape_sides (void *self);
-void gidgen_export_shape_label (void *self, const char *text);
-GObject *gidgen_export_virt_new_with_title (const char *title);
-char *gidgen_export_virt_describe (void *self, const char *prefix);
-int gidgen_export_virt_divide (void *self, int a, int b, GError **error);
-void gidgen_export_virt_stats (void *self, const char *s, int *length, char **upper, char ***chars, GObject **same);
-int gidgen_export_virt_abi_version (void);
-GType gidgen_export_auto_get_type (void);
-int gidgen_export_auto_add (void *self, int x);
-int gidgen_export_auto_twice (int x);
 
 static void
 load_library (void)
@@ -457,7 +433,7 @@ main (void)
     GObject *nobj;
     int construct_val = 0, new_weak = 0;
 
-    nobj = obj_new ();
+    nobj = G_OBJECT (obj_new ());
     CHECK (G_OBJECT_TYPE (nobj) == obj_type && nobj->ref_count == 2 && !g_object_is_floating (nobj));
     CHECK (live_dobjects () == start + 1);
     g_object_get (nobj, "construct-val", &construct_val, NULL);
@@ -468,7 +444,7 @@ main (void)
       collect ();
     CHECK (new_weak == 1);
 
-    nobj = floating_new ();
+    nobj = G_OBJECT (floating_new ());
     CHECK (G_OBJECT_TYPE (nobj) == floating_type && g_object_is_floating (nobj));
     g_object_ref_sink (nobj);
     g_object_weak_ref (nobj, weak_notify, &new_weak);
@@ -487,83 +463,86 @@ main (void)
     char *title = NULL;
 
     g_type_query (virt_get_type (), &query);
-    CHECK (query.class_size == sizeof (ExportObjClass));
+    CHECK (query.class_size == sizeof (GidgenExportVirtClass));
     g_type_query (virt_child_get_type (), &query);
-    CHECK (query.class_size == sizeof (ExportObjClass)); /* No new vfuncs in the child */
+    CHECK (query.class_size == sizeof (GidgenExportVirtClass)); /* No new vfuncs in the child */
 
     vobj = g_object_new (virt_get_type (), NULL);
-    CHECK (((ExportObjClass *) G_OBJECT_GET_CLASS (vobj))->scale (vobj, 5) == 10);
-    ((ExportObjClass *) G_OBJECT_GET_CLASS (vobj))->join (vobj, "a", "b");
+    CHECK (((GidgenExportVirtClass *) G_OBJECT_GET_CLASS (vobj))->scale (VIRT (vobj), 5) == 10);
+    ((GidgenExportVirtClass *) G_OBJECT_GET_CLASS (vobj))->join (VIRT (vobj), "a", "b");
     g_object_get (vobj, "title", &title, NULL);
     CHECK (strcmp (title, "ab") == 0);
     g_free (title);
-    CHECK (virt_scale (vobj, 5) == 10);
-    virt_join (vobj, "c", "d"); /* String arguments through the invoker */
+    CHECK (virt_scale (VIRT (vobj), 5) == 10);
+    virt_join (VIRT (vobj), "c", "d"); /* String arguments through the invoker */
     g_object_get (vobj, "title", &title, NULL);
     CHECK (strcmp (title, "cd") == 0);
     g_free (title);
     g_object_unref (vobj);
 
-    vobj = virt_new (); /* Exported constructor */
+    vobj = G_OBJECT (virt_new ()); /* Exported constructor */
     CHECK (G_TYPE_CHECK_INSTANCE_TYPE (vobj, virt_get_type ()) && G_OBJECT_TYPE (vobj) == virt_get_type ());
     CHECK (vobj->ref_count == 2 && !g_object_is_floating (vobj)); /* C reference and the D object toggle reference */
-    CHECK (virt_scale (vobj, 7) == 14);
+    CHECK (virt_scale (VIRT (vobj), 7) == 14);
     g_object_unref (vobj);
 
     vobj = g_object_new (virt_child_get_type (), NULL);
-    CHECK (((ExportObjClass *) G_OBJECT_GET_CLASS (vobj))->scale (vobj, 5) == 11); /* D override chains up */
-    CHECK (virt_scale (vobj, 5) == 11);
+    /* D override chains up */
+    CHECK (((GidgenExportVirtClass *) G_OBJECT_GET_CLASS (vobj))->scale (VIRT (vobj), 5) == 11);
+    CHECK (virt_scale (VIRT (vobj), 5) == 11);
     g_object_unref (vobj);
 
-    c_obj_type = g_type_register_static_simple (virt_get_type (), "CExportObj", sizeof (ExportObjClass), c_class_init,
-                                                query.instance_size, NULL, 0);
-    c_child_type = g_type_register_static_simple (virt_child_get_type (), "CExportChild", sizeof (ExportObjClass),
-                                                  c_class_init, query.instance_size, NULL, 0);
+    c_obj_type = g_type_register_static_simple (virt_get_type (), "CExportObj", sizeof (GidgenExportVirtClass),
+                                                c_class_init, query.instance_size, NULL, 0);
+    c_child_type = g_type_register_static_simple (virt_child_get_type (), "CExportChild",
+                                                  sizeof (GidgenExportVirtClass), c_class_init, query.instance_size, NULL, 0);
 
     vobj = g_object_new (c_obj_type, NULL);
-    CHECK (((ExportObjClass *) G_OBJECT_GET_CLASS (vobj))->scale (vobj, 5) == 110); /* C override chains up to D */
-    CHECK (virt_scale (vobj, 5) == 110); /* D invoker uses the C override */
+    /* C override chains up to D */
+    CHECK (((GidgenExportVirtClass *) G_OBJECT_GET_CLASS (vobj))->scale (VIRT (vobj), 5) == 110);
+    CHECK (virt_scale (VIRT (vobj), 5) == 110); /* D invoker uses the C override */
     g_object_unref (vobj);
 
     vobj = g_object_new (c_child_type, NULL);
-    CHECK (virt_scale (vobj, 5) == 111); /* C chains up to the D override, which chains up to the D default */
+    CHECK (virt_scale (VIRT (vobj), 5) == 111); /* C chains up to the D override, which chains up to the D default */
     g_object_unref (vobj);
   }
 
   /* Exported methods (@gMethod), constructors (@gConstructor) and functions: strings, NULL, GError, out values */
   {
-    GObject *vobj, *same = NULL;
+    GObject *vobj;
+    GidgenExportVirt *same = NULL;
     GError *error = NULL;
     char *str, *upper = NULL, **chars = NULL;
     int length = 0, vweak = 0;
 
-    vobj = virt_new_with_title ("T");
+    vobj = G_OBJECT (virt_new_with_title ("T"));
     CHECK (G_OBJECT_TYPE (vobj) == virt_get_type () && vobj->ref_count == 2);
-    str = virt_describe (vobj, "Mr");
+    str = virt_describe (VIRT (vobj), "Mr");
     CHECK (strcmp (str, "Mr T") == 0);
     g_free (str); /* Transfer full */
-    str = virt_describe (vobj, NULL); /* @gNullable */
+    str = virt_describe (VIRT (vobj), NULL); /* @gNullable */
     CHECK (strcmp (str, "T") == 0);
     g_free (str);
 
-    CHECK (virt_divide (vobj, 7, 2, &error) == 3 && error == NULL);
-    CHECK (virt_divide (vobj, 7, 0, &error) == 0);
+    CHECK (virt_divide (VIRT (vobj), 7, 2, &error) == 3 && error == NULL);
+    CHECK (virt_divide (VIRT (vobj), 7, 0, &error) == 0);
     CHECK (error && error->domain == g_quark_from_string ("gidgen-export") && error->code == 3
            && strcmp (error->message, "division by zero") == 0);
     g_clear_error (&error);
-    CHECK (virt_divide (vobj, 7, -1, &error) == 0);
+    CHECK (virt_divide (VIRT (vobj), 7, -1, &error) == 0);
     CHECK (error && error->domain == g_quark_from_string ("gid-d-exception-quark") && error->code == 0
            && strcmp (error->message, "negative divisor") == 0);
     g_clear_error (&error);
-    CHECK (virt_divide (vobj, 7, 0, NULL) == 0); /* Error ignored */
+    CHECK (virt_divide (VIRT (vobj), 7, 0, NULL) == 0); /* Error ignored */
 
-    virt_stats (vobj, "abc", &length, &upper, &chars, &same);
+    virt_stats (VIRT (vobj), "abc", &length, &upper, &chars, &same);
     CHECK (length == 3 && strcmp (upper, "ABC") == 0 && g_strv_length (chars) == 3 && strcmp (chars[2], "c") == 0);
-    CHECK (same == vobj && vobj->ref_count == 3);
+    CHECK ((GObject *) same == vobj && vobj->ref_count == 3);
     g_free (upper);
     g_strfreev (chars);
     g_object_unref (same);
-    virt_stats (vobj, "", NULL, NULL, NULL, NULL); /* Out values are optional */
+    virt_stats (VIRT (vobj), "", NULL, NULL, NULL, NULL); /* Out values are optional */
 
     CHECK (virt_abi_version () == 3);
 
@@ -585,7 +564,7 @@ main (void)
     CHECK (pspec && (pspec->flags & G_PARAM_READWRITE) == G_PARAM_READWRITE);
     g_object_set (aobj, "level", 5, NULL);
     g_object_get (aobj, "level", &level, NULL);
-    CHECK (level == 5 && auto_add (aobj, 2) == 7 && auto_twice (4) == 8);
+    CHECK (level == 5 && auto_add (AUTO (aobj), 2) == 7 && auto_twice (4) == 8);
     g_object_unref (aobj);
   }
 
@@ -594,7 +573,7 @@ main (void)
     GType shape_type, c_shape_type;
     GTypeQuery query;
     GObject *sobj;
-    ExportShapeInterface *iface;
+    GidgenExportShapeInterface *iface;
     char *title = NULL;
     GInterfaceInfo info = { c_shape_init, NULL, NULL };
 
@@ -604,14 +583,14 @@ main (void)
     CHECK (g_type_is_a (virt_get_type (), shape_type) && g_type_is_a (virt_child_get_type (), shape_type));
 
     sobj = g_object_new (virt_child_get_type (), NULL);
-    iface = G_TYPE_INSTANCE_GET_INTERFACE (sobj, shape_type, ExportShapeInterface);
-    CHECK (iface->sides (sobj) == 4);
-    iface->label (sobj, "x");
+    iface = G_TYPE_INSTANCE_GET_INTERFACE (sobj, shape_type, GidgenExportShapeInterface);
+    CHECK (iface->sides (SHAPE (sobj)) == 4);
+    iface->label (SHAPE (sobj), "x");
     g_object_get (sobj, "title", &title, NULL);
     CHECK (strcmp (title, "label x") == 0);
     g_free (title);
-    CHECK (shape_sides (sobj) == 4); /* Invoker through the interface struct */
-    shape_label (sobj, "y");
+    CHECK (shape_sides (SHAPE (sobj)) == 4); /* Invoker through the interface struct */
+    shape_label (SHAPE (sobj), "y");
     g_object_get (sobj, "title", &title, NULL);
     CHECK (strcmp (title, "label y") == 0);
     g_free (title);
@@ -622,9 +601,35 @@ main (void)
                                                   query.instance_size, NULL, 0);
     g_type_add_interface_static (c_shape_type, shape_type, &info);
     sobj = g_object_new (c_shape_type, NULL);
-    CHECK (shape_sides (sobj) == 3); /* The invoker calls the C implementation */
+    CHECK (shape_sides (SHAPE (sobj)) == 3); /* The invoker calls the C implementation */
     g_object_unref (sobj);
   }
+
+#ifndef USE_DLOPEN
+  /* Type macros and structs of the generated header */
+  {
+    GidgenExportVirt *v = gidgen_export_virt_new ();
+    GidgenExportShape *shape = GIDGEN_EXPORT_SHAPE (v);
+    GTypeQuery query;
+
+    CHECK (GIDGEN_EXPORT_TYPE_VIRT == virt_get_type () && GIDGEN_EXPORT_IS_VIRT (v) && !GIDGEN_EXPORT_IS_AUTO (v));
+    CHECK (GIDGEN_EXPORT_IS_VIRT_CLASS (GIDGEN_EXPORT_VIRT_GET_CLASS (v)));
+    CHECK (GIDGEN_EXPORT_VIRT_GET_CLASS (v)->scale (v, 3) == 6);
+    CHECK (GIDGEN_EXPORT_VIRT_CLASS (g_type_class_peek (GIDGEN_EXPORT_TYPE_VIRT))->scale
+           == GIDGEN_EXPORT_VIRT_GET_CLASS (v)->scale);
+    CHECK (GIDGEN_EXPORT_IS_SHAPE (shape)
+           && GIDGEN_EXPORT_SHAPE_GET_IFACE (shape)->sides (shape) == gidgen_export_shape_sides (shape));
+    CHECK (GIDGEN_EXPORT_TYPE_FLOATING == floating_get_type () && GIDGEN_EXPORT_TYPE_CHILD == child_get_type ());
+    g_object_unref (v);
+
+    g_type_query (GIDGEN_EXPORT_TYPE_CHILD, &query); /* The structs have the sizes of the registered types */
+    CHECK (query.instance_size == sizeof (GidgenExportChild) && query.class_size == sizeof (GidgenExportChildClass));
+    g_type_query (GIDGEN_EXPORT_TYPE_VIRT_CHILD, &query);
+    CHECK (query.instance_size == sizeof (GidgenExportVirtChild)
+           && query.class_size == sizeof (GidgenExportVirtChildClass));
+    CHECK (sizeof (GidgenMixerFancyVirtClass) == sizeof (GidgenExportVirtClass));
+  }
+#endif
 
   /* C subclasses of D types overriding vfuncs of C classes: chaining up from D (super) does not call the C type again */
   {

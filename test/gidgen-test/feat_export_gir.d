@@ -5,7 +5,7 @@ module feat_export_gir;
 import gid.glib2.variant : Variant;
 import gid.gobject2.initially_unowned : InitiallyUnowned;
 import gid.gobject2.object : GidExport, GirInfo, GInterfaceExport, GObjectExport, GObjectNamespace, GObjectSubclass,
-  ObjectWrap, girXml, gConstructor, gMethod, gNullable, gProperty, gSignal, gThrows, gTransfer, gVirtual, GidOwnership;
+  ObjectWrap, girHeader, girXml, gConstructor, gMethod, gNullable, gProperty, gSignal, gThrows, gTransfer, gVirtual, GidOwnership;
 import gid.gobject2.types : BindingFlags, ParamFlags, SignalFlags;
 import std.algorithm : canFind;
 import std.string : indexOf;
@@ -249,5 +249,60 @@ unittest
   gir = buildPath(dir, "GidgenAuto-1.0.gir");
   write(gir, girXml!(GirInfo("GidgenAuto", "1.0", "x.so"), imported!"feat_export_auto"));
   res = execute(["g-ir-compiler", gir, "-o", buildPath(dir, "GidgenAuto-1.0.typelib")]);
+  assert(res.status == 0, res.output);
+}
+
+/// C header written with the GIR (girHeader): includes, type macros, structs and prototypes, compiled with gcc
+unittest
+{
+  import std.array : split;
+  import std.file : mkdirRecurse, rmdirRecurse, tempDir, write;
+  import std.path : buildPath;
+  import std.process : execute, executeShell;
+
+  enum info = GirInfo("GidgenGir", "1.0", "libgidgen-gir.so");
+  auto h = girHeader!(info, feat_export_gir);
+  checkHas(h, "#ifndef GIDGEN_GIR_H\n", "#include <glib-object.h>\n", "G_BEGIN_DECLS\n",
+    "typedef struct _GidgenGirBase GidgenGirBase;\n", "typedef struct _GidgenGirBaseClass GidgenGirBaseClass;\n",
+    "typedef struct _GidgenGirShape GidgenGirShape;\n",
+    "#define GIDGEN_GIR_TYPE_BASE (gidgen_gir_base_get_type ())\n",
+    "#define GIDGEN_GIR_BASE(obj) (G_TYPE_CHECK_INSTANCE_CAST ((obj), GIDGEN_GIR_TYPE_BASE, GidgenGirBase))\n",
+    "#define GIDGEN_GIR_IS_BASE(obj) (G_TYPE_CHECK_INSTANCE_TYPE ((obj), GIDGEN_GIR_TYPE_BASE))\n",
+    "#define GIDGEN_GIR_BASE_GET_CLASS(obj) (G_TYPE_INSTANCE_GET_CLASS ((obj), GIDGEN_GIR_TYPE_BASE,"
+    ~ " GidgenGirBaseClass))\n",
+    "#define GIDGEN_GIR_SHAPE_GET_IFACE(obj) (G_TYPE_INSTANCE_GET_INTERFACE ((obj), GIDGEN_GIR_TYPE_SHAPE,"
+    ~ " GidgenGirShapeInterface))\n",
+    "struct _GidgenGirBase\n{\n  GObject parent_instance;\n};\n",
+    "struct _GidgenGirChild\n{\n  GidgenGirBase parent_instance;\n};\n",
+    "struct _GidgenGirShapeInterface\n{\n  GTypeInterface g_iface;\n",
+    "struct _GidgenGirFloating\n{\n  GInitiallyUnowned parent_instance;\n};\n",
+    "GType gidgen_gir_base_get_type (void) G_GNUC_CONST;\n",
+    "GidgenGirBase *gidgen_gir_base_new_with_ratio (gdouble r);\n",
+    "void gidgen_gir_base_fail (GidgenGirBase *self, GError **error);\n",
+    "guint16 gidgen_gir_base_width (guint8 a, gint16 b, guint64 c, gfloat d);\n",
+    "GVariant *gidgen_gir_base_variant (GidgenGirBase *self, GVariant *v);\n",
+    "G_END_DECLS\n\n#endif /* GIDGEN_GIR_H */\n");
+
+  // The parent struct is defined before the struct of its subclass
+  assert(h.indexOf("struct _GidgenGirBase\n") < h.indexOf("struct _GidgenGirChild\n"));
+
+  // The GIR lists the header, or the headers of GirInfo (the first one is the name of the header)
+  assert(girXml!(info, feat_export_gir).canFind(`<c:include name="gidgen_gir.h"/>`));
+  assert(girHeader!(GirInfo("GidgenGir", "1.0", "x.so", ["mylib/gir.h", "extra.h"]), feat_export_gir)
+    .canFind("#ifndef MYLIB_GIR_H\n#define MYLIB_GIR_H\n\n#include <glib-object.h>\n#include <extra.h>\n"));
+
+  // gcc accepts the header (with warnings as errors)
+  auto dir = buildPath(tempDir, "gidgen-test-header");
+  mkdirRecurse(dir);
+  scope(exit) rmdirRecurse(dir);
+
+  write(buildPath(dir, "gidgen_gir.h"), h);
+  write(buildPath(dir, "gidgen_auto.h"), girHeader!(GirInfo("GidgenAuto", "1.0", "x.so"),
+    imported!"feat_export_auto"));
+  write(buildPath(dir, "test.c"), "#include <gidgen_gir.h>\n#include <gidgen_auto.h>\n");
+  auto cflags = executeShell("pkg-config --cflags gobject-2.0");
+  assert(cflags.status == 0, cflags.output);
+  auto res = execute(["gcc", "-fsyntax-only", "-Wall", "-Werror", "-I" ~ dir] ~ cflags.output.split
+    ~ buildPath(dir, "test.c"));
   assert(res.status == 0, res.output);
 }

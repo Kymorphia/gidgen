@@ -3,7 +3,7 @@
 module feat_gir_mixer;
 
 import feat_gir_widgets : Knob, Turnable;
-import gid.gobject2.object : GirInfo, GObjectExport, GObjectNamespace, ObjectWrap, girXml, gMethod, gNullable,
+import gid.gobject2.object : GirInfo, GObjectExport, GObjectNamespace, ObjectWrap, girHeader, girXml, gMethod, gNullable,
   gProperty, gSignal;
 import std.algorithm : canFind;
 
@@ -131,4 +131,31 @@ unittest
     static assert(_gidNamespaceVersion is null && _gidSymbolPrefix == "ns1"); } }));
   static assert(!__traits(compiles, { struct S { mixin GObjectNamespace!("Ns1", "1.0", "2.0"); } }));
   static assert(!__traits(compiles, { struct S { mixin GObjectNamespace!("Ns1", "a", "b", "1.0"); } }));
+}
+
+/// C header of a namespace using the types of another D namespace: includes its header (<namespace>.h)
+unittest
+{
+  import std.array : split;
+  import std.file : mkdirRecurse, rmdirRecurse, tempDir, write;
+  import std.path : buildPath;
+  import std.process : execute, executeShell;
+
+  auto h = girHeader!(GirInfo("GidgenMixer", null, "libgidgen-mixer.so"), feat_gir_mixer);
+  checkHas(h, "#include <glib-object.h>\n#include <gidgen_widgets.h>\n",
+    "struct _GidgenMixerBigKnob\n{\n  GidgenWidgetsKnob parent_instance;\n};\n",
+    "struct _GidgenMixerBigKnobClass\n{\n  GidgenWidgetsKnobClass parent_class;\n");
+
+  auto dir = buildPath(tempDir, "gidgen-test-header-ns");
+  mkdirRecurse(dir);
+  scope(exit) rmdirRecurse(dir);
+
+  write(buildPath(dir, "gidgen_widgets.h"), girHeader!(GirInfo("GidgenWidgets", null, "libgidgen-widgets.so"),
+    imported!"feat_gir_widgets"));
+  write(buildPath(dir, "gidgen_mixer.h"), h);
+  write(buildPath(dir, "test.c"), "#include <gidgen_mixer.h>\n");
+  auto cflags = executeShell("pkg-config --cflags gobject-2.0");
+  auto res = execute(["gcc", "-fsyntax-only", "-Wall", "-Werror", "-I" ~ dir] ~ cflags.output.split
+    ~ buildPath(dir, "test.c"));
+  assert(res.status == 0, res.output);
 }

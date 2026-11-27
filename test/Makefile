@@ -73,7 +73,8 @@ run-test: unit-test build-test ext-test
 unit-test:
 	cd .. && $(DUB) test -q --compiler=$(DC)
 
-EXPORT_CFLAGS = $(TEST_CFLAGS) -Igidgen-feat
+# The C program uses the C headers written with the GIRs (gidgen_export.h, gidgen_mixer.h)
+EXPORT_CFLAGS = $(TEST_CFLAGS) -Werror -Igidgen-feat -Iexport-test
 EXPORT_LDFLAGS = -Lgidgen-test -lgidgen-feat -lpthread $(TEST_LDFLAGS)
 
 GIR_TEST_ENV = GI_TYPELIB_PATH="$$(pwd)/typelib" LD_LIBRARY_PATH="$$(pwd):$$(pwd)/../export-mixer:$$(pwd)/../gidgen-test" \
@@ -87,13 +88,14 @@ export-gir: packages/README.md $(FEAT_LIB)
 	cd export-mixer && $(DUB) build -q --compiler=$(DC) && $(DUB) build -q --compiler=$(DC) --config=gir
 	cd export-test && LD_LIBRARY_PATH="$$(pwd)/../gidgen-test" G_DEBUG=fatal-criticals ./gidgen-export-gir
 	cd export-mixer && LD_LIBRARY_PATH="$$(pwd)/../export-test:$$(pwd)/../gidgen-test" G_DEBUG=fatal-criticals \
-	  ./gidgen-mixer-gir --gir ../export-test/GidgenMixer-1.0.gir
+	  ./gidgen-mixer-gir --gir ../export-test/GidgenMixer-1.0.gir --header ../export-test/gidgen_mixer.h
 
 .PHONY: run-test-gir
 run-test-gir: export-gir gir/GidgenFeat-1.0.gir
 	mkdir -p export-test/typelib
 	python3 export-test/strip_nested.py gir/GidgenFeat-1.0.gir export-test/typelib/GidgenFeat-1.0.gir
 	cd export-test && g-ir-compiler --includedir=typelib typelib/GidgenFeat-1.0.gir -o typelib/GidgenFeat-1.0.typelib
+	grep -q '<c:include name="gidgen_export.h"/>' export-test/GidgenExport-1.0.gir # The header written with the GIR
 	cd export-test && g-ir-compiler --includedir=typelib GidgenExport-1.0.gir -o typelib/GidgenExport-1.0.typelib
 	cd export-test && g-ir-compiler --includedir=typelib --includedir=. GidgenMixer-1.0.gir \
 	  -o typelib/GidgenMixer-1.0.typelib
@@ -124,8 +126,7 @@ run-test-roundtrip: export-gir
 	  G_DEBUG=fatal-criticals timeout 120 ./gidgen-roundtrip
 
 .PHONY: run-test-export
-run-test-export: packages/README.md $(FEAT_LIB)
-	cd export-test && $(DUB) build -q --compiler=$(DC)
+run-test-export: export-gir
 	gcc $(EXPORT_CFLAGS) -o export-test/export-test-linked export-test/export_test.c -Lexport-test -lgidgen-export \
 	  $(EXPORT_LDFLAGS)
 	gcc $(EXPORT_CFLAGS) -DUSE_DLOPEN -o export-test/export-test-dlopen export-test/export_test.c -ldl $(EXPORT_LDFLAGS)
@@ -283,5 +284,5 @@ $(COV_BIN): $(GIDGEN_SOURCES)
 
 .PHONY: clean
 clean:
-	-rm -f gidgen-test/libgidgen-*.so* $(SHIM_LIBS) $(TEST_BIN) gidgen-test/gidgen-loader-override export-test/libgidgen-export.so export-test/export-test-* export-test/gidgen-export-gir export-test/Gidgen*-1.0.gir export-mixer/libgidgen-mixer.so export-mixer/gidgen-mixer-gir roundtrip/client/gidgen-roundtrip $(GIRS) $(MATRIX_GEN) $(MATRIX_GEN_C) $(MATRIX_MANIFEST) $(MATRIX_DEFS)
+	-rm -f gidgen-test/libgidgen-*.so* $(SHIM_LIBS) $(TEST_BIN) gidgen-test/gidgen-loader-override export-test/libgidgen-export.so export-test/export-test-* export-test/gidgen-export-gir export-test/Gidgen*-1.0.gir export-test/gidgen_*.h export-mixer/gidgen_mixer.h export-mixer/libgidgen-mixer.so export-mixer/gidgen-mixer-gir roundtrip/client/gidgen-roundtrip $(GIRS) $(MATRIX_GEN) $(MATRIX_GEN_C) $(MATRIX_MANIFEST) $(MATRIX_DEFS)
 	-rm -rf packages defs coverage matrix-gen/.dub export-test/.dub export-test/typelib export-mixer/.dub roundtrip/out roundtrip/client/.dub ext-child/out ext-child/out-bad ext-child/out-noshims ext-child/out-stale ext-child/*.err

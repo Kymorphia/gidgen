@@ -34,3 +34,5 @@ roundtrip/out
 roundtrip/client/gidgen-roundtrip
 roundtrip/client/dub.selections.json
 export-test/typelib
+export-test/gidgen_*.h
+export-mixer/gidgen_mixer.h
