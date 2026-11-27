@@ -86,7 +86,7 @@ build-test: packages/README.md $(LIBS) $(MATRIX_MANIFEST)
 # it, dependencies on the other repository use its umbrella name and the configured version, and that invalid
 # configurations are rejected. The child package is then built against the generated test packages, which are
 # temporarily registered as a local dub package.
-EXT_GIDGEN = $(DUB) --root .. run -q --compiler=$(DC) gidgen --
+EXT_GIDGEN = $(DUB) --root .. run -q --compiler=$(DC) --
 EXT_OUT = ext-child/out
 
 .PHONY: ext-test
@@ -198,7 +198,7 @@ gir/GidgenMatrix-1.0.gir: $(MATRIX_SRC) $(MATRIX_HDR) | $(MATRIX_LIB)
 # is removed too since dub keeps the objects of removed modules in its cached libraries)
 packages/README.md: defs/.stamp test-defs/*.d $(MATRIX_DEFS) $(GIRS) $(wildcard gir/ShimLib-*.gir) $(GIDGEN_SOURCES)
 	rm -rf packages "$${DUB_HOME:-$$HOME/.dub}/cache/gidg"
-	$(DUB) --root .. run --compiler=$(DC) gidgen -- --defs defs --defs test-defs --gir-path gir --pkg-path . \
+	$(DUB) --root .. run --compiler=$(DC) -- --defs defs --defs test-defs --gir-path gir --pkg-path . \
 	  --subpkg-path packages --log-level=error
 
 # gidgen coverage: gidgen is built directly with ldc2 -cov into a separate binary (the normal gidgen build is not
