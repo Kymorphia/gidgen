@@ -11,6 +11,9 @@
 #   GidgenExport - D shared library in export-test/ exporting GObjectExport subclasses of GidgenFeat types, used by
 #                the C program export-test/export_test.c without a D main() (D runtime initialization, C threads,
 #                C created instances and their lifetime), built linked against the library and using dlopen
+#   GidgenMixer - D shared library in export-mixer/ using the GidgenExport types from another namespace
+#   Round trip - gidgen generates D bindings from the GIRs which GidgenExport and GidgenMixer write, used by the D
+#                program roundtrip/client like the bindings of any C library
 #
 # GLib critical warnings are made fatal (G_DEBUG=fatal-criticals) so that they fail the tests.
 #
@@ -19,6 +22,8 @@
 #   run-test-export   Build and run the GObjectExport C program test only
 #   run-test-gir      Write the GIRs of the GObjectExport test libraries, compile them to typelibs and use the libraries
 #                     from Python (needs g-ir-compiler and PyGObject)
+#   run-test-roundtrip Generate D bindings from the GIRs of the GObjectExport test libraries and use the libraries
+#                     through them from a D program
 #   unit-test         Run the gidgen source unittests
 #   ext-test          Test generating a child repository which depends on another repository (ext-child/)
 #   run-test-valgrind Run the unittests under valgrind memcheck (memory errors and definite leaks)
@@ -59,6 +64,7 @@ run-test: unit-test build-test ext-test
 	cd gidgen-test && LD_LIBRARY_PATH="$$(pwd)" G_DEBUG=fatal-criticals ./$(notdir $(TEST_BIN))
 	$(MAKE) run-test-export
 	$(MAKE) run-test-gir
+	$(MAKE) run-test-roundtrip
 	cd gidgen-test && $(DUB) build -q --compiler=$(DC) --config=loader-override
 	cd gidgen-test && LD_LIBRARY_PATH="$$(pwd)" G_DEBUG=fatal-criticals \
 	  GID_RTLD_LOCAL=gid.gidgenfeat1 GID_RTLD_GLOBAL=gid.shimlib1,gid.shimlib2 ./gidgen-loader-override
@@ -75,13 +81,16 @@ GIR_TEST_ENV = GI_TYPELIB_PATH="$$(pwd)/typelib" LD_LIBRARY_PATH="$$(pwd):$$(pwd
 
 # export-mixer (GidgenMixer) uses the types of export-test (GidgenExport) from another namespace.
 # The GIR of GidgenFeat is copied without nested records, which g-ir-compiler 1.84 can't parse
-.PHONY: run-test-gir
-run-test-gir: packages/README.md $(FEAT_LIB) gir/GidgenFeat-1.0.gir
+.PHONY: export-gir
+export-gir: packages/README.md $(FEAT_LIB)
 	cd export-test && $(DUB) build -q --compiler=$(DC) && $(DUB) build -q --compiler=$(DC) --config=gir
 	cd export-mixer && $(DUB) build -q --compiler=$(DC) && $(DUB) build -q --compiler=$(DC) --config=gir
 	cd export-test && LD_LIBRARY_PATH="$$(pwd)/../gidgen-test" G_DEBUG=fatal-criticals ./gidgen-export-gir
 	cd export-mixer && LD_LIBRARY_PATH="$$(pwd)/../export-test:$$(pwd)/../gidgen-test" G_DEBUG=fatal-criticals \
 	  ./gidgen-mixer-gir --gir ../export-test/GidgenMixer-1.0.gir
+
+.PHONY: run-test-gir
+run-test-gir: export-gir gir/GidgenFeat-1.0.gir
 	mkdir -p export-test/typelib
 	python3 export-test/strip_nested.py gir/GidgenFeat-1.0.gir export-test/typelib/GidgenFeat-1.0.gir
 	cd export-test && g-ir-compiler --includedir=typelib typelib/GidgenFeat-1.0.gir -o typelib/GidgenFeat-1.0.typelib
@@ -98,6 +107,21 @@ run-test-gir: packages/README.md $(FEAT_LIB) gir/GidgenFeat-1.0.gir
 	  && grep -q 'c:identifier="gidgen_export_virt_stats"' typelib/roundtrip.gir \
 	  && grep -q '<virtual-method name="scale" .*invoker="scale"' typelib/roundtrip.gir
 	cd export-test && $(GIR_TEST_ENV) timeout 120 python3 gi_test.py
+
+# GIR export round trip: gidgen generates the binding packages of GidgenExport and GidgenMixer from their GIRs into
+# roundtrip/out (a repository depending on the test repository, like ext-test), and the D program roundtrip/client uses
+# the libraries through them: constructors, methods, functions, out values, GError, properties, signals, D subclasses
+# of the exported classes overriding their virtual methods, a D implementation of the exported interface, and the
+# finalization of the libraries' D objects. The program and the libraries use the shared D runtime.
+.PHONY: run-test-roundtrip
+run-test-roundtrip: export-gir
+	rm -rf roundtrip/out && mkdir -p roundtrip/out/packages
+	$(EXT_GIDGEN) --config roundtrip/gidgen.json --log-level=error
+	$(DUB) add-local . 0.1.0 > /dev/null; status=0; \
+	  (cd roundtrip/client && $(DUB) build -q --compiler=$(DC)) || status=$$?; \
+	  $(DUB) remove-local . > /dev/null; exit $$status
+	cd roundtrip/client && LD_LIBRARY_PATH="$$(pwd)/../../export-test:$$(pwd)/../../export-mixer:$$(pwd)/../../gidgen-test" \
+	  G_DEBUG=fatal-criticals timeout 120 ./gidgen-roundtrip
 
 .PHONY: run-test-export
 run-test-export: packages/README.md $(FEAT_LIB)
@@ -259,5 +283,5 @@ $(COV_BIN): $(GIDGEN_SOURCES)
 
 .PHONY: clean
 clean:
-	-rm -f gidgen-test/libgidgen-*.so* $(SHIM_LIBS) $(TEST_BIN) gidgen-test/gidgen-loader-override export-test/libgidgen-export.so export-test/export-test-* export-test/gidgen-export-gir export-test/Gidgen*-1.0.gir export-mixer/libgidgen-mixer.so export-mixer/gidgen-mixer-gir $(GIRS) $(MATRIX_GEN) $(MATRIX_GEN_C) $(MATRIX_MANIFEST) $(MATRIX_DEFS)
-	-rm -rf packages defs coverage matrix-gen/.dub export-test/.dub export-test/typelib export-mixer/.dub ext-child/out ext-child/out-bad ext-child/out-noshims ext-child/out-stale ext-child/*.err
+	-rm -f gidgen-test/libgidgen-*.so* $(SHIM_LIBS) $(TEST_BIN) gidgen-test/gidgen-loader-override export-test/libgidgen-export.so export-test/export-test-* export-test/gidgen-export-gir export-test/Gidgen*-1.0.gir export-mixer/libgidgen-mixer.so export-mixer/gidgen-mixer-gir roundtrip/client/gidgen-roundtrip $(GIRS) $(MATRIX_GEN) $(MATRIX_GEN_C) $(MATRIX_MANIFEST) $(MATRIX_DEFS)
+	-rm -rf packages defs coverage matrix-gen/.dub export-test/.dub export-test/typelib export-mixer/.dub roundtrip/out roundtrip/client/.dub ext-child/out ext-child/out-bad ext-child/out-noshims ext-child/out-stale ext-child/*.err

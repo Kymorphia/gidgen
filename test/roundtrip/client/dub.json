@@ -1,0 +1,29 @@
+{
+  "name": "gidgen-roundtrip",
+  "description": "D client of the GObjectExport test libraries through the bindings gidgen generated from their GIRs",
+  "copyright": "Copyright \u00a9 2026, Kymorphia, PBC",
+  "authors": [
+    "Element Green <element@kymorphia.com>"
+  ],
+  "license": "MIT",
+  "targetType": "executable",
+  "targetName": "gidgen-roundtrip",
+  "dflags-ldc": [
+    "-link-defaultlib-shared"
+  ],
+  "dflags-dmd": [
+    "-defaultlib=libphobos2.so"
+  ],
+  "lflags": [
+    "-L$PACKAGE_DIR/../../export-test",
+    "-lgidgen-export"
+  ],
+  "dependencies": {
+    "gidgrt:gidgenexport1": {
+      "path": "../out"
+    },
+    "gidgrt:gidgenmixer1": {
+      "path": "../out"
+    }
+  }
+}

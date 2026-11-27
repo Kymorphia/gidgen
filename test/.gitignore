@@ -22,6 +22,7 @@ ext-child/out-noshims
 ext-child/out-stale
 ext-child/*.err
 !ext-child/defs
+!roundtrip/defs
 gidgen-test/gidgen-loader-override
 gidgen-test/build.log
 export-test/gidgen-export-gir
@@ -29,4 +30,7 @@ export-test/Gidgen*-1.0.gir
 export-mixer/libgidgen-mixer.so
 export-mixer/gidgen-mixer-gir
 export-mixer/dub.selections.json
+roundtrip/out
+roundtrip/client/gidgen-roundtrip
+roundtrip/client/dub.selections.json
 export-test/typelib
